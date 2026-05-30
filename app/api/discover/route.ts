@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { createClient } from '@/lib/supabase/server';
-import { discoverPolicies } from '@/lib/gemini';
+import { discoverPolicies } from '@/lib/claude';
 import { UserProfile } from '@/types';
 
 export async function POST(req: NextRequest) {

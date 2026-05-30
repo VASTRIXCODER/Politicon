@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { createClient } from '@/lib/supabase/server';
-import { chatWithAdvisor } from '@/lib/gemini';
+import { chatWithAdvisor } from '@/lib/claude';
 import { UserProfile } from '@/types';
 
 export async function POST(req: NextRequest) {
