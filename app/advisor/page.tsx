@@ -1,9 +1,10 @@
 'use client';
 
-import { useState, useRef, useEffect } from 'react';
+import { useState, useRef, useEffect, Suspense } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
+import { useSearchParams, useRouter } from 'next/navigation';
 import Link from 'next/link';
-import { Send, Zap, DollarSign, Home, Heart, GraduationCap, Briefcase, Plus, MessageSquare, Clock, ChevronLeft, ChevronRight, ExternalLink } from 'lucide-react';
+import { Send, Zap, DollarSign, Home, Heart, GraduationCap, Briefcase, Plus, MessageSquare, Clock, ChevronLeft, ChevronRight, ExternalLink, Loader2 } from 'lucide-react';
 import { createClient } from '@/lib/supabase/client';
 import { ChatMessage } from '@/types';
 import Navbar from '@/components/layout/Navbar';
@@ -20,13 +21,15 @@ const quickPrompts = [
 interface ChatSession {
   id: string;
   title: string;
-  messages: ChatMessage[];
+  messages: ExtendedMessage[];
   policy_id?: string;
   created_at: string;
 }
 
 interface ExtendedMessage extends ChatMessage {
   policyId?: string;
+  policyTitle?: string;
+  hasFullAnalysis?: boolean;
 }
 
 function TypingIndicator() {
@@ -45,6 +48,76 @@ function TypingIndicator() {
         </div>
       </div>
     </div>
+  );
+}
+
+function ViewFullImpactButton({ policyId, policyTitle, category }: { policyId: string; policyTitle: string; category?: string }) {
+  const router = useRouter();
+  const [loading, setLoading] = useState(false);
+
+  async function handleClick() {
+    setLoading(true);
+    try {
+      const supabase = createClient();
+      const { data: { user } } = await supabase.auth.getUser();
+      if (!user) { router.push(`/impact?policy=${policyId}`); return; }
+
+      // Check if analysis already exists
+      const { data: existing, error: checkErr } = await supabase
+        .from('policy_analyses')
+        .select('id')
+        .eq('user_id', user.id)
+        .eq('policy_id', policyId)
+        .maybeSingle();
+
+      if (!checkErr && existing) {
+        router.push(`/impact?policy=${policyId}`);
+        return;
+      }
+
+      // Run analysis first
+      const res = await fetch('/api/analyze', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          policy: {
+            id: policyId,
+            title: policyTitle,
+            summary: policyTitle,
+            description: policyTitle,
+            category: category || 'General',
+            status: 'proposed',
+            date: new Date().toISOString(),
+            source: 'Advisor',
+            sourceUrl: '',
+            governingBody: 'Federal',
+            region: 'Federal',
+            confidenceLevel: 'medium',
+            impacts: [],
+            assumptions: [],
+            tags: [],
+          }
+        }),
+      });
+      await res.json();
+      router.push(`/impact?policy=${policyId}`);
+    } catch (e) {
+      console.error('View full impact error:', e);
+      router.push(`/impact?policy=${policyId}`);
+    } finally {
+      setLoading(false);
+    }
+  }
+
+  return (
+    <button
+      onClick={handleClick}
+      disabled={loading}
+      className="mt-3 flex items-center gap-2 bg-primary/20 hover:bg-primary/30 border border-primary/25 text-primary px-4 py-2.5 rounded-xl text-xs font-semibold transition-all w-fit disabled:opacity-60 disabled:cursor-not-allowed"
+    >
+      {loading ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <ExternalLink className="w-3.5 h-3.5" />}
+      {loading ? 'Preparing analysis...' : 'View Full Impact'}
+    </button>
   );
 }
 
@@ -71,7 +144,13 @@ function MessageBubble({ message }: { message: ExtendedMessage }) {
           : 'glass text-text-muted rounded-2xl rounded-tl-sm'
       } px-5 py-3.5`}>
         <p className="whitespace-pre-wrap text-sm leading-relaxed">{message.content}</p>
-        {!isUser && message.policyId && (
+        {!isUser && message.hasFullAnalysis && message.policyId && (
+          <ViewFullImpactButton
+            policyId={message.policyId}
+            policyTitle={message.policyTitle || message.policyId}
+          />
+        )}
+        {!isUser && !message.hasFullAnalysis && message.policyId && (
           <Link href={`/impact?policy=${message.policyId}`}
             className="mt-3 flex items-center gap-2 bg-primary/15 hover:bg-primary/25 border border-primary/20 text-primary px-3 py-2 rounded-xl text-xs font-medium transition-all w-fit">
             <ExternalLink className="w-3.5 h-3.5" /> View Full Impact Analysis
@@ -94,7 +173,12 @@ const INITIAL_MESSAGE: ExtendedMessage = {
   timestamp: new Date(),
 };
 
-export default function AdvisorPage() {
+function AdvisorInner() {
+  const searchParams = useSearchParams();
+  const router = useRouter();
+  const policyParam = searchParams.get('policy');
+  const contextParam = searchParams.get('context');
+
   const [sessions, setSessions] = useState<ChatSession[]>([]);
   const [activeSessionId, setActiveSessionId] = useState<string | null>(null);
   const [messages, setMessages] = useState<ExtendedMessage[]>([INITIAL_MESSAGE]);
@@ -105,6 +189,7 @@ export default function AdvisorPage() {
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLTextAreaElement>(null);
   const userId = useRef<string | null>(null);
+  const autoSentRef = useRef(false);
 
   useEffect(() => {
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
@@ -115,24 +200,44 @@ export default function AdvisorPage() {
     supabase.auth.getUser().then(async ({ data: { user } }) => {
       if (!user) { setSessionsLoading(false); return; }
       userId.current = user.id;
-      const { data } = await supabase
-        .from('chat_sessions')
-        .select('*')
-        .eq('user_id', user.id)
-        .order('created_at', { ascending: false })
-        .limit(30);
-      if (data) {
-        setSessions(data.map(s => ({
-          ...s,
-          messages: (s.messages as ExtendedMessage[]).map(m => ({
-            ...m,
-            timestamp: new Date(m.timestamp),
-          })),
-        })));
+      try {
+        const { data } = await supabase
+          .from('chat_sessions')
+          .select('*')
+          .eq('user_id', user.id)
+          .order('created_at', { ascending: false })
+          .limit(30);
+        if (data) {
+          setSessions(data.map(s => ({
+            ...s,
+            messages: (s.messages as ExtendedMessage[]).map(m => ({
+              ...m,
+              timestamp: new Date(m.timestamp),
+            })),
+          })));
+        }
+      } catch {
+        // chat_sessions may not exist yet
+        console.warn('Could not load chat sessions');
       }
       setSessionsLoading(false);
     });
   }, []);
+
+  // Auto-send message from URL params once on mount
+  useEffect(() => {
+    if (!policyParam || autoSentRef.current) return;
+    autoSentRef.current = true;
+    const text = contextParam
+      ? `Tell me about the financial impact of ${policyParam}: ${contextParam}`
+      : `Tell me about the financial impact of ${policyParam}`;
+    // Small delay to allow UI to render first
+    const timer = setTimeout(() => {
+      sendMessage(text);
+    }, 600);
+    return () => clearTimeout(timer);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [policyParam, contextParam]);
 
   const saveSession = async (sessionId: string | null, msgs: ExtendedMessage[], firstUserMsg?: string) => {
     if (!userId.current) return sessionId;
@@ -140,23 +245,27 @@ export default function AdvisorPage() {
     const title = firstUserMsg?.slice(0, 40) || 'New conversation';
     const serialized = msgs.map(m => ({ ...m, timestamp: m.timestamp instanceof Date ? m.timestamp.toISOString() : m.timestamp }));
 
-    if (sessionId) {
-      await supabase.from('chat_sessions').update({ messages: serialized }).eq('id', sessionId);
-      setSessions(prev => prev.map(s => s.id === sessionId ? { ...s, messages: msgs } : s));
-      return sessionId;
-    } else {
-      const { data } = await supabase.from('chat_sessions').insert({
-        user_id: userId.current,
-        title,
-        messages: serialized,
-      }).select().single();
-      if (data) {
-        const newSession: ChatSession = { ...data, messages: msgs };
-        setSessions(prev => [newSession, ...prev]);
-        return data.id as string;
+    try {
+      if (sessionId) {
+        await supabase.from('chat_sessions').update({ messages: serialized }).eq('id', sessionId);
+        setSessions(prev => prev.map(s => s.id === sessionId ? { ...s, messages: msgs } : s));
+        return sessionId;
+      } else {
+        const { data } = await supabase.from('chat_sessions').insert({
+          user_id: userId.current,
+          title,
+          messages: serialized,
+        }).select().single();
+        if (data) {
+          const newSession: ChatSession = { ...data, messages: msgs };
+          setSessions(prev => [newSession, ...prev]);
+          return data.id as string;
+        }
       }
-      return null;
+    } catch {
+      console.warn('Could not save chat session');
     }
+    return null;
   };
 
   const sendMessage = async (text: string) => {
@@ -180,9 +289,11 @@ export default function AdvisorPage() {
       const aiMsg: ExtendedMessage = {
         id: (Date.now() + 1).toString(),
         role: 'assistant',
-        content: data.response || 'I apologize, I had trouble processing that. Please try again.',
+        content: data.response || "I apologize, I had trouble processing that. Please try again.",
         timestamp: new Date(),
         policyId: data.policyId || undefined,
+        policyTitle: data.policyTitle || undefined,
+        hasFullAnalysis: data.hasFullAnalysis || false,
       };
       const finalMessages = [...newMessages, aiMsg];
       setMessages(finalMessages);
@@ -341,5 +452,18 @@ export default function AdvisorPage() {
         </div>
       </div>
     </div>
+  );
+}
+
+export default function AdvisorPage() {
+  return (
+    <Suspense fallback={
+      <div className="min-h-screen relative">
+        <AmbientBackground />
+        <div className="relative z-10"><Navbar /></div>
+      </div>
+    }>
+      <AdvisorInner />
+    </Suspense>
   );
 }

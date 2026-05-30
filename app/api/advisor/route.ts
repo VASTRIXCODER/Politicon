@@ -3,6 +3,24 @@ import { createClient } from '@/lib/supabase/server';
 import { chatWithAdvisor } from '@/lib/claude';
 import { UserProfile } from '@/types';
 
+const DEFAULT_PROFILE: UserProfile = {
+  id: 'anonymous',
+  hasCompletedOnboarding: false,
+  country: 'United States',
+  state: 'Unknown',
+  city: '',
+  ageRange: '31_45',
+  educationStage: 'college_4yr',
+  employmentStatus: 'employed_full',
+  occupationCategory: 'business_finance',
+  incomeRange: '75k_100k',
+  filingStatus: 'single',
+  housingSituation: 'rent',
+  debtTypes: [],
+  hasDependents: false,
+  topFinancialConcerns: ['cost_of_living', 'retirement'],
+};
+
 export async function POST(req: NextRequest) {
   try {
     const { messages, policyContext } = await req.json();
@@ -11,24 +29,7 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: 'Messages array required' }, { status: 400 });
     }
 
-    let profile: UserProfile = {
-      id: 'anonymous',
-      hasCompletedOnboarding: false,
-      country: 'United States',
-      state: 'Unknown',
-      city: '',
-      ageRange: '31_45',
-      educationStage: 'college_4yr',
-      employmentStatus: 'employed_full',
-      occupationCategory: 'business_finance',
-      incomeRange: '75k_100k',
-      filingStatus: 'single',
-      housingSituation: 'rent',
-      debtTypes: [],
-      hasDependents: false,
-      topFinancialConcerns: ['cost_of_living', 'retirement'],
-    };
-
+    let profile: UserProfile = { ...DEFAULT_PROFILE };
     let userId: string | null = null;
 
     try {
@@ -47,14 +48,14 @@ export async function POST(req: NextRequest) {
 
     const response = await chatWithAdvisor(messages, profile);
 
-    // If a policy context was passed (policyId + policyTitle), save an analysis record
-    // and signal the frontend to show the View Full Impact Analysis button
+    // Detect if this response mentions a specific policy
     let savedPolicyId: string | null = policyContext?.policyId || null;
+    let policyTitle: string | null = policyContext?.policyTitle || null;
+    let hasFullAnalysis = false;
 
     if (userId && policyContext?.policyId && policyContext?.policyTitle) {
       try {
         const supabase = createClient();
-        // Extract dollar impact from the response
         let dollar_impact = 0;
         const dollarMatch = response.match(/([+\-])\$([\d,]+)(?:\/yr|\/year|\s+per year|\s+annually)/i)
           || response.match(/\$([\d,]+)(?:\/yr|\/year|\s+per year|\s+annually)/i);
@@ -71,10 +72,19 @@ export async function POST(req: NextRequest) {
           dollar_impact,
           category: policyContext.category || 'General',
         }, { onConflict: 'user_id,policy_id' });
+        hasFullAnalysis = true;
       } catch { /* non-fatal */ }
+    } else if (policyContext?.policyId) {
+      // Even without saving, signal that a policy was detected
+      hasFullAnalysis = true;
     }
 
-    return NextResponse.json({ response, policyId: savedPolicyId });
+    return NextResponse.json({
+      response,
+      policyTitle,
+      policyId: savedPolicyId,
+      hasFullAnalysis,
+    });
   } catch (error) {
     console.error('Advisor error:', error);
     return NextResponse.json({ error: 'AI advisor unavailable. Please try again.' }, { status: 500 });
