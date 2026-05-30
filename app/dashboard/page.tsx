@@ -3,7 +3,8 @@
 import { useState, useEffect } from 'react';
 import { motion } from 'framer-motion';
 import Link from 'next/link';
-import { ArrowRight, TrendingUp, Search, MessageSquare, Zap, AlertCircle, BookOpen } from 'lucide-react';
+import { useRouter } from 'next/navigation';
+import { ArrowRight, TrendingUp, Search, MessageSquare, Zap, BookOpen, Loader2 } from 'lucide-react';
 import { createClient } from '@/lib/supabase/client';
 import GlassCard from '@/components/ui/GlassCard';
 import Badge from '@/components/ui/Badge';
@@ -21,6 +22,16 @@ interface PolicyAnalysisRow {
   created_at: string;
 }
 
+interface FeedPolicy {
+  id: string;
+  title: string;
+  description: string;
+  category: string;
+  relevance: 'High' | 'Medium' | 'Low';
+  estimatedImpact: string;
+  region: string;
+}
+
 function SkeletonCard() {
   return (
     <div className="glass rounded-2xl p-5 animate-pulse">
@@ -36,6 +47,24 @@ function SkeletonCard() {
   );
 }
 
+function FeedSkeletonCard() {
+  return (
+    <div className="glass rounded-2xl p-5 animate-pulse">
+      <div className="flex items-center gap-2 mb-3">
+        <div className="h-5 w-16 bg-white/10 rounded-full" />
+        <div className="h-5 w-12 bg-white/10 rounded-full" />
+      </div>
+      <div className="h-4 bg-white/10 rounded w-3/4 mb-2" />
+      <div className="h-3 bg-white/10 rounded w-full mb-1" />
+      <div className="h-3 bg-white/10 rounded w-2/3 mb-4" />
+      <div className="flex gap-2">
+        <div className="h-9 bg-white/10 rounded-xl flex-1" />
+        <div className="h-9 bg-white/10 rounded-xl flex-1" />
+      </div>
+    </div>
+  );
+}
+
 function getGreeting() {
   const h = new Date().getHours();
   if (h < 12) return 'morning';
@@ -43,14 +72,72 @@ function getGreeting() {
   return 'evening';
 }
 
+const RELEVANCE_COLORS: Record<string, string> = {
+  High: 'text-emerald-400 bg-emerald-400/10 border-emerald-400/20',
+  Medium: 'text-yellow-400 bg-yellow-400/10 border-yellow-400/20',
+  Low: 'text-text-muted bg-white/5 border-white/10',
+};
+
+function PolicyFeedCard({ policy, onAnalyze, onAskAdvisor, analyzingId }: {
+  policy: FeedPolicy;
+  onAnalyze: (policy: FeedPolicy) => void;
+  onAskAdvisor: (policy: FeedPolicy) => void;
+  analyzingId: string | null;
+}) {
+  const isAnalyzing = analyzingId === policy.id;
+  return (
+    <GlassCard className="rounded-2xl p-5">
+      <div className="flex items-start justify-between gap-3 mb-3">
+        <div className="flex items-center gap-2 flex-wrap">
+          <span className={`text-[10px] font-medium px-2 py-0.5 rounded-full border ${RELEVANCE_COLORS[policy.relevance] || RELEVANCE_COLORS.Low}`}>
+            {policy.relevance} Relevance
+          </span>
+          <Badge variant="default">{policy.category}</Badge>
+        </div>
+        <span className="text-[10px] text-text-muted flex-shrink-0">{policy.region}</span>
+      </div>
+      <h3 className="font-medium text-text-primary text-sm leading-snug mb-1">{policy.title}</h3>
+      <p className="text-xs text-text-muted mb-2 leading-relaxed">{policy.description}</p>
+      {policy.estimatedImpact && (
+        <p className="text-xs font-mono-data text-primary mb-4">{policy.estimatedImpact}/yr est. impact</p>
+      )}
+      <div className="flex gap-2">
+        <button
+          onClick={() => onAnalyze(policy)}
+          disabled={isAnalyzing}
+          className="flex-1 flex items-center justify-center gap-1.5 bg-primary/20 hover:bg-primary/30 border border-primary/20 text-primary px-3 py-2 rounded-xl text-xs font-medium transition-all disabled:opacity-60 disabled:cursor-not-allowed"
+        >
+          {isAnalyzing ? <Loader2 className="w-3 h-3 animate-spin" /> : <TrendingUp className="w-3 h-3" />}
+          {isAnalyzing ? 'Analyzing...' : 'Analyze Impact'}
+        </button>
+        <button
+          onClick={() => onAskAdvisor(policy)}
+          className="flex-1 flex items-center justify-center gap-1.5 glass hover:border-white/16 text-text-muted px-3 py-2 rounded-xl text-xs transition-all"
+        >
+          <MessageSquare className="w-3 h-3" /> Ask Advisor
+        </button>
+      </div>
+    </GlassCard>
+  );
+}
+
 export default function DashboardPage() {
+  const router = useRouter();
   const [firstName, setFirstName] = useState('');
   const [state, setState] = useState('');
   const [analyses, setAnalyses] = useState<PolicyAnalysisRow[]>([]);
   const [portfolioInsight, setPortfolioInsight] = useState('');
   const [loading, setLoading] = useState(true);
   const [insightLoading, setInsightLoading] = useState(false);
-  const [error, setError] = useState('');
+  const [feedPolicies, setFeedPolicies] = useState<FeedPolicy[]>([]);
+  const [feedLoading, setFeedLoading] = useState(true);
+  const [analyzingId, setAnalyzingId] = useState<string | null>(null);
+  const [toast, setToast] = useState<{ message: string; type: 'success' | 'error' } | null>(null);
+
+  function showToast(message: string, type: 'success' | 'error' = 'success') {
+    setToast({ message, type });
+    setTimeout(() => setToast(null), 3500);
+  }
 
   useEffect(() => {
     const supabase = createClient();
@@ -60,54 +147,65 @@ export default function DashboardPage() {
         const { data: { user }, error: userErr } = await supabase.auth.getUser();
         if (userErr || !user) { setLoading(false); return; }
 
-        // Load profile
-        const { data: profile } = await supabase
-          .from('user_profiles')
-          .select('first_name, state')
-          .eq('id', user.id)
-          .single();
-
-        if (profile?.first_name) setFirstName(profile.first_name);
-        else if (user.user_metadata?.first_name) setFirstName(user.user_metadata.first_name as string);
-        else setFirstName(user.email?.split('@')[0] || 'there');
-
-        if (profile?.state) setState(profile.state);
-
-        // Load analyses
-        const { data: analysesData, error: analysesErr } = await supabase
-          .from('policy_analyses')
-          .select('*')
-          .eq('user_id', user.id)
-          .order('created_at', { ascending: false })
-          .limit(10);
-
-        if (analysesErr) throw analysesErr;
-        setAnalyses(analysesData || []);
-
-        // If we have analyses, request a portfolio insight
-        if (analysesData && analysesData.length > 0) {
-          setInsightLoading(true);
-          try {
-            const policyList = analysesData.slice(0, 5).map(a =>
-              `${a.policy_title} (${a.category}, $${a.dollar_impact}/yr)`
-            ).join('; ');
-            const res = await fetch('/api/advisor', {
-              method: 'POST',
-              headers: { 'Content-Type': 'application/json' },
-              body: JSON.stringify({
-                messages: [{
-                  role: 'user',
-                  parts: [{ text: `Based on these ${analysesData.length} policies the user has analyzed: ${policyList} — provide a 2-3 sentence portfolio insight summarizing the net financial picture and one actionable recommendation. Be concise and dollar-specific.` }]
-                }]
-              }),
-            });
-            const data = await res.json();
-            if (data.response) setPortfolioInsight(data.response);
-          } catch { /* insight is optional */ }
-          setInsightLoading(false);
+        // Load profile — isolated try/catch
+        try {
+          const { data: profile } = await supabase
+            .from('user_profiles')
+            .select('first_name, state')
+            .eq('id', user.id)
+            .single();
+          if (profile?.first_name) setFirstName(profile.first_name);
+          else if (user.user_metadata?.first_name) setFirstName(user.user_metadata.first_name as string);
+          else setFirstName(user.email?.split('@')[0] || 'there');
+          if (profile?.state) setState(profile.state);
+        } catch {
+          if (user.user_metadata?.first_name) setFirstName(user.user_metadata.first_name as string);
+          else setFirstName(user.email?.split('@')[0] || 'there');
         }
-      } catch (e) {
-        setError('Failed to load dashboard data. Please refresh.');
+
+        // Load analyses — isolated try/catch, treat missing table as empty
+        try {
+          const { data: analysesData, error: analysesErr } = await supabase
+            .from('policy_analyses')
+            .select('*')
+            .eq('user_id', user.id)
+            .order('created_at', { ascending: false })
+            .limit(10);
+
+          if (analysesErr) {
+            // 42P01 = table does not exist — treat as empty
+            if ((analysesErr as { code?: string }).code !== '42P01') {
+              console.error('policy_analyses load error:', analysesErr);
+            }
+          } else {
+            setAnalyses(analysesData || []);
+
+            // Portfolio insight
+            if (analysesData && analysesData.length > 0) {
+              setInsightLoading(true);
+              try {
+                const policyList = analysesData.slice(0, 5).map(a =>
+                  `${a.policy_title} (${a.category}, $${a.dollar_impact}/yr)`
+                ).join('; ');
+                const res = await fetch('/api/advisor', {
+                  method: 'POST',
+                  headers: { 'Content-Type': 'application/json' },
+                  body: JSON.stringify({
+                    messages: [{
+                      role: 'user',
+                      parts: [{ text: `Based on these ${analysesData.length} policies the user has analyzed: ${policyList} — provide a 2-3 sentence portfolio insight summarizing the net financial picture and one actionable recommendation. Be concise and dollar-specific.` }]
+                    }]
+                  }),
+                });
+                const data = await res.json();
+                if (data.response) setPortfolioInsight(data.response);
+              } catch { /* insight is optional */ }
+              setInsightLoading(false);
+            }
+          }
+        } catch (e) {
+          console.error('Failed to load analyses:', e);
+        }
       } finally {
         setLoading(false);
       }
@@ -116,11 +214,92 @@ export default function DashboardPage() {
     load();
   }, []);
 
+  // Load policy feed
+  useEffect(() => {
+    async function loadFeed() {
+      setFeedLoading(true);
+      try {
+        const res = await fetch('/api/policies/feed', { cache: 'no-store' });
+        const data = await res.json();
+        setFeedPolicies(Array.isArray(data) ? data : []);
+      } catch (e) {
+        console.error('Failed to load policy feed:', e);
+        setFeedPolicies([]);
+      } finally {
+        setFeedLoading(false);
+      }
+    }
+    loadFeed();
+  }, []);
+
+  async function handleAnalyze(policy: FeedPolicy) {
+    setAnalyzingId(policy.id);
+    try {
+      const res = await fetch('/api/analyze', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          policy: {
+            id: policy.id,
+            title: policy.title,
+            summary: policy.description,
+            description: policy.description,
+            category: policy.category,
+            status: 'proposed',
+            date: new Date().toISOString(),
+            source: 'AI Feed',
+            sourceUrl: '',
+            governingBody: policy.region,
+            region: policy.region,
+            confidenceLevel: 'medium',
+            impacts: [],
+            assumptions: [],
+            tags: [],
+          }
+        }),
+      });
+      const data = await res.json();
+      if (data.error) throw new Error(data.error);
+      showToast(`Analysis complete for "${policy.title}"`);
+      // Refresh analyses list
+      const supabase = createClient();
+      const { data: { user } } = await supabase.auth.getUser();
+      if (user) {
+        const { data: updated } = await supabase
+          .from('policy_analyses')
+          .select('*')
+          .eq('user_id', user.id)
+          .order('created_at', { ascending: false })
+          .limit(10);
+        if (updated) setAnalyses(updated);
+      }
+    } catch (e) {
+      console.error('Analyze error:', e);
+      showToast('Analysis failed. Please try again.', 'error');
+    } finally {
+      setAnalyzingId(null);
+    }
+  }
+
+  function handleAskAdvisor(policy: FeedPolicy) {
+    router.push(`/advisor?policy=${encodeURIComponent(policy.title)}&context=${encodeURIComponent(policy.description)}`);
+  }
+
   const netImpact = analyses.reduce((sum, a) => sum + (a.dollar_impact || 0), 0);
 
   return (
     <div className="min-h-screen relative">
       <AmbientBackground />
+      {/* Toast */}
+      {toast && (
+        <div className={`fixed top-6 right-6 z-50 px-5 py-3 rounded-2xl text-sm font-medium shadow-lg transition-all ${
+          toast.type === 'success'
+            ? 'bg-emerald-500/20 border border-emerald-500/30 text-emerald-300'
+            : 'bg-red-500/20 border border-red-500/30 text-red-300'
+        }`}>
+          {toast.message}
+        </div>
+      )}
       <div className="relative z-10">
         <Navbar />
         <main className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 pt-28 pb-20">
@@ -142,13 +321,6 @@ export default function DashboardPage() {
               </div>
             )}
           </motion.div>
-
-          {error && (
-            <div className="mb-6 bg-red-500/10 border border-red-500/20 rounded-2xl px-5 py-4 flex items-center gap-3">
-              <AlertCircle className="w-4 h-4 text-red-400 flex-shrink-0" />
-              <p className="text-sm text-red-400">{error}</p>
-            </div>
-          )}
 
           {/* Net impact hero card */}
           <motion.div initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.5, delay: 0.1 }}
@@ -240,7 +412,7 @@ export default function DashboardPage() {
                   </div>
                   <h3 className="font-medium text-text-primary mb-2">No policies analyzed yet</h3>
                   <p className="text-sm text-text-muted mb-6 max-w-xs mx-auto">
-                    Start by searching for a policy to see how it affects your finances.
+                    You haven&apos;t analyzed any policies yet. Browse the policy feed below to get started.
                   </p>
                   <Link href="/explorer">
                     <button className="bg-primary/20 hover:bg-primary/30 border border-primary/20 text-primary px-5 py-3 rounded-xl text-sm font-medium transition-all">
@@ -282,6 +454,47 @@ export default function DashboardPage() {
                   ))}
                 </div>
               )}
+
+              {/* Policy Feed */}
+              <div>
+                <div className="flex items-center justify-between mb-4">
+                  <h2 className="font-display text-xl font-semibold text-text-primary">Policy Feed</h2>
+                  <span className="text-xs text-text-muted">Personalized to your profile</span>
+                </div>
+
+                {feedLoading ? (
+                  <div className="space-y-4">
+                    {[...Array(3)].map((_, i) => <FeedSkeletonCard key={i} />)}
+                  </div>
+                ) : feedPolicies.length === 0 ? (
+                  <GlassCard className="rounded-2xl p-10 text-center">
+                    <div className="w-12 h-12 rounded-2xl bg-primary/10 border border-primary/20 flex items-center justify-center mx-auto mb-4">
+                      <BookOpen className="w-6 h-6 text-primary" />
+                    </div>
+                    <h3 className="font-medium text-text-primary mb-2">No policies in feed yet</h3>
+                    <p className="text-sm text-text-muted mb-6 max-w-xs mx-auto">
+                      Complete your profile to get personalized policy recommendations.
+                    </p>
+                    <Link href="/onboarding">
+                      <button className="bg-primary/20 hover:bg-primary/30 border border-primary/20 text-primary px-5 py-3 rounded-xl text-sm font-medium transition-all">
+                        Complete Profile →
+                      </button>
+                    </Link>
+                  </GlassCard>
+                ) : (
+                  <div className="space-y-4">
+                    {feedPolicies.map((policy) => (
+                      <PolicyFeedCard
+                        key={policy.id}
+                        policy={policy}
+                        onAnalyze={handleAnalyze}
+                        onAskAdvisor={handleAskAdvisor}
+                        analyzingId={analyzingId}
+                      />
+                    ))}
+                  </div>
+                )}
+              </div>
             </div>
 
             {/* Sidebar */}
@@ -306,7 +519,7 @@ export default function DashboardPage() {
                       <p className="text-xs text-text-muted leading-relaxed">{portfolioInsight}</p>
                     </div>
                   </GlassCard>
-                ) : analyses.length > 0 ? null : (
+                ) : (
                   <GlassCard className="rounded-2xl p-5">
                     <p className="text-xs text-text-muted">Analyze some policies to get an AI-generated portfolio insight.</p>
                   </GlassCard>
