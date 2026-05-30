@@ -25,6 +25,10 @@ interface ChatSession {
   created_at: string;
 }
 
+interface ExtendedMessage extends ChatMessage {
+  policyId?: string;
+}
+
 function TypingIndicator() {
   return (
     <div className="flex items-end gap-3 mb-4">
@@ -44,11 +48,8 @@ function TypingIndicator() {
   );
 }
 
-function MessageBubble({ message }: { message: ChatMessage }) {
+function MessageBubble({ message }: { message: ExtendedMessage }) {
   const isUser = message.role === 'user';
-  // Detect if message contains a policy reference (simple heuristic: policyId in content)
-  const policyMatch = message.role === 'assistant' && message.content.match(/policy[_-]?id[:\s]+([\w-]+)/i);
-  const policyId = policyMatch ? policyMatch[1] : null;
 
   return (
     <motion.div
@@ -70,8 +71,8 @@ function MessageBubble({ message }: { message: ChatMessage }) {
           : 'glass text-text-muted rounded-2xl rounded-tl-sm'
       } px-5 py-3.5`}>
         <p className="whitespace-pre-wrap text-sm leading-relaxed">{message.content}</p>
-        {policyId && (
-          <Link href={`/impact?policy=${policyId}`}
+        {!isUser && message.policyId && (
+          <Link href={`/impact?policy=${message.policyId}`}
             className="mt-3 flex items-center gap-2 bg-primary/15 hover:bg-primary/25 border border-primary/20 text-primary px-3 py-2 rounded-xl text-xs font-medium transition-all w-fit">
             <ExternalLink className="w-3.5 h-3.5" /> View Full Impact Analysis
           </Link>
@@ -86,7 +87,7 @@ function MessageBubble({ message }: { message: ChatMessage }) {
   );
 }
 
-const INITIAL_MESSAGE: ChatMessage = {
+const INITIAL_MESSAGE: ExtendedMessage = {
   id: '0',
   role: 'assistant',
   content: "Hi! I'm your Politicon AI Financial Advisor. I have your profile loaded and can tell you exactly how any policy affects your wallet — in real dollars.\n\nWhat would you like to know?",
@@ -96,7 +97,7 @@ const INITIAL_MESSAGE: ChatMessage = {
 export default function AdvisorPage() {
   const [sessions, setSessions] = useState<ChatSession[]>([]);
   const [activeSessionId, setActiveSessionId] = useState<string | null>(null);
-  const [messages, setMessages] = useState<ChatMessage[]>([INITIAL_MESSAGE]);
+  const [messages, setMessages] = useState<ExtendedMessage[]>([INITIAL_MESSAGE]);
   const [input, setInput] = useState('');
   const [isTyping, setIsTyping] = useState(false);
   const [sidebarOpen, setSidebarOpen] = useState(true);
@@ -109,7 +110,6 @@ export default function AdvisorPage() {
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
   }, [messages, isTyping]);
 
-  // Load user + sessions
   useEffect(() => {
     const supabase = createClient();
     supabase.auth.getUser().then(async ({ data: { user } }) => {
@@ -124,7 +124,7 @@ export default function AdvisorPage() {
       if (data) {
         setSessions(data.map(s => ({
           ...s,
-          messages: (s.messages as ChatMessage[]).map(m => ({
+          messages: (s.messages as ExtendedMessage[]).map(m => ({
             ...m,
             timestamp: new Date(m.timestamp),
           })),
@@ -134,7 +134,7 @@ export default function AdvisorPage() {
     });
   }, []);
 
-  const saveSession = async (sessionId: string | null, msgs: ChatMessage[], firstUserMsg?: string) => {
+  const saveSession = async (sessionId: string | null, msgs: ExtendedMessage[], firstUserMsg?: string) => {
     if (!userId.current) return sessionId;
     const supabase = createClient();
     const title = firstUserMsg?.slice(0, 40) || 'New conversation';
@@ -162,8 +162,8 @@ export default function AdvisorPage() {
   const sendMessage = async (text: string) => {
     if (!text.trim() || isTyping) return;
 
-    const isFirst = messages.length === 1; // only initial message
-    const userMsg: ChatMessage = { id: Date.now().toString(), role: 'user', content: text.trim(), timestamp: new Date() };
+    const isFirst = messages.length === 1;
+    const userMsg: ExtendedMessage = { id: Date.now().toString(), role: 'user', content: text.trim(), timestamp: new Date() };
     const newMessages = [...messages, userMsg];
     setMessages(newMessages);
     setInput('');
@@ -177,20 +177,20 @@ export default function AdvisorPage() {
         body: JSON.stringify({ messages: [...history, { role: 'user', parts: [{ text: text.trim() }] }] }),
       });
       const data = await res.json();
-      const aiMsg: ChatMessage = {
+      const aiMsg: ExtendedMessage = {
         id: (Date.now() + 1).toString(),
         role: 'assistant',
         content: data.response || 'I apologize, I had trouble processing that. Please try again.',
         timestamp: new Date(),
+        policyId: data.policyId || undefined,
       };
       const finalMessages = [...newMessages, aiMsg];
       setMessages(finalMessages);
 
-      // Save to DB
       const savedId = await saveSession(activeSessionId, finalMessages, isFirst ? text.trim() : undefined);
       if (!activeSessionId && savedId) setActiveSessionId(savedId);
     } catch {
-      const errMsg: ChatMessage = {
+      const errMsg: ExtendedMessage = {
         id: (Date.now() + 1).toString(),
         role: 'assistant',
         content: "I'm having trouble connecting right now. Please try again in a moment.",
@@ -203,7 +203,7 @@ export default function AdvisorPage() {
 
   const loadSession = (session: ChatSession) => {
     setActiveSessionId(session.id);
-    setMessages(session.messages.length > 0 ? session.messages : [INITIAL_MESSAGE]);
+    setMessages(session.messages.length > 0 ? session.messages : [{ ...INITIAL_MESSAGE, timestamp: new Date() }]);
   };
 
   const newChat = () => {

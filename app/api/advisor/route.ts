@@ -5,7 +5,7 @@ import { UserProfile } from '@/types';
 
 export async function POST(req: NextRequest) {
   try {
-    const { messages } = await req.json();
+    const { messages, policyContext } = await req.json();
 
     if (!messages || !Array.isArray(messages)) {
       return NextResponse.json({ error: 'Messages array required' }, { status: 400 });
@@ -29,10 +29,13 @@ export async function POST(req: NextRequest) {
       topFinancialConcerns: ['cost_of_living', 'retirement'],
     };
 
+    let userId: string | null = null;
+
     try {
       const supabase = createClient();
       const { data: { user } } = await supabase.auth.getUser();
       if (user) {
+        userId = user.id;
         const { data: profileData } = await supabase
           .from('user_profiles')
           .select('*')
@@ -43,7 +46,35 @@ export async function POST(req: NextRequest) {
     } catch { /* use default profile */ }
 
     const response = await chatWithAdvisor(messages, profile);
-    return NextResponse.json({ response });
+
+    // If a policy context was passed (policyId + policyTitle), save an analysis record
+    // and signal the frontend to show the View Full Impact Analysis button
+    let savedPolicyId: string | null = policyContext?.policyId || null;
+
+    if (userId && policyContext?.policyId && policyContext?.policyTitle) {
+      try {
+        const supabase = createClient();
+        // Extract dollar impact from the response
+        let dollar_impact = 0;
+        const dollarMatch = response.match(/([+\-])\$([\d,]+)(?:\/yr|\/year|\s+per year|\s+annually)/i)
+          || response.match(/\$([\d,]+)(?:\/yr|\/year|\s+per year|\s+annually)/i);
+        if (dollarMatch) {
+          const sign = response.includes('-$') ? -1 : 1;
+          const numStr = (dollarMatch[2] || dollarMatch[1]).replace(/,/g, '');
+          dollar_impact = sign * parseInt(numStr, 10);
+        }
+        await supabase.from('policy_analyses').upsert({
+          user_id: userId,
+          policy_id: policyContext.policyId,
+          policy_title: policyContext.policyTitle,
+          analysis_text: response,
+          dollar_impact,
+          category: policyContext.category || 'General',
+        }, { onConflict: 'user_id,policy_id' });
+      } catch { /* non-fatal */ }
+    }
+
+    return NextResponse.json({ response, policyId: savedPolicyId });
   } catch (error) {
     console.error('Advisor error:', error);
     return NextResponse.json({ error: 'AI advisor unavailable. Please try again.' }, { status: 500 });
