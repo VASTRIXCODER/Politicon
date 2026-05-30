@@ -11,7 +11,6 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: 'Policy data required' }, { status: 400 });
     }
 
-    // Try to get authenticated user profile
     let profile: UserProfile = {
       id: 'anonymous',
       hasCompletedOnboarding: false,
@@ -30,10 +29,13 @@ export async function POST(req: NextRequest) {
       topFinancialConcerns: ['cost_of_living', 'retirement'],
     };
 
+    let userId: string | null = null;
+
     try {
       const supabase = createClient();
       const { data: { user } } = await supabase.auth.getUser();
       if (user) {
+        userId = user.id;
         const { data: profileData } = await supabase
           .from('user_profiles')
           .select('*')
@@ -46,7 +48,34 @@ export async function POST(req: NextRequest) {
     } catch { /* use default profile */ }
 
     const analysis = await analyzePolicy(policy, profile);
-    return NextResponse.json({ analysis });
+
+    // Extract a rough dollar_impact from the analysis text
+    // Look for patterns like +$X,XXX or -$X,XXX in the analysis
+    let dollar_impact = 0;
+    const dollarMatch = analysis.match(/net[\s\S]{0,30}[\+\-]?\$([\d,]+)/i)
+      || analysis.match(/([\+\-])\$([\d,]+)(?:\/yr|\/year|\s+per year|\s+annually)/i);
+    if (dollarMatch) {
+      const sign = dollarMatch[0].includes('-') ? -1 : 1;
+      const numStr = (dollarMatch[2] || dollarMatch[1]).replace(/,/g, '');
+      dollar_impact = sign * parseInt(numStr, 10);
+    }
+
+    // Save to Supabase if user is authenticated
+    if (userId) {
+      try {
+        const supabase = createClient();
+        await supabase.from('policy_analyses').upsert({
+          user_id: userId,
+          policy_id: policy.id,
+          policy_title: policy.title,
+          analysis_text: analysis,
+          dollar_impact,
+          category: policy.category,
+        }, { onConflict: 'user_id,policy_id' });
+      } catch { /* non-fatal */ }
+    }
+
+    return NextResponse.json({ analysis, dollar_impact });
   } catch (error) {
     console.error('Analyze error:', error);
     return NextResponse.json({ error: 'Analysis failed. Please try again.' }, { status: 500 });
