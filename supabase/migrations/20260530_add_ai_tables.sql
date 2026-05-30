@@ -8,7 +8,8 @@ create table if not exists policy_analyses (
   analysis_text text,
   dollar_impact numeric,
   category text,
-  created_at timestamptz default now()
+  created_at timestamptz default now(),
+  unique(user_id, policy_id)
 );
 
 create table if not exists chat_sessions (
