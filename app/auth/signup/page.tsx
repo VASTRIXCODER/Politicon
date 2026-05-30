@@ -1,6 +1,6 @@
 'use client';
 
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { motion } from 'framer-motion';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
@@ -20,6 +20,26 @@ export default function SignUpPage() {
   const [showPassword, setShowPassword] = useState(false);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
+  const [checkingSession, setCheckingSession] = useState(true);
+
+  useEffect(() => {
+    supabase.auth.getUser().then(async ({ data: { user } }) => {
+      if (user) {
+        const { data: profile } = await supabase
+          .from('user_profiles')
+          .select('has_completed_onboarding')
+          .eq('id', user.id)
+          .single();
+        if (profile?.has_completed_onboarding) {
+          router.replace('/dashboard');
+        } else {
+          router.replace('/onboarding');
+        }
+      } else {
+        setCheckingSession(false);
+      }
+    });
+  }, []);
 
   const handleSignUp = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -43,9 +63,27 @@ export default function SignUpPage() {
   const handleGoogleSignIn = async () => {
     await supabase.auth.signInWithOAuth({
       provider: 'google',
-      options: { redirectTo: `${window.location.origin}/onboarding` },
+      options: { redirectTo: `${window.location.origin}/auth/callback` },
     });
   };
+
+  if (checkingSession) {
+    return (
+      <div className="min-h-screen relative flex items-center justify-center">
+        <AmbientBackground />
+        <div className="relative z-10 flex flex-col items-center gap-4">
+          <div className="w-10 h-10 rounded-2xl bg-primary/20 border border-primary/20 flex items-center justify-center">
+            <Zap className="w-5 h-5 text-primary" />
+          </div>
+          <div className="flex gap-1">
+            {[0, 1, 2].map(i => (
+              <div key={i} className="w-2 h-2 rounded-full bg-primary animate-pulse" style={{ animationDelay: `${i * 0.15}s` }} />
+            ))}
+          </div>
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div className="min-h-screen relative flex">
@@ -101,6 +139,7 @@ export default function SignUpPage() {
                 value={firstName}
                 onChange={e => setFirstName(e.target.value)}
                 placeholder="Alex"
+                autoComplete="given-name"
                 className="input-glass w-full px-4 py-3.5 text-sm"
               />
             </div>
@@ -113,6 +152,7 @@ export default function SignUpPage() {
                 value={email}
                 onChange={e => setEmail(e.target.value)}
                 placeholder="you@example.com"
+                autoComplete="email"
                 className="input-glass w-full px-4 py-3.5 text-sm"
               />
             </div>
@@ -127,6 +167,7 @@ export default function SignUpPage() {
                   value={password}
                   onChange={e => setPassword(e.target.value)}
                   placeholder="At least 8 characters"
+                  autoComplete="new-password"
                   className="input-glass w-full px-4 py-3.5 text-sm pr-12"
                 />
                 <button
