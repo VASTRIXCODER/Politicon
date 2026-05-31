@@ -5,6 +5,20 @@ const client = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY });
 
 const MODEL = 'claude-sonnet-4-20250514';
 
+export interface FeedPolicy {
+  id: string;
+  title: string;
+  description: string;
+  category: string;
+  relevance: 'High' | 'Medium' | 'Low';
+  estimatedImpact: string;
+  region: string;
+}
+
+function slugify(s: string): string {
+  return s.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '');
+}
+
 function buildUserContext(profile: UserProfile): string {
   return `
 User Financial Profile:
@@ -114,4 +128,69 @@ Focus on real, current US federal and state policies. Order by financial impact 
 
   const block = message.content[0];
   return block.type === 'text' ? block.text : '';
+}
+
+/**
+ * Discover a structured feed of the most financially relevant current US
+ * policies for a user. Returns a typed array suitable for direct rendering
+ * and for caching in the user_policy_feed table. Always returns an array
+ * (empty on any failure) — never throws to the caller.
+ */
+export async function discoverPolicyFeed(profile: UserProfile): Promise<FeedPolicy[]> {
+  const userContext = buildUserContext(profile);
+
+  const prompt = `You are Politicon's policy discovery engine. Based on this user's financial profile, identify the 8-10 most financially relevant current US policies (federal or state) being debated or recently enacted.
+
+${userContext}
+
+Return ONLY a valid JSON array — no markdown, no code fences, no commentary. Each element must have exactly these fields:
+- "title": short policy name
+- "description": one concise sentence
+- "category": one of Tax, Healthcare, Housing, Employment, Education, Energy, Other
+- "relevance": one of "High", "Medium", "Low" (relative to THIS user)
+- "estimatedImpact": a short dollar estimate string, e.g. "$1,200/yr" or "-$500/yr"
+- "region": "Federal" or a US state name
+
+Order by financial impact magnitude (highest first). Use real, current US policies.`;
+
+  let raw = '';
+  try {
+    const message = await client.messages.create({
+      model: MODEL,
+      max_tokens: 2048,
+      messages: [{ role: 'user', content: prompt }],
+    });
+    const block = message.content[0];
+    raw = block.type === 'text' ? block.text : '';
+  } catch (e) {
+    console.error('Policy feed generation failed:', e);
+    return [];
+  }
+
+  // Strip accidental markdown fences and isolate the JSON array.
+  let jsonText = raw.trim().replace(/^```(?:json)?/i, '').replace(/```$/i, '').trim();
+  const start = jsonText.indexOf('[');
+  const end = jsonText.lastIndexOf(']');
+  if (start !== -1 && end !== -1) jsonText = jsonText.slice(start, end + 1);
+
+  try {
+    const parsed = JSON.parse(jsonText) as Partial<FeedPolicy>[];
+    if (!Array.isArray(parsed)) return [];
+    return parsed
+      .filter((p) => p && p.title)
+      .map((p) => ({
+        id: slugify(p.title as string),
+        title: p.title as string,
+        description: p.description || '',
+        category: p.category || 'Other',
+        relevance: (['High', 'Medium', 'Low'].includes(p.relevance as string)
+          ? (p.relevance as FeedPolicy['relevance'])
+          : 'Medium'),
+        estimatedImpact: p.estimatedImpact || '',
+        region: p.region || 'Federal',
+      }));
+  } catch (e) {
+    console.error('Failed to parse policy feed JSON:', e);
+    return [];
+  }
 }
