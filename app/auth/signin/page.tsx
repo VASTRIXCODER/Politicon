@@ -10,9 +10,10 @@ import ImpactCardDemo from '@/components/landing/ImpactCardDemo';
 import Button from '@/components/ui/Button';
 import AmbientBackground from '@/components/landing/AmbientBackground';
 
+const supabase = createClient();
+
 export default function SignInPage() {
   const router = useRouter();
-  const supabase = createClient();
 
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
@@ -39,7 +40,7 @@ export default function SignInPage() {
         setCheckingSession(false);
       }
     });
-  }, []);
+  }, [router]);
 
   const handleSignIn = async (e: React.FormEvent) => {
     e.preventDefault();
