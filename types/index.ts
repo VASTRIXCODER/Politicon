@@ -121,3 +121,135 @@ export type PolicyCategory =
   | 'Education'
   | 'Energy'
   | 'Social Security';
+
+// ============================================================
+// Policy Discovery Engine
+// ============================================================
+export type ImpactDirection = 'positive' | 'negative' | 'neutral';
+
+export interface DiscoveredPolicy {
+  id: string;
+  title: string;
+  billNumber: string;
+  status: string; // proposed | passed | enacted | repealed
+  category: string;
+  relevanceScore: number; // 0-100
+  relevance: 'High' | 'Medium' | 'Low'; // derived from score
+  summary: string;
+  description: string; // alias of summary (legacy consumers)
+  direction: ImpactDirection;
+  estimatedImpact: string; // e.g. "+$1,200/yr"
+  reasons: string[]; // 3 personalized reasons
+  region: string;
+}
+
+// ============================================================
+// Full Policy Analysis Engine — the comprehensive structured breakdown
+// Sign convention for every dollar field: positive = money the user
+// GAINS (savings / income), negative = money the user LOSES (cost).
+// ============================================================
+export interface MonthPoint {
+  month: number; // 1-12
+  impact: number; // cumulative-to-date dollar impact for that month
+}
+
+export interface LabeledValue {
+  label: string;
+  value: number;
+}
+
+export interface Recommendation {
+  step: string;
+  priority: 'high' | 'medium' | 'low';
+}
+
+export interface CategoryImpacts {
+  taxes: number;
+  housing: number;
+  healthcare: number;
+  employment: number;
+  retirement: number;
+  education: number;
+}
+
+export interface FullAnalysis {
+  policyId: string;
+  policyTitle: string;
+  billNumber: string;
+  status: string;
+  category: string;
+  confidenceScore: number; // 0-100
+  direction: ImpactDirection;
+  plainEnglishSummary: string;
+
+  netAnnualImpact: number;
+  netMonthlyImpact: number;
+
+  immediate: {
+    monthlyBudgetImpact: number;
+    annualBudgetImpact: number;
+    effectiveTaxRateChange: number; // percentage points
+    takeHomePerPaycheck: number;
+    spendingCategories: LabeledValue[];
+  };
+  housing: {
+    monthlyHousingEffect: number;
+    propertyValueChangePct: number;
+    affordabilityIndexChange: number;
+    firstTimeBuyerImpact: string;
+  };
+  employment: {
+    jobSecurityRisk: number; // 0-100
+    wageGrowthPct: number;
+    benefitChangeValue: number;
+    industryEffects: string;
+  };
+  healthcare: {
+    monthlyPremiumChange: number;
+    outOfPocketMaxChange: number;
+    prescriptionCostChange: number;
+    coverageChange: string;
+  };
+  retirement: {
+    contributionLimitChange: number;
+    socialSecurityChange: number;
+    timelineImpactYears: number;
+  };
+  education: {
+    studentLoanPaymentChange: number;
+    tuitionAssistanceChange: number;
+    childEducationCostChange: number;
+  };
+  tax: {
+    federalLiabilityChange: number; // signed impact (positive = tax savings)
+    stateLiabilityChange: number;
+    effectiveRateBefore: number;
+    effectiveRateAfter: number;
+    bracketChange: string;
+    deductionChanges: string;
+    creditChanges: string;
+  };
+  ripple: {
+    inflationImpactPct: number;
+    costOfLivingChange: number; // annual dollar
+    purchasingPowerChange: number; // annual dollar
+    interestRateEffect: string;
+  };
+  categoryImpacts: CategoryImpacts; // annual signed dollar impact per category
+  timeline: {
+    year1: number;
+    year3: number;
+    year5: number;
+    monthly: MonthPoint[]; // 12 cumulative points
+  };
+  tradeoffs: {
+    gains: LabeledValue[];
+    losses: LabeledValue[];
+    netAssessment: string;
+  };
+  riskFactors: {
+    uncertainties: string[];
+    confidence: number; // 0-100
+  };
+  recommendations: Recommendation[];
+}

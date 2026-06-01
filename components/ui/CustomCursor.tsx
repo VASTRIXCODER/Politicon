@@ -29,7 +29,7 @@ export default function CustomCursor() {
     function animate() {
       posRef.current.x = lerp(posRef.current.x, targetRef.current.x, 0.12);
       posRef.current.y = lerp(posRef.current.y, targetRef.current.y, 0.12);
-      ring.style.transform = `translate(${posRef.current.x - 16}px, ${posRef.current.y - 16}px)`;
+      ring!.style.transform = `translate(${posRef.current.x - 16}px, ${posRef.current.y - 16}px)`;
       rafId = requestAnimationFrame(animate);
     }
     rafId = requestAnimationFrame(animate);

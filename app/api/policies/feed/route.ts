@@ -1,10 +1,10 @@
-import { NextResponse } from 'next/server';
+import { NextRequest, NextResponse } from 'next/server';
 import { createClient } from '@/lib/supabase/server';
-import Anthropic from '@anthropic-ai/sdk';
+import { discoverPolicyFeed } from '@/lib/claude';
 import { UserProfile } from '@/types';
 
-const client = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY });
-const MODEL = 'claude-sonnet-4-20250514';
+export const dynamic = 'force-dynamic';
+export const maxDuration = 60;
 
 const DEFAULT_PROFILE: UserProfile = {
   id: 'anonymous',
@@ -24,27 +24,18 @@ const DEFAULT_PROFILE: UserProfile = {
   topFinancialConcerns: ['cost_of_living', 'retirement'],
 };
 
-function buildUserContext(profile: UserProfile): string {
-  return `User Financial Profile:
-- Location: ${profile.city || 'Unknown city'}, ${profile.state}, ${profile.country}
-- Age Range: ${profile.ageRange}
-- Education: ${profile.educationStage}
-- Employment: ${profile.employmentStatus} — ${profile.occupationCategory}
-- Income Range: ${profile.incomeRange}
-- Filing Status: ${profile.filingStatus}
-- Housing: ${profile.housingSituation}
-- Debt Types: ${profile.debtTypes?.join(', ') || 'None'}
-- Dependents: ${profile.hasDependents ? 'Yes' : 'No'}
-- Top Financial Concerns: ${profile.topFinancialConcerns?.join(', ') || 'General financial health'}`;
-}
+const TTL_MS = 24 * 60 * 60 * 1000; // 24h
 
-export async function GET() {
+export async function GET(req: NextRequest) {
+  const refresh = req.nextUrl.searchParams.get('refresh') === '1';
   let profile = { ...DEFAULT_PROFILE };
+  let userId: string | null = null;
 
   try {
     const supabase = createClient();
     const { data: { user } } = await supabase.auth.getUser();
     if (user) {
+      userId = user.id;
       try {
         const { data: profileData } = await supabase
           .from('user_profiles')
@@ -56,48 +47,36 @@ export async function GET() {
     }
   } catch { /* use default */ }
 
-  const userContext = buildUserContext(profile);
-
-  const prompt = `Return only a JSON array, no markdown, no explanation, no code fences. Based on this user profile, list the 8-10 most financially relevant current US policies being debated or recently enacted that would impact their personal finances.
-
-${userContext}
-
-Return a JSON array where each element has exactly these fields:
-- "id": a unique kebab-case slug (e.g. "trump-tax-cuts-2025")
-- "title": policy name (concise, under 60 chars)
-- "description": one clear sentence about what the policy does
-- "category": one of: Tax, Healthcare, Housing, Employment, Education, Energy, Social Security, Other
-- "relevance": one of: High, Medium, Low (based on this user's profile)
-- "estimatedImpact": dollar amount string like "+$1,200" or "-$800" (annual estimate, can be empty string if truly unknown)
-- "region": one of: Federal, or a US state name
-
-Order by relevance descending (High first). Return ONLY the JSON array.`;
-
-  try {
-    const message = await client.messages.create({
-      model: MODEL,
-      max_tokens: 2048,
-      messages: [{ role: 'user', content: prompt }],
-    });
-
-    const block = message.content[0];
-    if (block.type !== 'text') return NextResponse.json([]);
-
-    const text = block.text.trim();
-
-    // Strip any accidental markdown fences
-    const cleaned = text.replace(/^```(?:json)?\n?/i, '').replace(/\n?```$/i, '').trim();
-
+  // Try cache for authenticated users
+  if (userId && !refresh) {
     try {
-      const parsed = JSON.parse(cleaned);
-      if (!Array.isArray(parsed)) return NextResponse.json([]);
-      return NextResponse.json(parsed);
-    } catch {
-      console.error('Policy feed JSON parse error. Raw:', cleaned.slice(0, 300));
-      return NextResponse.json([]);
-    }
-  } catch (error) {
-    console.error('Policy feed Claude error:', error);
-    return NextResponse.json([]);
+      const supabase = createClient();
+      const { data: cached } = await supabase
+        .from('user_policy_feed')
+        .select('policies, updated_at')
+        .eq('user_id', userId)
+        .maybeSingle();
+      if (cached && cached.policies && Array.isArray(cached.policies) && cached.policies.length > 0) {
+        const age = Date.now() - new Date(cached.updated_at).getTime();
+        if (age < TTL_MS) {
+          return NextResponse.json({ policies: cached.policies, updatedAt: cached.updated_at, cached: true });
+        }
+      }
+    } catch { /* fall through to regenerate */ }
   }
+
+  // Generate fresh feed
+  const policies = await discoverPolicyFeed(profile);
+  const updatedAt = new Date().toISOString();
+
+  if (userId && policies.length > 0) {
+    try {
+      const supabase = createClient();
+      await supabase
+        .from('user_policy_feed')
+        .upsert({ user_id: userId, policies, updated_at: updatedAt }, { onConflict: 'user_id' });
+    } catch { /* non-fatal: still return the freshly generated feed */ }
+  }
+
+  return NextResponse.json({ policies, updatedAt, cached: false });
 }

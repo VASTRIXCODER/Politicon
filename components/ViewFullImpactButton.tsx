@@ -20,8 +20,8 @@ interface ViewFullImpactButtonProps {
 // feed cards, and impact page cards.
 //
 // On click:
-//   1. Look up an existing analysis for (user, policy_id) in policy_analyses.
-//   2. If found -> navigate to /impact?policy=<id> (no re-analysis).
+//   1. Look up an existing analysis for (user, policy_id) in analyzed_policies.
+//   2. If found -> navigate to /impact/<id> (no re-analysis).
 //   3. If missing -> POST /api/analyze (which upserts), then navigate.
 // All errors are swallowed to the console; the user never sees a raw error.
 export default function ViewFullImpactButton({
@@ -40,16 +40,17 @@ export default function ViewFullImpactButton({
     if (loading) return;
     setLoading(true);
     try {
+      const target = `/impact/${encodeURIComponent(policyId)}`;
       const supabase = createClient();
       const { data: { user } } = await supabase.auth.getUser();
       if (!user) {
-        router.push(`/impact?policy=${encodeURIComponent(policyId)}`);
+        router.push(target);
         return;
       }
 
       try {
         const { data: existing, error: checkErr } = await supabase
-          .from('policy_analyses')
+          .from('analyzed_policies')
           .select('id')
           .eq('user_id', user.id)
           .eq('policy_id', policyId)
@@ -59,7 +60,7 @@ export default function ViewFullImpactButton({
           console.error('View full impact lookup error:', checkErr);
         }
         if (existing) {
-          router.push(`/impact?policy=${encodeURIComponent(policyId)}`);
+          router.push(target);
           return;
         }
       } catch (e) {
@@ -92,10 +93,10 @@ export default function ViewFullImpactButton({
       });
       if (!res.ok) console.error('Analyze request failed with status', res.status);
       await res.json().catch(() => null);
-      router.push(`/impact?policy=${encodeURIComponent(policyId)}`);
+      router.push(target);
     } catch (e) {
       console.error('View full impact error:', e);
-      router.push(`/impact?policy=${encodeURIComponent(policyId)}`);
+      router.push(`/impact/${encodeURIComponent(policyId)}`);
     } finally {
       setLoading(false);
     }
