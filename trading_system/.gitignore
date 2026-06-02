@@ -1,0 +1,17 @@
+# Python
+__pycache__/
+*.py[cod]
+*.egg-info/
+.venv/
+venv/
+.pytest_cache/
+
+# Secrets & local state -- NEVER commit these
+.env
+*.db
+trades.db
+
+# Generated artifacts
+*.png
+backtest_*.png
+*.log

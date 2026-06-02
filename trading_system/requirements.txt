@@ -1,0 +1,22 @@
+# --- core ---
+pandas>=2.0
+numpy>=1.24
+python-dotenv>=1.0
+
+# --- broker (Alpaca, official SDK) ---
+alpaca-py>=0.21
+
+# --- market data ---
+yfinance>=0.2.40
+
+# --- dashboard ---
+rich>=13.0
+
+# --- backtest charts ---
+matplotlib>=3.7
+
+# --- optional: crypto via Coinbase Advanced Trade (only needed if BROKER=coinbase) ---
+# coinbase-advanced-py>=1.2
+
+# --- optional: tests ---
+# pytest>=7.0
