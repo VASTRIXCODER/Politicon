@@ -329,7 +329,7 @@ function AdvisorInner() {
     setIsTyping(false);
   }, [messages, isTyping, activeSessionId]);
 
-  // Auto-send from URL params once on mount
+  // Auto-send from URL params — wait until auth resolves so saveSession has userId
   useEffect(() => {
     if (!policyParam || autoSentRef.current) return;
     autoSentRef.current = true;
@@ -337,7 +337,8 @@ function AdvisorInner() {
       ? `Tell me about the financial impact of ${policyParam}: ${contextParam}`
       : `Tell me about the financial impact of ${policyParam}`;
     const meta: PolicyMeta = { policyId: slugify(policyParam), policyTitle: policyParam, context: contextParam || undefined };
-    const timer = setTimeout(() => sendMessage(text, meta), 600);
+    // Wait for sessions load (which sets userId.current) before firing
+    const timer = setTimeout(() => sendMessage(text, meta), 1200);
     return () => clearTimeout(timer);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [policyParam, contextParam]);

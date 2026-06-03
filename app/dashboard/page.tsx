@@ -1,10 +1,10 @@
 'use client';
 
 import { useState, useEffect, useMemo } from 'react';
-import { motion } from 'framer-motion';
+import { motion, AnimatePresence } from 'framer-motion';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
-import { ArrowRight, TrendingUp, Search, MessageSquare, Zap, BookOpen, Loader2, RefreshCw, Check } from 'lucide-react';
+import { ArrowRight, TrendingUp, Search, MessageSquare, Zap, BookOpen, Loader2, RefreshCw, Check, BarChart2, Layers } from 'lucide-react';
 import { createClient } from '@/lib/supabase/client';
 import { timeAgo } from '@/lib/utils';
 import GlassCard from '@/components/ui/GlassCard';
@@ -156,6 +156,7 @@ export default function DashboardPage() {
   const [feedRefreshing, setFeedRefreshing] = useState(false);
   const [analyzingId, setAnalyzingId] = useState<string | null>(null);
   const [toast, setToast] = useState<{ message: string; type: 'success' | 'error' } | null>(null);
+  const [activeTab, setActiveTab] = useState<'analyzed' | 'cumulative'>('analyzed');
 
   function showToast(message: string, type: 'success' | 'error' = 'success') {
     setToast({ message, type });
@@ -394,143 +395,301 @@ export default function DashboardPage() {
             </div>
           </motion.div>
 
-          <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
-            <div className="lg:col-span-2 space-y-6">
-              <div className="flex items-center justify-between">
-                <h2 className="font-display text-xl font-semibold text-text-primary">Analyzed Policies</h2>
-                <Link href="/impact" className="text-xs text-primary hover:text-primary/80 flex items-center gap-1">
-                  Full analysis <ArrowRight className="w-3 h-3" />
-                </Link>
-              </div>
+          {/* Tab bar */}
+          <div className="flex items-center gap-1 mb-6 glass rounded-2xl p-1 w-fit">
+            {([
+              { id: 'analyzed', label: 'Analyzed Policies', icon: BarChart2 },
+              { id: 'cumulative', label: 'Cumulative Impact', icon: Layers },
+            ] as const).map(tab => (
+              <button
+                key={tab.id}
+                onClick={() => setActiveTab(tab.id)}
+                className={`flex items-center gap-2 px-4 py-2 rounded-xl text-sm font-medium transition-all ${
+                  activeTab === tab.id
+                    ? 'bg-primary/20 text-primary border border-primary/20'
+                    : 'text-text-muted hover:text-text-primary'
+                }`}
+              >
+                <tab.icon className="w-3.5 h-3.5" />
+                {tab.label}
+                {tab.id === 'analyzed' && analyses.length > 0 && (
+                  <span className="text-[10px] font-mono-data bg-primary/10 text-primary px-1.5 py-0.5 rounded-full">{analyses.length}</span>
+                )}
+              </button>
+            ))}
+          </div>
 
-              {loading ? (
-                <div className="space-y-4">{[...Array(3)].map((_, i) => <SkeletonCard key={i} />)}</div>
-              ) : analyses.length === 0 ? (
-                <GlassCard className="rounded-2xl p-10 text-center">
-                  <div className="w-12 h-12 rounded-2xl bg-primary/10 border border-primary/20 flex items-center justify-center mx-auto mb-4">
-                    <Search className="w-6 h-6 text-primary" />
-                  </div>
-                  <h3 className="font-medium text-text-primary mb-2">No policies analyzed yet</h3>
-                  <p className="text-sm text-text-muted mb-6 max-w-xs mx-auto">Browse the policy feed below to get started.</p>
-                </GlassCard>
-              ) : (
-                <div className="space-y-4">
-                  {analyses.slice(0, 6).map((analysis, i) => (
-                    <GlassCard key={analysis.id} delay={i * 0.07} className="rounded-2xl p-5">
-                      <div className="flex items-start justify-between gap-4">
-                        <div className="flex-1 min-w-0">
-                          <div className="flex items-center gap-2 mb-2">
-                            <Badge variant="default">{analysis.category}</Badge>
-                            <span className="text-[10px] text-text-muted">{new Date(analysis.created_at).toLocaleDateString()}</span>
+          <AnimatePresence mode="wait">
+            {activeTab === 'analyzed' && (
+              <motion.div key="analyzed" initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0 }} transition={{ duration: 0.2 }}>
+                <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
+                  <div className="lg:col-span-2 space-y-6">
+                    <div className="flex items-center justify-between">
+                      <h2 className="font-display text-xl font-semibold text-text-primary">Analyzed Policies</h2>
+                      <Link href="/impact" className="text-xs text-primary hover:text-primary/80 flex items-center gap-1">
+                        Full analysis <ArrowRight className="w-3 h-3" />
+                      </Link>
+                    </div>
+
+                    {loading ? (
+                      <div className="space-y-4">{[...Array(3)].map((_, i) => <SkeletonCard key={i} />)}</div>
+                    ) : analyses.length === 0 ? (
+                      <GlassCard className="rounded-2xl p-10 text-center">
+                        <div className="w-12 h-12 rounded-2xl bg-primary/10 border border-primary/20 flex items-center justify-center mx-auto mb-4">
+                          <Search className="w-6 h-6 text-primary" />
+                        </div>
+                        <h3 className="font-medium text-text-primary mb-2">No policies analyzed yet</h3>
+                        <p className="text-sm text-text-muted mb-6 max-w-xs mx-auto">Browse the policy feed below to get started.</p>
+                      </GlassCard>
+                    ) : (
+                      <div className="space-y-4">
+                        {analyses.map((analysis, i) => (
+                          <GlassCard key={analysis.id} delay={i * 0.07} className="rounded-2xl p-5">
+                            <div className="flex items-start justify-between gap-4">
+                              <div className="flex-1 min-w-0">
+                                <div className="flex items-center gap-2 mb-2">
+                                  <Badge variant="default">{analysis.category}</Badge>
+                                  <span className="text-[10px] text-text-muted">{new Date(analysis.created_at).toLocaleDateString()}</span>
+                                </div>
+                                <h3 className="font-medium text-text-primary text-sm leading-snug mb-1">{analysis.policy_title}</h3>
+                                <p className="text-xs text-text-muted line-clamp-2">{analysis.analysis_text?.slice(0, 120)}...</p>
+                              </div>
+                              <div className="text-right flex-shrink-0">
+                                <p className={`font-mono-data text-sm font-bold ${(analysis.dollar_impact || 0) >= 0 ? 'text-emerald-400' : 'text-red-400'}`}>
+                                  {(analysis.dollar_impact || 0) >= 0 ? '+' : ''}${Math.abs(analysis.dollar_impact || 0).toLocaleString()}/yr
+                                </p>
+                                <Link href={`/impact/${encodeURIComponent(analysis.policy_id)}`}>
+                                  <button className="mt-2 text-[10px] text-primary hover:text-primary/80">View full →</button>
+                                </Link>
+                              </div>
+                            </div>
+                          </GlassCard>
+                        ))}
+                      </div>
+                    )}
+
+                    <div>
+                      <div className="flex items-center justify-between mb-4">
+                        <h2 className="font-display text-xl font-semibold text-text-primary">Policy Feed</h2>
+                        <div className="flex items-center gap-3">
+                          {feedUpdatedAt && <span className="text-[10px] text-text-muted">Updated {timeAgo(feedUpdatedAt)}</span>}
+                          <button onClick={() => loadFeed(true)} disabled={feedRefreshing || feedLoading}
+                            className="flex items-center gap-1.5 text-xs text-text-muted hover:text-text-primary glass px-3 py-1.5 rounded-xl transition-all disabled:opacity-60">
+                            <RefreshCw className={`w-3 h-3 ${feedRefreshing ? 'animate-spin' : ''}`} /> Refresh
+                          </button>
+                        </div>
+                      </div>
+
+                      {feedLoading ? (
+                        <div className="space-y-4">{[...Array(3)].map((_, i) => <FeedSkeletonCard key={i} />)}</div>
+                      ) : feedPolicies.length === 0 ? (
+                        <GlassCard className="rounded-2xl p-10 text-center">
+                          <div className="w-12 h-12 rounded-2xl bg-primary/10 border border-primary/20 flex items-center justify-center mx-auto mb-4">
+                            <BookOpen className="w-6 h-6 text-primary" />
                           </div>
-                          <h3 className="font-medium text-text-primary text-sm leading-snug mb-1">{analysis.policy_title}</h3>
-                          <p className="text-xs text-text-muted line-clamp-2">{analysis.analysis_text?.slice(0, 120)}...</p>
-                        </div>
-                        <div className="text-right flex-shrink-0">
-                          <p className={`font-mono-data text-sm font-bold ${(analysis.dollar_impact || 0) >= 0 ? 'text-emerald-400' : 'text-red-400'}`}>
-                            {(analysis.dollar_impact || 0) >= 0 ? '+' : ''}${Math.abs(analysis.dollar_impact || 0).toLocaleString()}/yr
-                          </p>
-                          <Link href={`/impact/${encodeURIComponent(analysis.policy_id)}`}>
-                            <button className="mt-2 text-[10px] text-primary hover:text-primary/80">View full →</button>
+                          <h3 className="font-medium text-text-primary mb-2">No policies in feed yet</h3>
+                          <p className="text-sm text-text-muted mb-6 max-w-xs mx-auto">Complete your profile to get personalized policy recommendations.</p>
+                          <Link href="/onboarding">
+                            <button className="bg-primary/20 hover:bg-primary/30 border border-primary/20 text-primary px-5 py-3 rounded-xl text-sm font-medium transition-all">Complete Profile →</button>
                           </Link>
+                        </GlassCard>
+                      ) : (
+                        <div className="space-y-4">
+                          {feedPolicies.map((policy) => (
+                            <PolicyFeedCard
+                              key={policy.id}
+                              policy={policy}
+                              analyzed={analyzedIds.has(policy.id)}
+                              onAnalyze={handleAnalyze}
+                              onAskAdvisor={handleAskAdvisor}
+                              analyzingId={analyzingId}
+                            />
+                          ))}
                         </div>
+                      )}
+                    </div>
+                  </div>
+
+                  <div className="space-y-6">
+                    <div>
+                      <h2 className="font-display text-xl font-semibold text-text-primary mb-4">AI Portfolio Insight</h2>
+                      {insightLoading ? (
+                        <GlassCard className="rounded-2xl p-5">
+                          <div className="space-y-2 animate-pulse">
+                            <div className="h-3 bg-white/10 rounded w-full" />
+                            <div className="h-3 bg-white/10 rounded w-5/6" />
+                            <div className="h-3 bg-white/10 rounded w-4/6" />
+                          </div>
+                        </GlassCard>
+                      ) : portfolioInsight ? (
+                        <GlassCard className="rounded-2xl p-5">
+                          <div className="flex items-start gap-3">
+                            <div className="w-7 h-7 rounded-full bg-primary/20 border border-primary/20 flex items-center justify-center flex-shrink-0 mt-0.5">
+                              <Zap className="w-3.5 h-3.5 text-primary" />
+                            </div>
+                            <p className="text-xs text-text-muted leading-relaxed">{portfolioInsight}</p>
+                          </div>
+                        </GlassCard>
+                      ) : (
+                        <GlassCard className="rounded-2xl p-5">
+                          <p className="text-xs text-text-muted">Analyze some policies to get an AI-generated portfolio insight.</p>
+                        </GlassCard>
+                      )}
+                    </div>
+
+                    <GlassCard className="rounded-2xl p-5 bg-gradient-to-br from-primary/10 to-secondary/5 border-primary/20">
+                      <h3 className="font-display font-semibold text-text-primary mb-2">Ask the AI Advisor</h3>
+                      <p className="text-xs text-text-muted mb-4">Get personalized answers about how any policy affects your specific situation.</p>
+                      <Link href="/advisor">
+                        <button className="w-full bg-primary/20 hover:bg-primary/30 border border-primary/20 text-primary py-2.5 rounded-xl text-sm font-medium transition-all flex items-center justify-center gap-2">
+                          Start chatting <ArrowRight className="w-3.5 h-3.5" />
+                        </button>
+                      </Link>
+                    </GlassCard>
+                  </div>
+                </div>
+              </motion.div>
+            )}
+
+            {activeTab === 'cumulative' && (
+              <motion.div key="cumulative" initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0 }} transition={{ duration: 0.2 }}>
+                {analyses.length === 0 ? (
+                  <GlassCard className="rounded-2xl p-16 text-center">
+                    <Layers className="w-12 h-12 text-text-muted mx-auto mb-4" />
+                    <h3 className="font-medium text-text-primary mb-2">No data yet</h3>
+                    <p className="text-sm text-text-muted max-w-xs mx-auto">Analyze at least one policy to see your cumulative financial picture.</p>
+                  </GlassCard>
+                ) : (
+                  <div className="space-y-6">
+                    {/* Category totals */}
+                    <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+                      <GlassCard className="rounded-2xl p-6">
+                        <p className="text-xs font-mono-data text-text-muted uppercase tracking-widest mb-5">Policy Breakdown</p>
+                        <div className="space-y-3">
+                          {[...analyses].sort((a, b) => Math.abs(b.dollar_impact || 0) - Math.abs(a.dollar_impact || 0)).map(a => {
+                            const val = a.dollar_impact || 0;
+                            const max = Math.max(...analyses.map(x => Math.abs(x.dollar_impact || 0)), 1);
+                            const pct = Math.abs(val) / max * 100;
+                            return (
+                              <div key={a.id}>
+                                <div className="flex items-center justify-between mb-1">
+                                  <span className="text-xs text-text-primary truncate max-w-[200px]">{a.policy_title}</span>
+                                  <span className={`text-xs font-mono-data font-bold ${val >= 0 ? 'text-emerald-400' : 'text-red-400'}`}>
+                                    {val >= 0 ? '+' : ''}${Math.abs(val).toLocaleString()}/yr
+                                  </span>
+                                </div>
+                                <div className="h-1.5 rounded-full bg-white/5 overflow-hidden">
+                                  <div
+                                    className={`h-full rounded-full transition-all duration-700 ${val >= 0 ? 'bg-emerald-500' : 'bg-red-500'}`}
+                                    style={{ width: `${pct}%` }}
+                                  />
+                                </div>
+                              </div>
+                            );
+                          })}
+                        </div>
+                      </GlassCard>
+
+                      <GlassCard className="rounded-2xl p-6">
+                        <p className="text-xs font-mono-data text-text-muted uppercase tracking-widest mb-5">By Category</p>
+                        <div className="space-y-3">
+                          {Object.entries(
+                            analyses.reduce((acc, a) => {
+                              const cat = a.category || 'Other';
+                              acc[cat] = (acc[cat] || 0) + (a.dollar_impact || 0);
+                              return acc;
+                            }, {} as Record<string, number>)
+                          ).sort((a, b) => Math.abs(b[1]) - Math.abs(a[1])).map(([cat, val]) => {
+                            const allCatVals = Object.values(
+                              analyses.reduce((acc, a) => { const c = a.category || 'Other'; acc[c] = (acc[c] || 0) + (a.dollar_impact || 0); return acc; }, {} as Record<string, number>)
+                            );
+                            const max = Math.max(...allCatVals.map(Math.abs), 1);
+                            return (
+                              <div key={cat}>
+                                <div className="flex items-center justify-between mb-1">
+                                  <span className="text-xs text-text-primary">{cat}</span>
+                                  <span className={`text-xs font-mono-data font-bold ${val >= 0 ? 'text-emerald-400' : 'text-red-400'}`}>
+                                    {val >= 0 ? '+' : ''}${Math.abs(val).toLocaleString()}/yr
+                                  </span>
+                                </div>
+                                <div className="h-1.5 rounded-full bg-white/5 overflow-hidden">
+                                  <div
+                                    className={`h-full rounded-full transition-all duration-700 ${val >= 0 ? 'bg-cyan-500' : 'bg-orange-500'}`}
+                                    style={{ width: `${Math.abs(val) / max * 100}%` }}
+                                  />
+                                </div>
+                              </div>
+                            );
+                          })}
+                        </div>
+                      </GlassCard>
+                    </div>
+
+                    {/* Projections table */}
+                    <GlassCard className="rounded-2xl p-6">
+                      <p className="text-xs font-mono-data text-text-muted uppercase tracking-widest mb-5">Cumulative Projections</p>
+                      <div className="overflow-x-auto">
+                        <table className="w-full text-sm">
+                          <thead>
+                            <tr className="border-b border-white/8">
+                              <th className="text-left text-xs text-text-muted font-normal pb-3">Policy</th>
+                              <th className="text-right text-xs text-text-muted font-normal pb-3">1 Year</th>
+                              <th className="text-right text-xs text-text-muted font-normal pb-3">3 Years</th>
+                              <th className="text-right text-xs text-text-muted font-normal pb-3">5 Years</th>
+                            </tr>
+                          </thead>
+                          <tbody>
+                            {analyses.map(a => {
+                              const yr1 = a.dollar_impact || 0;
+                              const yr3 = yr1 * 3;
+                              const yr5 = yr1 * 5;
+                              const fmt = (n: number) => `${n >= 0 ? '+' : '-'}$${Math.abs(Math.round(n)).toLocaleString()}`;
+                              return (
+                                <tr key={a.id} className="border-b border-white/4 hover:bg-white/2 transition-colors">
+                                  <td className="py-3 text-xs text-text-primary max-w-[200px] truncate">{a.policy_title}</td>
+                                  <td className={`py-3 text-right font-mono-data text-xs font-bold ${yr1 >= 0 ? 'text-emerald-400' : 'text-red-400'}`}>{fmt(yr1)}</td>
+                                  <td className={`py-3 text-right font-mono-data text-xs font-bold ${yr3 >= 0 ? 'text-emerald-400' : 'text-red-400'}`}>{fmt(yr3)}</td>
+                                  <td className={`py-3 text-right font-mono-data text-xs font-bold ${yr5 >= 0 ? 'text-emerald-400' : 'text-red-400'}`}>{fmt(yr5)}</td>
+                                </tr>
+                              );
+                            })}
+                          </tbody>
+                          <tfoot>
+                            <tr className="border-t border-white/12">
+                              <td className="pt-4 text-xs font-semibold text-text-primary">Total</td>
+                              {[1, 3, 5].map(yrs => {
+                                const total = analyses.reduce((s, a) => s + (a.dollar_impact || 0) * yrs, 0);
+                                return (
+                                  <td key={yrs} className={`pt-4 text-right font-mono-data text-sm font-bold ${total >= 0 ? 'text-emerald-400' : 'text-red-400'}`}>
+                                    {total >= 0 ? '+' : '-'}${Math.abs(Math.round(total)).toLocaleString()}
+                                  </td>
+                                );
+                              })}
+                            </tr>
+                          </tfoot>
+                        </table>
                       </div>
                     </GlassCard>
-                  ))}
-                </div>
-              )}
 
-              <div>
-                <div className="flex items-center justify-between mb-4">
-                  <h2 className="font-display text-xl font-semibold text-text-primary">Policy Feed</h2>
-                  <div className="flex items-center gap-3">
-                    {feedUpdatedAt && <span className="text-[10px] text-text-muted">Updated {timeAgo(feedUpdatedAt)}</span>}
-                    <button onClick={() => loadFeed(true)} disabled={feedRefreshing || feedLoading}
-                      className="flex items-center gap-1.5 text-xs text-text-muted hover:text-text-primary glass px-3 py-1.5 rounded-xl transition-all disabled:opacity-60">
-                      <RefreshCw className={`w-3 h-3 ${feedRefreshing ? 'animate-spin' : ''}`} /> Refresh
-                    </button>
-                  </div>
-                </div>
-
-                {feedLoading ? (
-                  <div className="space-y-4">{[...Array(3)].map((_, i) => <FeedSkeletonCard key={i} />)}</div>
-                ) : feedPolicies.length === 0 ? (
-                  <GlassCard className="rounded-2xl p-10 text-center">
-                    <div className="w-12 h-12 rounded-2xl bg-primary/10 border border-primary/20 flex items-center justify-center mx-auto mb-4">
-                      <BookOpen className="w-6 h-6 text-primary" />
-                    </div>
-                    <h3 className="font-medium text-text-primary mb-2">No policies in feed yet</h3>
-                    <p className="text-sm text-text-muted mb-6 max-w-xs mx-auto">Complete your profile to get personalized policy recommendations.</p>
-                    <Link href="/onboarding">
-                      <button className="bg-primary/20 hover:bg-primary/30 border border-primary/20 text-primary px-5 py-3 rounded-xl text-sm font-medium transition-all">Complete Profile →</button>
-                    </Link>
-                  </GlassCard>
-                ) : (
-                  <div className="space-y-4">
-                    {feedPolicies.map((policy) => (
-                      <PolicyFeedCard
-                        key={policy.id}
-                        policy={policy}
-                        analyzed={analyzedIds.has(policy.id)}
-                        onAnalyze={handleAnalyze}
-                        onAskAdvisor={handleAskAdvisor}
-                        analyzingId={analyzingId}
-                      />
-                    ))}
+                    {/* AI portfolio insight */}
+                    {portfolioInsight && (
+                      <GlassCard className="rounded-2xl p-6">
+                        <div className="flex items-start gap-3">
+                          <div className="w-7 h-7 rounded-full bg-primary/20 border border-primary/20 flex items-center justify-center flex-shrink-0 mt-0.5">
+                            <Zap className="w-3.5 h-3.5 text-primary" />
+                          </div>
+                          <div>
+                            <p className="text-xs font-medium text-text-primary mb-1">AI Portfolio Summary</p>
+                            <p className="text-xs text-text-muted leading-relaxed">{portfolioInsight}</p>
+                          </div>
+                        </div>
+                      </GlassCard>
+                    )}
                   </div>
                 )}
-              </div>
-            </div>
-
-            <div className="space-y-6">
-              <div>
-                <h2 className="font-display text-xl font-semibold text-text-primary mb-4">AI Portfolio Insight</h2>
-                {insightLoading ? (
-                  <GlassCard className="rounded-2xl p-5">
-                    <div className="space-y-2 animate-pulse">
-                      <div className="h-3 bg-white/10 rounded w-full" />
-                      <div className="h-3 bg-white/10 rounded w-5/6" />
-                      <div className="h-3 bg-white/10 rounded w-4/6" />
-                    </div>
-                  </GlassCard>
-                ) : portfolioInsight ? (
-                  <GlassCard className="rounded-2xl p-5">
-                    <div className="flex items-start gap-3">
-                      <div className="w-7 h-7 rounded-full bg-primary/20 border border-primary/20 flex items-center justify-center flex-shrink-0 mt-0.5">
-                        <Zap className="w-3.5 h-3.5 text-primary" />
-                      </div>
-                      <p className="text-xs text-text-muted leading-relaxed">{portfolioInsight}</p>
-                    </div>
-                  </GlassCard>
-                ) : (
-                  <GlassCard className="rounded-2xl p-5">
-                    <p className="text-xs text-text-muted">Analyze some policies to get an AI-generated portfolio insight.</p>
-                  </GlassCard>
-                )}
-              </div>
-
-              <div>
-                <h2 className="font-display text-xl font-semibold text-text-primary mb-4">Policy News{state ? ` for ${state}` : ''}</h2>
-                <GlassCard className="rounded-2xl p-5">
-                  <div className="flex flex-col items-center text-center py-4">
-                    <BookOpen className="w-8 h-8 text-text-muted mb-3" />
-                    <p className="text-sm font-medium text-text-primary mb-1">Local news feed</p>
-                    <p className="text-xs text-text-muted">State and local policy news is coming soon.</p>
-                  </div>
-                </GlassCard>
-              </div>
-
-              <GlassCard className="rounded-2xl p-5 bg-gradient-to-br from-primary/10 to-secondary/5 border-primary/20">
-                <h3 className="font-display font-semibold text-text-primary mb-2">Ask the AI Advisor</h3>
-                <p className="text-xs text-text-muted mb-4">Get personalized answers about how any policy affects your specific situation.</p>
-                <Link href="/advisor">
-                  <button className="w-full bg-primary/20 hover:bg-primary/30 border border-primary/20 text-primary py-2.5 rounded-xl text-sm font-medium transition-all flex items-center justify-center gap-2">
-                    Start chatting <ArrowRight className="w-3.5 h-3.5" />
-                  </button>
-                </Link>
-              </GlassCard>
-            </div>
-          </div>
+              </motion.div>
+            )}
+          </AnimatePresence>
         </main>
       </div>
     </div>

@@ -71,9 +71,9 @@ export async function POST(req: NextRequest) {
 
     let profile: UserProfile = { ...DEFAULT_PROFILE };
     let userId: string | null = null;
+    const supabase = createClient();
 
     try {
-      const supabase = createClient();
       const { data: { user } } = await supabase.auth.getUser();
       if (user) {
         userId = user.id;
@@ -90,9 +90,9 @@ export async function POST(req: NextRequest) {
 
     if (userId) {
       try {
-        const supabase = createClient();
+        const now = new Date().toISOString();
         // Rich structured store (source of truth for the detail page)
-        await supabase.from('analyzed_policies').upsert(
+        const { error: apErr } = await supabase.from('analyzed_policies').upsert(
           {
             user_id: userId,
             policy_id: policy.id,
@@ -105,12 +105,13 @@ export async function POST(req: NextRequest) {
             net_annual_impact: analysis.netAnnualImpact,
             net_monthly_impact: analysis.netMonthlyImpact,
             analysis,
-            updated_at: new Date().toISOString(),
+            updated_at: now,
           },
           { onConflict: 'user_id,policy_id' }
         );
-        // Lightweight mirror for existing list/summary views + realtime net impact
-        await supabase.from('policy_analyses').upsert(
+        if (apErr) console.error('analyzed_policies upsert error:', apErr);
+        // Lightweight mirror for dashboard list + realtime
+        const { error: paErr } = await supabase.from('policy_analyses').upsert(
           {
             user_id: userId,
             policy_id: policy.id,
@@ -118,9 +119,11 @@ export async function POST(req: NextRequest) {
             analysis_text: renderAnalysisText(analysis),
             dollar_impact: analysis.netAnnualImpact,
             category: policy.category,
+            updated_at: now,
           },
           { onConflict: 'user_id,policy_id' }
         );
+        if (paErr) console.error('policy_analyses upsert error:', paErr);
       } catch (e) {
         console.error('Analyze save error:', e);
       }
