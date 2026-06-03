@@ -18,7 +18,12 @@ import Navbar from '@/components/layout/Navbar';
 import AmbientBackground from '@/components/landing/AmbientBackground';
 import {
   CategoryImpactBar, ImpactDonut, MonthlyTimeline, ProjectionBars, BeforeAfterBar, CATEGORY_COLOR,
+  TransmissionWaterfall, VulnerabilityRadar, SpendingHeatmap,
 } from '@/components/charts/Charts';
+import { useReadingMode } from '@/components/providers/ReadingModeProvider';
+import ReadingModeToggle from '@/components/ui/ReadingModeToggle';
+import { WhatThisMeans, JargonBuster } from '@/components/ui/SimpleMode';
+import { RADAR_LABELS, TIMELINE_LABELS, CHART_DESCRIPTIONS, incomeMidpoint, pctToDollar } from '@/lib/simpleMode';
 
 // ---------------------------------------------------------------------------
 // formatting helpers
@@ -27,15 +32,21 @@ const money = (n: number) => `${n >= 0 ? '+' : '-'}$${Math.abs(Math.round(n)).to
 const pct = (n: number) => `${n >= 0 ? '+' : ''}${n}%`;
 const titleCase = (s: string) => s.replace(/[-_]+/g, ' ').replace(/\b\w/g, (c) => c.toUpperCase());
 
-const TABS = ['overview', 'breakdown', 'timeline', 'deepdive', 'action'] as const;
+const TABS = ['overview', 'breakdown', 'timeline', 'economic', 'deepdive', 'action'] as const;
 type Tab = (typeof TABS)[number];
 const TAB_LABELS: Record<Tab, string> = {
   overview: 'Overview',
   breakdown: 'Financial Breakdown',
   timeline: 'Timeline',
+  economic: 'Economic Context',
   deepdive: 'Deep Dive',
   action: 'Action Plan',
 };
+
+/** Look up a Simple Mode "What this means for you" summary for a page section. */
+function simpleSummary(a: FullAnalysis, section: string): string | undefined {
+  return a.simple?.sectionSummaries?.find((s) => s.section === section)?.text;
+}
 
 interface ProfileSnapshot {
   income_range?: string;
@@ -233,6 +244,9 @@ function DetailView({
   analysis: FullAnalysis; profile: ProfileSnapshot | null; analyzedAt: string | null;
   tab: Tab; setTab: (_t: Tab) => void; onBack: () => void;
 }) {
+  const { simple } = useReadingMode();
+  const income = useMemo(() => incomeMidpoint({ incomeRange: profile?.income_range || '' } as Parameters<typeof incomeMidpoint>[0]), [profile]);
+
   const categoryBars = useMemo(
     () => Object.entries(a.categoryImpacts)
       .map(([k, v]) => ({ name: titleCase(k), value: v, color: CATEGORY_COLOR[k] || '#6B7280' }))
@@ -255,9 +269,12 @@ function DetailView({
   return (
     <Shell>
       <main className="max-w-6xl mx-auto px-4 sm:px-6 lg:px-8 pt-28 pb-24">
-        <button onClick={onBack} className="inline-flex items-center gap-2 text-text-muted hover:text-text-primary transition-colors mb-6 group text-sm">
-          <ArrowLeft className="w-4 h-4 group-hover:-translate-x-1 transition-transform" /> Back
-        </button>
+        <div className="flex items-center justify-between mb-6 gap-4">
+          <button onClick={onBack} className="inline-flex items-center gap-2 text-text-muted hover:text-text-primary transition-colors group text-sm">
+            <ArrowLeft className="w-4 h-4 group-hover:-translate-x-1 transition-transform" /> Back
+          </button>
+          <ReadingModeToggle />
+        </div>
 
         {/* Header */}
         <motion.div initial={{ opacity: 0, y: 16 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.4 }} className="mb-6">
@@ -317,20 +334,29 @@ function DetailView({
           ))}
         </div>
 
-        {tab === 'overview' && <OverviewTab a={a} categoryBars={categoryBars} />}
-        {tab === 'breakdown' && <BreakdownTab a={a} categoryBars={categoryBars} />}
-        {tab === 'timeline' && <TimelineTab a={a} />}
+        {tab === 'overview' && <OverviewTab a={a} categoryBars={categoryBars} simple={simple} income={income} />}
+        {tab === 'breakdown' && <BreakdownTab a={a} categoryBars={categoryBars} simple={simple} />}
+        {tab === 'timeline' && <TimelineTab a={a} simple={simple} />}
+        {tab === 'economic' && <EconomicContextTab a={a} simple={simple} income={income} />}
         {tab === 'deepdive' && <DeepDiveTab a={a} />}
         {tab === 'action' && <ActionTab a={a} />}
+
+        {/* Jargon Buster sidebar — only in Simple Mode */}
+        {simple && (
+          <div className="mt-8">
+            <JargonBuster terms={a.simple?.jargon || []} />
+          </div>
+        )}
       </main>
     </Shell>
   );
 }
 
 // ----- Tab 1: Overview -----
-function OverviewTab({ a, categoryBars }: { a: FullAnalysis; categoryBars: { name: string; value: number }[] }) {
+function OverviewTab({ a, categoryBars, simple, income }: { a: FullAnalysis; categoryBars: { name: string; value: number }[]; simple: boolean; income: number }) {
   return (
     <div className="space-y-6">
+      {simple && <WhatThisMeans text={simpleSummary(a, 'overview') || a.plainEnglishSummary} />}
       <GlassCard className="rounded-3xl p-7" animate={false}>
         <h2 className="font-display text-lg font-semibold text-text-primary mb-3">What this means for you</h2>
         <p className="text-sm text-text-muted leading-relaxed">{a.plainEnglishSummary}</p>
@@ -342,7 +368,11 @@ function OverviewTab({ a, categoryBars }: { a: FullAnalysis; categoryBars: { nam
           <StatRow label="Monthly budget impact" value={`${money(a.immediate.monthlyBudgetImpact)}/mo`} positive={a.immediate.monthlyBudgetImpact >= 0} />
           <StatRow label="Annual budget impact" value={`${money(a.immediate.annualBudgetImpact)}/yr`} positive={a.immediate.annualBudgetImpact >= 0} />
           <StatRow label="Take-home per paycheck" value={money(a.immediate.takeHomePerPaycheck)} positive={a.immediate.takeHomePerPaycheck >= 0} />
-          <StatRow label="Effective tax rate change" value={pct(a.immediate.effectiveTaxRateChange)} positive={a.immediate.effectiveTaxRateChange <= 0} />
+          <StatRow
+            label={simple ? 'Change to your tax bill' : 'Effective tax rate change'}
+            value={simple ? pctToDollar(a.immediate.effectiveTaxRateChange, income) : pct(a.immediate.effectiveTaxRateChange)}
+            positive={a.immediate.effectiveTaxRateChange <= 0}
+          />
           {a.immediate.spendingCategories.slice(0, 5).map((s, i) => (
             <StatRow key={i} label={s.label} value={money(s.value)} positive={s.value >= 0} />
           ))}
@@ -405,13 +435,15 @@ function OverviewTab({ a, categoryBars }: { a: FullAnalysis; categoryBars: { nam
 }
 
 // ----- Tab 2: Financial Breakdown -----
-function BreakdownTab({ a, categoryBars }: { a: FullAnalysis; categoryBars: { name: string; value: number; color?: string }[] }) {
+function BreakdownTab({ a, categoryBars, simple }: { a: FullAnalysis; categoryBars: { name: string; value: number; color?: string }[]; simple: boolean }) {
   const donutData = categoryBars.map((c) => ({ name: c.name, value: c.value, color: c.color || '#6B7280' }));
   const beforeAfter = [{ label: 'Effective Tax Rate', before: a.tax.effectiveRateBefore, after: a.tax.effectiveRateAfter }];
   return (
     <div className="space-y-6">
+      {simple && <WhatThisMeans text={simpleSummary(a, 'personal')} />}
       <GlassCard className="rounded-3xl p-7" animate={false}>
-        <h3 className="font-display text-base font-semibold text-text-primary mb-4">Annual Impact by Category</h3>
+        <h3 className="font-display text-base font-semibold text-text-primary mb-1">Annual Impact by Category</h3>
+        {simple && <p className="text-xs text-text-muted mb-4">{CHART_DESCRIPTIONS.category}</p>}
         <CategoryImpactBar data={categoryBars} height={320} />
       </GlassCard>
 
@@ -437,25 +469,27 @@ function BreakdownTab({ a, categoryBars }: { a: FullAnalysis; categoryBars: { na
 }
 
 // ----- Tab 3: Timeline -----
-function TimelineTab({ a }: { a: FullAnalysis }) {
+function TimelineTab({ a, simple }: { a: FullAnalysis; simple: boolean }) {
+  const tl = simple ? TIMELINE_LABELS.simple : TIMELINE_LABELS.expert;
   const milestones = [
-    { label: 'Month 1', value: a.timeline.monthly[0]?.impact ?? 0 },
-    { label: 'Month 6', value: a.timeline.monthly[5]?.impact ?? 0 },
-    { label: 'Year 1', value: a.timeline.year1 },
-    { label: 'Year 3', value: a.timeline.year3 },
-    { label: 'Year 5', value: a.timeline.year5 },
+    { label: simple ? 'After the first month' : 'Month 1', value: a.timeline.monthly[0]?.impact ?? 0 },
+    { label: simple ? 'Halfway through year one' : 'Month 6', value: a.timeline.monthly[5]?.impact ?? 0 },
+    { label: tl.year1, value: a.timeline.year1 },
+    { label: tl.year3, value: a.timeline.year3 },
+    { label: tl.year5, value: a.timeline.year5 },
   ];
   return (
     <div className="space-y-6">
+      {simple && <WhatThisMeans text={simpleSummary(a, 'personal')} />}
       <GlassCard className="rounded-3xl p-7" animate={false}>
-        <h3 className="font-display text-base font-semibold text-text-primary mb-1">Year One — Month by Month</h3>
-        <p className="text-xs text-text-muted mb-4">Cumulative dollar impact as the policy takes effect.</p>
+        <h3 className="font-display text-base font-semibold text-text-primary mb-1">{simple ? 'How it adds up over your first year' : 'Year One — Month by Month'}</h3>
+        <p className="text-xs text-text-muted mb-4">{simple ? CHART_DESCRIPTIONS.timeline : 'Cumulative dollar impact as the policy takes effect.'}</p>
         <MonthlyTimeline data={a.timeline.monthly} height={320} />
       </GlassCard>
 
       <div className="grid lg:grid-cols-2 gap-6">
         <GlassCard className="rounded-3xl p-7" animate={false}>
-          <h3 className="font-display text-base font-semibold text-text-primary mb-4">1 / 3 / 5-Year Cumulative</h3>
+          <h3 className="font-display text-base font-semibold text-text-primary mb-4">{simple ? 'Where you stand in 1, 3, and 5 years' : '1 / 3 / 5-Year Cumulative'}</h3>
           <ProjectionBars year1={a.timeline.year1} year3={a.timeline.year3} year5={a.timeline.year5} height={280} />
         </GlassCard>
 
@@ -475,6 +509,158 @@ function TimelineTab({ a }: { a: FullAnalysis }) {
           </div>
         </GlassCard>
       </div>
+    </div>
+  );
+}
+
+// ----- Tab: Economic Context (macro → corporate → personal) -----
+const CAPEX_LABEL: Record<string, { text: string; dir: ImpactDirection }> = {
+  expanding: { text: 'Investing & hiring more', dir: 'positive' },
+  neutral: { text: 'Holding steady', dir: 'neutral' },
+  pulling_back: { text: 'Pulling back', dir: 'negative' },
+};
+const LEVERAGE_LABEL: Record<string, { text: string; dir: ImpactDirection }> = {
+  conservative: { text: 'Becoming more cautious', dir: 'positive' },
+  neutral: { text: 'Unchanged', dir: 'neutral' },
+  more_debt: { text: 'Taking on more debt', dir: 'negative' },
+};
+const PROFIT_LABEL: Record<string, { text: string; dir: ImpactDirection }> = {
+  improving: { text: 'Improving', dir: 'positive' },
+  neutral: { text: 'Flat', dir: 'neutral' },
+  declining: { text: 'Declining', dir: 'negative' },
+};
+
+function SectorIndicator({ label, value, dir }: { label: string; value: string; dir: ImpactDirection }) {
+  const color = dir === 'positive' ? 'text-emerald-400' : dir === 'negative' ? 'text-red-400' : 'text-text-muted';
+  return (
+    <div className="flex items-center justify-between glass rounded-xl px-4 py-3">
+      <span className="text-xs text-text-muted">{label}</span>
+      <span className={`flex items-center gap-1.5 text-sm font-medium ${color}`}>
+        <DirIcon d={dir} className="w-3.5 h-3.5" /> {value}
+      </span>
+    </div>
+  );
+}
+
+function EconomicContextTab({ a, simple, income }: { a: FullAnalysis; simple: boolean; income: number }) {
+  const { macro, corporate, personal, vulnerability: v } = a;
+
+  // Transmission waterfall — magnitudes on a shared 0-100 scale.
+  const personalMag = Math.min(100, Math.abs(personal.disposableIncomeAnnual) / Math.max(income, 1) * 400);
+  const waterfall = [
+    {
+      label: simple ? 'The whole economy' : 'Macro — Economy',
+      sublabel: simple ? `Growth ${macro.gdpImpactPct >= 0 ? 'up' : 'down'}` : `GDP ${pct(macro.gdpImpactPct)}`,
+      magnitude: Math.min(100, Math.abs(macro.gdpImpactPct) * 25 + 10),
+      direction: (macro.gdpImpactPct > 0 ? 'positive' : macro.gdpImpactPct < 0 ? 'negative' : 'neutral') as ImpactDirection,
+    },
+    {
+      label: simple ? 'Companies you might work for' : `Corporate — ${titleCase(corporate.sector)}`,
+      sublabel: simple ? CAPEX_LABEL[corporate.capexDirection].text : `Equity ${corporate.equityImpactRange || pct(corporate.equityPortfolioImpactPct)}`,
+      magnitude: Math.min(100, Math.abs(corporate.equityPortfolioImpactPct) * 12 + 15),
+      direction: CAPEX_LABEL[corporate.capexDirection].dir,
+    },
+    {
+      label: simple ? 'Your own wallet' : 'Personal — Your Wallet',
+      sublabel: `${money(personal.disposableIncomeMonthly)}/mo`,
+      magnitude: Math.max(8, personalMag),
+      direction: (personal.disposableIncomeAnnual >= 0 ? 'positive' : 'negative') as ImpactDirection,
+    },
+  ];
+
+  const radarLabels = simple ? RADAR_LABELS.simple : RADAR_LABELS.expert;
+  const radarData = [
+    { dimension: radarLabels.incomeStability, score: v.incomeStability },
+    { dimension: radarLabels.housingSecurity, score: v.housingSecurity },
+    { dimension: radarLabels.employmentRisk, score: v.employmentRisk },
+    { dimension: radarLabels.costOfLivingPressure, score: v.costOfLivingPressure },
+    { dimension: radarLabels.investmentExposure, score: v.investmentExposure },
+    { dimension: radarLabels.debtBurden, score: v.debtBurden },
+  ];
+
+  return (
+    <div className="space-y-6">
+      {simple && <WhatThisMeans text={simpleSummary(a, 'macro')} />}
+
+      {/* Transmission waterfall */}
+      <GlassCard className="rounded-3xl p-7" animate={false}>
+        <h3 className="font-display text-base font-semibold text-text-primary mb-1">{simple ? 'How this reaches your wallet' : 'Economic Transmission'}</h3>
+        <p className="text-xs text-text-muted mb-5">{simple ? CHART_DESCRIPTIONS.waterfall : 'How the policy flows from the macro economy, through your employment sector, down to your personal finances.'}</p>
+        <TransmissionWaterfall levels={waterfall} />
+      </GlassCard>
+
+      {/* Macro indicators */}
+      <div className="grid lg:grid-cols-2 gap-6">
+        <GlassCard className="rounded-3xl p-7" animate={false}>
+          <h3 className="font-display text-base font-semibold text-text-primary mb-4">{simple ? 'The big picture' : 'Macroeconomic Indicators'}</h3>
+          <StatRow label={simple ? 'How healthy the economy gets' : 'GDP impact'} value={pct(macro.gdpImpactPct)} positive={macro.gdpImpactPct >= 0} />
+          <StatRow label={simple ? 'How fast prices rise' : 'Inflation (CPI/PCE)'} value={pct(macro.inflationImpactPct)} positive={macro.inflationImpactPct <= 0} />
+          <StatRow label={simple ? 'How unpredictable things get' : 'Economic uncertainty'} value={`${macro.economicUncertaintyScore}/100`} positive={macro.economicUncertaintyScore <= 50} />
+          {macro.gdpExplanation && <p className="text-xs text-text-muted leading-relaxed mt-3">{macro.gdpExplanation}</p>}
+          {macro.inflationExplanation && <p className="text-xs text-text-muted leading-relaxed mt-2">{macro.inflationExplanation}</p>}
+          {macro.uncertaintyExplanation && <p className="text-xs text-text-muted leading-relaxed mt-2">{macro.uncertaintyExplanation}</p>}
+          {macro.balanceOfPaymentsEffect && <p className="text-xs text-text-muted leading-relaxed mt-2">{macro.balanceOfPaymentsEffect}</p>}
+        </GlassCard>
+
+        {/* Corporate sector health card */}
+        <GlassCard className="rounded-3xl p-7" animate={false}>
+          <h3 className="font-display text-base font-semibold text-text-primary mb-1">{simple ? 'Your industry’s health' : `Sector Response — ${titleCase(corporate.sector)}`}</h3>
+          {simple && <WhatThisMeans text={simpleSummary(a, 'corporate')} />}
+          <div className="space-y-2.5 mt-3">
+            <SectorIndicator label={simple ? 'Hiring & investment' : 'Capital expenditure'} value={CAPEX_LABEL[corporate.capexDirection].text} dir={CAPEX_LABEL[corporate.capexDirection].dir} />
+            <SectorIndicator label={simple ? 'Job security' : 'Financial leverage'} value={LEVERAGE_LABEL[corporate.leverageEffect].text} dir={LEVERAGE_LABEL[corporate.leverageEffect].dir} />
+            <SectorIndicator label={simple ? 'Profitability' : 'Profitability (ROA/ROE)'} value={PROFIT_LABEL[corporate.profitabilityTrend].text} dir={PROFIT_LABEL[corporate.profitabilityTrend].dir} />
+            <SectorIndicator label={simple ? 'Effect on savings & stocks' : 'Equity portfolio'} value={corporate.equityImpactRange || pct(corporate.equityPortfolioImpactPct)} dir={corporate.equityPortfolioImpactPct >= 0 ? 'positive' : 'negative'} />
+          </div>
+          {corporate.capexExplanation && <p className="text-xs text-text-muted leading-relaxed mt-3">{corporate.capexExplanation}</p>}
+        </GlassCard>
+      </div>
+
+      {/* Vulnerability radar */}
+      <GlassCard className="rounded-3xl p-7" animate={false}>
+        <h3 className="font-display text-base font-semibold text-text-primary mb-1">{simple ? 'Where this hits you hardest' : 'Your Vulnerability Profile'}</h3>
+        <p className="text-xs text-text-muted mb-4">{simple ? CHART_DESCRIPTIONS.radar : 'How exposed you are to this policy across six dimensions (higher = more pressure).'}</p>
+        <VulnerabilityRadar data={radarData} height={340} />
+      </GlassCard>
+
+      {/* Spending heatmap */}
+      <GlassCard className="rounded-3xl p-7" animate={false}>
+        <h3 className="font-display text-base font-semibold text-text-primary mb-1">{simple ? 'What gets cheaper or pricier' : 'Spending Category Pressure'}</h3>
+        <p className="text-xs text-text-muted mb-4">{simple ? CHART_DESCRIPTIONS.heatmap : 'Monthly dollar pressure per spending category — green saves you money, red costs more.'}</p>
+        <SpendingHeatmap items={a.spendingVelocity} />
+      </GlassCard>
+
+      {/* Expanded personal data */}
+      <GlassCard className="rounded-3xl p-7" animate={false}>
+        <h3 className="font-display text-base font-semibold text-text-primary mb-4">{simple ? 'The bottom line for you' : 'Personal Financial Data'}</h3>
+        <div className="grid sm:grid-cols-2 gap-x-8">
+          <div>
+            <StatRow label={simple ? 'Spendable money each month' : 'Disposable income'} value={`${money(personal.disposableIncomeMonthly)}/mo`} positive={personal.disposableIncomeMonthly >= 0} />
+            <StatRow label={simple ? 'Your net worth (1 year)' : 'Net worth (1yr)'} value={pct(personal.netWorthChange1yrPct)} positive={personal.netWorthChange1yrPct >= 0} />
+            <StatRow label={simple ? 'Your net worth (3 years)' : 'Net worth (3yr)'} value={pct(personal.netWorthChange3yrPct)} positive={personal.netWorthChange3yrPct >= 0} />
+            <StatRow label={simple ? 'Your home’s value' : 'Real estate equity'} value={money(personal.realEstateEquityDollar)} positive={personal.realEstateEquityDollar >= 0} />
+          </div>
+          <div>
+            <StatRow label={simple ? 'How much more you can save' : 'Savings rate change'} value={`${personal.savingsRateChangePct >= 0 ? '+' : ''}${personal.savingsRateChangePct}pts`} positive={personal.savingsRateChangePct >= 0} />
+            <StatRow label={simple ? 'Share of paycheck going to debt' : 'Debt-to-income change'} value={`${personal.debtToIncomeChangePct >= 0 ? '+' : ''}${personal.debtToIncomeChangePct}pts`} positive={personal.debtToIncomeChangePct <= 0} />
+            {personal.debtImpacts.slice(0, 4).map((d, i) => (
+              <StatRow key={i} label={d.label} value={money(d.value)} positive={d.value >= 0} />
+            ))}
+          </div>
+        </div>
+        {personal.savingsRateExplanation && <p className="text-xs text-text-muted leading-relaxed mt-4">{personal.savingsRateExplanation}</p>}
+        {/* Precautionary index */}
+        <div className="mt-5 pt-5 border-t border-white/8">
+          <div className="flex items-center justify-between mb-2">
+            <span className="text-sm text-text-primary font-medium">{simple ? 'Should you build up emergency savings?' : 'Precautionary behavior index'}</span>
+            <span className="font-mono-data text-sm font-bold text-gold">{personal.precautionaryIndex}/100</span>
+          </div>
+          <div className="h-2 rounded-full bg-white/5 overflow-hidden">
+            <div className="h-full rounded-full bg-gradient-to-r from-emerald-500 via-gold to-red-500 transition-all duration-700" style={{ width: `${personal.precautionaryIndex}%` }} />
+          </div>
+          {personal.precautionaryExplanation && <p className="text-xs text-text-muted leading-relaxed mt-3">{personal.precautionaryExplanation}</p>}
+        </div>
+      </GlassCard>
     </div>
   );
 }

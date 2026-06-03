@@ -3,6 +3,7 @@
 import {
   BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer,
   Cell, PieChart, Pie, AreaChart, Area, LineChart, Line, Legend, ReferenceLine,
+  RadarChart, Radar, PolarGrid, PolarAngleAxis, PolarRadiusAxis,
 } from 'recharts';
 
 // ---------------------------------------------------------------------------
@@ -266,6 +267,106 @@ function EmptyChart({ height }: { height: number }) {
   return (
     <div style={{ height }} className="flex items-center justify-center">
       <p className="text-xs text-text-muted">No data to chart yet.</p>
+    </div>
+  );
+}
+
+// ===========================================================================
+// 8. Economic transmission waterfall — macro → corporate → personal
+// Animated horizontal bars that step downward from the whole economy to the
+// user's wallet. Each level shows its magnitude on a shared 0-100 scale.
+// ===========================================================================
+export function TransmissionWaterfall(
+  { levels, height = 280 }:
+  { levels: { label: string; sublabel: string; magnitude: number; direction: 'positive' | 'negative' | 'neutral' }[]; height?: number }
+) {
+  if (!levels || levels.length === 0) {
+    return <div style={{ height }} className="flex items-center justify-center"><p className="text-xs text-text-muted">No data to chart yet.</p></div>;
+  }
+  const colorFor = (d: string) => (d === 'positive' ? CHART.emerald : d === 'negative' ? CHART.red : CHART.secondary);
+  return (
+    <div className="space-y-3" style={{ minHeight: height }}>
+      {levels.map((lvl, i) => (
+        <div key={lvl.label} className="relative" style={{ paddingLeft: `${i * 6}%` }}>
+          <div className="flex items-center justify-between mb-1">
+            <span className="text-xs font-medium text-text-primary">{lvl.label}</span>
+            <span className="text-[10px] text-text-muted">{lvl.sublabel}</span>
+          </div>
+          <div className="h-3 rounded-full bg-white/5 overflow-hidden">
+            <div
+              className="h-full rounded-full transition-all duration-700 ease-out"
+              style={{ width: `${Math.max(4, Math.min(100, lvl.magnitude))}%`, background: colorFor(lvl.direction), animationDelay: `${i * 120}ms` }}
+            />
+          </div>
+          {i < levels.length - 1 && (
+            <div className="flex justify-start mt-1" style={{ paddingLeft: '6%' }}>
+              <svg width="14" height="12" viewBox="0 0 14 12" className="text-text-muted/40">
+                <path d="M7 0v8M3 6l4 4 4-4" stroke="currentColor" strokeWidth="1.5" fill="none" strokeLinecap="round" strokeLinejoin="round" />
+              </svg>
+            </div>
+          )}
+        </div>
+      ))}
+    </div>
+  );
+}
+
+// ===========================================================================
+// 9. Vulnerability radar — six dimensions scored 0-100 (higher = more at risk)
+// ===========================================================================
+export function VulnerabilityRadar(
+  { data, height = 320 }:
+  { data: { dimension: string; score: number }[]; height?: number }
+) {
+  if (!data || data.length === 0) {
+    return <div style={{ height }} className="flex items-center justify-center"><p className="text-xs text-text-muted">No data to chart yet.</p></div>;
+  }
+  return (
+    <div style={{ height }}>
+      <ResponsiveContainer>
+        <RadarChart data={data} outerRadius="70%">
+          <PolarGrid stroke={CHART.grid} />
+          <PolarAngleAxis dataKey="dimension" tick={{ fill: CHART.axis, fontSize: 10 }} />
+          <PolarRadiusAxis domain={[0, 100]} tick={{ fill: CHART.axis, fontSize: 9 }} axisLine={false} />
+          <Radar name="Risk" dataKey="score" stroke={CHART.primary} fill={CHART.primary} fillOpacity={0.35} animationDuration={900} />
+          <Tooltip content={<GlassTooltip unit="%" />} />
+        </RadarChart>
+      </ResponsiveContainer>
+    </div>
+  );
+}
+
+// ===========================================================================
+// 10. Spending heatmap — categories color-coded green (saves) → red (costs more)
+// ===========================================================================
+export function SpendingHeatmap(
+  { items }:
+  { items: { category: string; dollarImpact: number; direction: 'positive' | 'negative' | 'neutral' }[] }
+) {
+  if (!items || items.length === 0) {
+    return <div className="flex items-center justify-center py-10"><p className="text-xs text-text-muted">No data to chart yet.</p></div>;
+  }
+  const max = Math.max(...items.map((i) => Math.abs(i.dollarImpact)), 1);
+  const cellColor = (v: number) => {
+    const intensity = Math.min(1, Math.abs(v) / max);
+    if (v > 0) return `rgba(16,185,129,${0.15 + intensity * 0.55})`;   // emerald — savings
+    if (v < 0) return `rgba(239,68,68,${0.15 + intensity * 0.55})`;    // red — costs more
+    return 'rgba(255,255,255,0.06)';
+  };
+  return (
+    <div className="grid grid-cols-2 sm:grid-cols-3 gap-3">
+      {items.map((it) => (
+        <div
+          key={it.category}
+          className="rounded-xl border border-white/8 p-4 transition-all"
+          style={{ background: cellColor(it.dollarImpact) }}
+        >
+          <p className="text-xs font-medium text-text-primary mb-1">{it.category}</p>
+          <p className={`font-mono-data text-sm font-bold ${it.dollarImpact > 0 ? 'text-emerald-300' : it.dollarImpact < 0 ? 'text-red-300' : 'text-text-muted'}`}>
+            {it.dollarImpact >= 0 ? '+' : '-'}${Math.abs(Math.round(it.dollarImpact)).toLocaleString()}/mo
+          </p>
+        </div>
+      ))}
     </div>
   );
 }

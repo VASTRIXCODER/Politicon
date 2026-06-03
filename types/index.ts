@@ -252,4 +252,90 @@ export interface FullAnalysis {
     confidence: number; // 0-100
   };
   recommendations: Recommendation[];
+
+  // ==========================================================
+  // EXPANDED DATA MODEL — macro → corporate → personal waterfall
+  // ==========================================================
+  macro: MacroIndicators;
+  corporate: CorporateResponse;
+  personal: PersonalFinancialData;
+  vulnerability: VulnerabilityScores; // 0-100 radar across 6 dimensions
+  spendingVelocity: SpendingVelocityItem[]; // heatmap source
+  simple: SimpleModeContent; // plain-language callouts + jargon list
 }
+
+// TIER 1 — Macroeconomic indicators (scoped to user's state + income)
+export interface MacroIndicators {
+  gdpImpactPct: number; // % change in economic growth
+  gdpExplanation: string; // what it means for jobs/business in user's region
+  inflationImpactPct: number; // CPI/PCE % change
+  inflationExplanation: string; // translated into grocery/gas/rent terms
+  economicUncertaintyScore: number; // 0-100 EPU
+  uncertaintyExplanation: string; // what high uncertainty does to jobs/investments
+  balanceOfPaymentsEffect: string; // imports cheaper / exports competitive + ripple
+}
+
+// TIER 2 — Corporate and market response in the user's employment sector
+export interface CorporateResponse {
+  sector: string; // the user's employment sector
+  capexDirection: 'expanding' | 'neutral' | 'pulling_back';
+  capexExplanation: string; // meaning for hiring and wages
+  leverageEffect: 'more_debt' | 'neutral' | 'conservative';
+  leverageExplanation: string; // effect on job security
+  profitabilityTrend: 'improving' | 'neutral' | 'declining';
+  profitabilityExplanation: string; // one sentence on ROA/ROE
+  equityPortfolioImpactPct: number; // directional effect on equity portfolios (midpoint %)
+  equityImpactRange: string; // e.g. "-2% to +1%"
+}
+
+// TIER 3 — Expanded personal financial data
+export interface PersonalFinancialData {
+  disposableIncomeMonthly: number; // adjusted disposable income change $/mo
+  disposableIncomeAnnual: number; // $/yr
+  netWorthChange1yrPct: number; // household net worth directional % over 1yr
+  netWorthChange3yrPct: number; // over 3yr
+  realEstateEquityPct: number; // property value change %
+  realEstateEquityDollar: number; // $ amount (homeowners)
+  savingsRateChangePct: number; // personal savings rate change (percentage points)
+  savingsRateExplanation: string;
+  debtToIncomeChangePct: number; // DTI change (percentage points)
+  debtImpacts: LabeledValue[]; // per debt type dollar figures (mortgage/student/auto/cc)
+  precautionaryIndex: number; // 0-100 how much to build emergency savings
+  precautionaryExplanation: string;
+}
+
+// Radar — vulnerability across six dimensions, scored 0-100 (higher = more at risk)
+export interface VulnerabilityScores {
+  incomeStability: number;
+  housingSecurity: number;
+  employmentRisk: number;
+  costOfLivingPressure: number;
+  investmentExposure: number;
+  debtBurden: number;
+}
+
+// Heatmap — spending category pressure
+export interface SpendingVelocityItem {
+  category: string; // Dining, Travel, Utilities, Groceries, etc.
+  dollarImpact: number; // signed monthly $ (negative = costs more)
+  direction: ImpactDirection;
+}
+
+// Plain-language content used in Simple Mode
+export interface SimpleSectionSummary {
+  section: string; // key matching a page section, e.g. "overview", "macro", "personal"
+  text: string; // 2-sentence high-school-level summary ("What this means for you")
+}
+
+export interface JargonTerm {
+  term: string;
+  definition: string; // one-sentence plain-English definition
+}
+
+export interface SimpleModeContent {
+  sectionSummaries: SimpleSectionSummary[];
+  jargon: JargonTerm[];
+}
+
+// User reading-level preference
+export type ReadingMode = 'simple' | 'expert';

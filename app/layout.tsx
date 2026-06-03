@@ -1,6 +1,7 @@
 import type { Metadata, Viewport } from 'next';
 import './globals.css';
 import LenisProvider from '@/components/providers/LenisProvider';
+import { ReadingModeProvider } from '@/components/providers/ReadingModeProvider';
 import CustomCursor from '@/components/ui/CustomCursor';
 
 export const metadata: Metadata = {
@@ -45,8 +46,10 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
       </head>
       <body>
         <LenisProvider>
-          <CustomCursor />
-          {children}
+          <ReadingModeProvider>
+            <CustomCursor />
+            {children}
+          </ReadingModeProvider>
         </LenisProvider>
       </body>
     </html>

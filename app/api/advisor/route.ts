@@ -26,11 +26,12 @@ const DEFAULT_PROFILE: UserProfile = {
 
 export async function POST(req: NextRequest) {
   try {
-    const { messages, policyContext } = await req.json();
+    const { messages, policyContext, simpleMode } = await req.json();
 
     if (!messages || !Array.isArray(messages)) {
       return NextResponse.json({ error: 'Messages array required' }, { status: 400 });
     }
+    const simple = !!simpleMode;
 
     let profile: UserProfile = { ...DEFAULT_PROFILE };
 
@@ -52,7 +53,8 @@ export async function POST(req: NextRequest) {
       const reply = await advisorPolicyReply(
         policyContext.policyTitle,
         policyContext.context || '',
-        profile
+        profile,
+        simple
       );
       return NextResponse.json({
         response: reply.fullResponse,
@@ -66,7 +68,7 @@ export async function POST(req: NextRequest) {
     }
 
     // Free-form conversation
-    const response = await chatWithAdvisor(messages, profile);
+    const response = await chatWithAdvisor(messages, profile, simple);
     return NextResponse.json({ response, hasFullAnalysis: false });
   } catch (error) {
     console.error('Advisor error:', error);

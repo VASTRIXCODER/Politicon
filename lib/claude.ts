@@ -172,7 +172,13 @@ const ANALYSIS_SKELETON = `{
   "timeline": { "year1": 0, "year3": 0, "year5": 0, "monthly": [ { "month": 1, "impact": 0 } ] },
   "tradeoffs": { "gains": [ { "label": "", "value": 0 } ], "losses": [ { "label": "", "value": 0 } ], "netAssessment": "" },
   "riskFactors": { "uncertainties": [ "" ], "confidence": 0 },
-  "recommendations": [ { "step": "", "priority": "high|medium|low" } ]
+  "recommendations": [ { "step": "", "priority": "high|medium|low" } ],
+  "macro": { "gdpImpactPct": 0, "gdpExplanation": "", "inflationImpactPct": 0, "inflationExplanation": "", "economicUncertaintyScore": 0, "uncertaintyExplanation": "", "balanceOfPaymentsEffect": "" },
+  "corporate": { "sector": "", "capexDirection": "expanding|neutral|pulling_back", "capexExplanation": "", "leverageEffect": "more_debt|neutral|conservative", "leverageExplanation": "", "profitabilityTrend": "improving|neutral|declining", "profitabilityExplanation": "", "equityPortfolioImpactPct": 0, "equityImpactRange": "" },
+  "personal": { "disposableIncomeMonthly": 0, "disposableIncomeAnnual": 0, "netWorthChange1yrPct": 0, "netWorthChange3yrPct": 0, "realEstateEquityPct": 0, "realEstateEquityDollar": 0, "savingsRateChangePct": 0, "savingsRateExplanation": "", "debtToIncomeChangePct": 0, "debtImpacts": [ { "label": "Mortgage", "value": 0 } ], "precautionaryIndex": 0, "precautionaryExplanation": "" },
+  "vulnerability": { "incomeStability": 0, "housingSecurity": 0, "employmentRisk": 0, "costOfLivingPressure": 0, "investmentExposure": 0, "debtBurden": 0 },
+  "spendingVelocity": [ { "category": "Groceries", "dollarImpact": 0, "direction": "positive|negative|neutral" } ],
+  "simple": { "sectionSummaries": [ { "section": "overview", "text": "" }, { "section": "macro", "text": "" }, { "section": "corporate", "text": "" }, { "section": "personal", "text": "" } ], "jargon": [ { "term": "", "definition": "" } ] }
 }`;
 
 export async function analyzePolicyFull(policy: Policy, profile: UserProfile): Promise<FullAnalysis> {
@@ -195,12 +201,20 @@ Category: ${policy.category}
 Status: ${policy.status}
 Region: ${policy.region}
 
-Return ONLY a JSON object with EXACTLY this shape (replace every value with your analysis; "spendingCategories", "gains", "losses", "uncertainties" and "recommendations" should each have 3-5 items; "monthly" must have all 12 months):
+You must ALSO compute a three-tier macro→corporate→personal data waterfall:
+- "macro": estimate GDP growth % effect (gdpImpactPct) with a plain explanation of what it means for jobs/business in the user's region; CPI/PCE inflation % (inflationImpactPct) translated into what groceries, gas, and rent will cost; an Economic Policy Uncertainty score 0-100 (economicUncertaintyScore) with explanation of what high uncertainty does to jobs/investments; and a balanceOfPaymentsEffect describing whether imports get cheaper or exports more competitive and how that ripples into the user's cost of living or sector.
+- "corporate": scope to the user's employment sector. capexDirection (expanding/neutral/pulling_back) + what it means for hiring/wages; leverageEffect (more_debt/neutral/conservative) + effect on job security; profitabilityTrend (improving/neutral/declining) + one sentence on ROA/ROE; equityPortfolioImpactPct (midpoint %) and equityImpactRange string for investors.
+- "personal": adjusted disposable income change per month and year; net worth directional % over 1yr and 3yr; real estate equity % and $ for homeowners in the user's state; savings rate change (percentage points) + explanation; debt-to-income change (percentage points); debtImpacts as per-debt-type dollar figures using the user's debt profile; precautionaryIndex 0-100 (how much to build emergency savings) + plain explanation.
+- "vulnerability": score this policy's effect on the user 0-100 (higher = more at risk) across incomeStability, housingSecurity, employmentRisk, costOfLivingPressure, investmentExposure, debtBurden.
+- "spendingVelocity": 5-7 spending categories (Groceries, Dining, Travel, Utilities, Housing, Transportation, Healthcare) each with a signed monthly dollarImpact (negative = costs more) and a direction.
+- "simple": plain-language content for an 8th-grade reader. sectionSummaries must include a 2-sentence "What this means for you" for sections "overview", "macro", "corporate", and "personal". jargon must list every economic term used on the page (GDP, CPI, EPU, debt-to-income, ROA, ROE, capex, balance of payments, disposable income, etc.) each with a one-sentence plain-English definition.
+
+Return ONLY a JSON object with EXACTLY this shape (replace every value with your analysis; "spendingCategories", "gains", "losses", "uncertainties", "recommendations", "debtImpacts" and "spendingVelocity" should each have 3-7 items; "jargon" should have 6-12 items; "monthly" must have all 12 months):
 ${ANALYSIS_SKELETON}`;
 
   let raw = '';
   try {
-    raw = await complete(prompt, 8000, system);
+    raw = await complete(prompt, 12000, system);
   } catch (e) {
     console.error('Full analysis generation failed:', e);
   }
@@ -227,6 +241,16 @@ function labeledValues(v: unknown): { label: string; value: number }[] {
     .filter((x) => x.label || x.value);
 }
 
+/** Coerce a model value to one of an allowed enum set, with fallback. */
+function enumOf<T extends string>(v: unknown, allowed: readonly T[], fallback: T): T {
+  const s = str(v).toLowerCase().replace(/[\s-]+/g, '_');
+  return (allowed as readonly string[]).includes(s) ? (s as T) : fallback;
+}
+
+function clamp100(v: unknown): number {
+  return Math.max(0, Math.min(100, Math.round(num(v))));
+}
+
 export function coerceFullAnalysis(p: Record<string, unknown>, policy: Policy): FullAnalysis {
   const immediate = obj(p.immediate);
   const housing = obj(p.housing);
@@ -240,6 +264,11 @@ export function coerceFullAnalysis(p: Record<string, unknown>, policy: Policy): 
   const timeline = obj(p.timeline);
   const tradeoffs = obj(p.tradeoffs);
   const risk = obj(p.riskFactors);
+  const macro = obj(p.macro);
+  const corporate = obj(p.corporate);
+  const personal = obj(p.personal);
+  const vuln = obj(p.vulnerability);
+  const simple = obj(p.simple);
 
   const categoryImpacts = {
     taxes: num(ci.taxes),
@@ -363,6 +392,67 @@ export function coerceFullAnalysis(p: Record<string, unknown>, policy: Policy): 
       confidence: score,
     },
     recommendations,
+    macro: {
+      gdpImpactPct: num(macro.gdpImpactPct),
+      gdpExplanation: str(macro.gdpExplanation),
+      inflationImpactPct: num(macro.inflationImpactPct, num(ripple.inflationImpactPct)),
+      inflationExplanation: str(macro.inflationExplanation),
+      economicUncertaintyScore: clamp100(macro.economicUncertaintyScore),
+      uncertaintyExplanation: str(macro.uncertaintyExplanation),
+      balanceOfPaymentsEffect: str(macro.balanceOfPaymentsEffect),
+    },
+    corporate: {
+      sector: str(corporate.sector, policy.category || 'your sector'),
+      capexDirection: enumOf(corporate.capexDirection, ['expanding', 'neutral', 'pulling_back'] as const, 'neutral'),
+      capexExplanation: str(corporate.capexExplanation),
+      leverageEffect: enumOf(corporate.leverageEffect, ['more_debt', 'neutral', 'conservative'] as const, 'neutral'),
+      leverageExplanation: str(corporate.leverageExplanation),
+      profitabilityTrend: enumOf(corporate.profitabilityTrend, ['improving', 'neutral', 'declining'] as const, 'neutral'),
+      profitabilityExplanation: str(corporate.profitabilityExplanation),
+      equityPortfolioImpactPct: num(corporate.equityPortfolioImpactPct),
+      equityImpactRange: str(corporate.equityImpactRange),
+    },
+    personal: {
+      disposableIncomeMonthly: num(personal.disposableIncomeMonthly, Math.round(netMonthly)),
+      disposableIncomeAnnual: num(personal.disposableIncomeAnnual, Math.round(netAnnual)),
+      netWorthChange1yrPct: num(personal.netWorthChange1yrPct),
+      netWorthChange3yrPct: num(personal.netWorthChange3yrPct),
+      realEstateEquityPct: num(personal.realEstateEquityPct, num(housing.propertyValueChangePct)),
+      realEstateEquityDollar: num(personal.realEstateEquityDollar),
+      savingsRateChangePct: num(personal.savingsRateChangePct),
+      savingsRateExplanation: str(personal.savingsRateExplanation),
+      debtToIncomeChangePct: num(personal.debtToIncomeChangePct),
+      debtImpacts: labeledValues(personal.debtImpacts),
+      precautionaryIndex: clamp100(personal.precautionaryIndex),
+      precautionaryExplanation: str(personal.precautionaryExplanation),
+    },
+    vulnerability: {
+      incomeStability: clamp100(vuln.incomeStability),
+      housingSecurity: clamp100(vuln.housingSecurity),
+      employmentRisk: clamp100(vuln.employmentRisk),
+      costOfLivingPressure: clamp100(vuln.costOfLivingPressure),
+      investmentExposure: clamp100(vuln.investmentExposure),
+      debtBurden: clamp100(vuln.debtBurden),
+    },
+    spendingVelocity: Array.isArray(p.spendingVelocity)
+      ? p.spendingVelocity.map((s) => {
+          const o = obj(s);
+          const dollarImpact = num(o.dollarImpact);
+          return {
+            category: str(o.category),
+            dollarImpact,
+            direction: dir(o.direction !== undefined ? o.direction : dollarImpact > 0 ? 'positive' : dollarImpact < 0 ? 'negative' : 'neutral'),
+          };
+        }).filter((s) => s.category)
+      : [],
+    simple: {
+      sectionSummaries: Array.isArray(simple.sectionSummaries)
+        ? simple.sectionSummaries.map((s) => ({ section: str(obj(s).section), text: str(obj(s).text) })).filter((s) => s.section && s.text)
+        : [],
+      jargon: Array.isArray(simple.jargon)
+        ? simple.jargon.map((j) => ({ term: str(obj(j).term), definition: str(obj(j).definition) })).filter((j) => j.term && j.definition)
+        : [],
+    },
   };
 }
 
@@ -375,16 +465,20 @@ export interface AdvisorPolicyReply {
   fullResponse: string;
 }
 
+const SIMPLE_MODE_INSTRUCTION = `
+SIMPLE MODE IS ON: Write at a grade-8 reading level. Avoid ALL technical/financial jargon (no "GDP", "CPI", "effective tax rate", "debt-to-income" — say "the overall economy", "how fast prices rise", "the share of your income that goes to taxes", "how much of your paycheck goes to debt"). Use everyday analogies and always anchor abstract concepts to something tangible like a monthly grocery bill or a paycheck. Replace every percentage with a real dollar example based on the user's income.`;
+
 export async function advisorPolicyReply(
   policyTitle: string,
   policyContext: string,
-  profile: UserProfile
+  profile: UserProfile,
+  simpleMode = false
 ): Promise<AdvisorPolicyReply> {
   const userContext = buildUserContext(profile);
 
   const system = `You are Politicon's AI Financial Advisor — non-partisan, dollar-specific, speaking like a knowledgeable friend. Respond ONLY with a JSON object: {"summary": "...", "dollarLine": "..."}.
 - "summary": 2-3 sentences in plain English on what this policy does and its general financial direction for THIS user.
-- "dollarLine": ONE line with a concrete dollar estimate derived from the user's income data, e.g. "Based on your profile this policy could cost you approximately $340 per month." Always include a real dollar figure.`;
+- "dollarLine": ONE line with a concrete dollar estimate derived from the user's income data, e.g. "Based on your profile this policy could cost you approximately $340 per month." Always include a real dollar figure.${simpleMode ? SIMPLE_MODE_INSTRUCTION : ''}`;
 
   const prompt = `${userContext}
 
@@ -474,7 +568,8 @@ Be specific to the user's income, location and situation. Use real numbers. No p
 
 export async function chatWithAdvisor(
   messages: { role: 'user' | 'model'; parts: { text: string }[] }[],
-  profile: UserProfile
+  profile: UserProfile,
+  simpleMode = false
 ): Promise<string> {
   const userContext = buildUserContext(profile);
   const systemPrompt = `You are Politicon's AI Financial Advisor — a non-partisan expert who translates government policies into personalized financial impact. You speak like a knowledgeable friend, not a politician.
@@ -487,7 +582,7 @@ Rules:
 - Never express political opinions or party preferences
 - Focus on actionable financial guidance
 - When uncertain, say so clearly with a confidence qualifier
-- Keep responses clear and concise — 2-4 paragraphs max unless detail is needed`;
+- Keep responses clear and concise — 2-4 paragraphs max unless detail is needed${simpleMode ? '\n' + SIMPLE_MODE_INSTRUCTION : ''}`;
 
   const anthropicMessages: Anthropic.MessageParam[] = messages.map((m) => ({
     role: m.role === 'model' ? 'assistant' : 'user',

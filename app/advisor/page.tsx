@@ -12,6 +12,8 @@ import { ChatMessage, DiscoveredPolicy } from '@/types';
 import Navbar from '@/components/layout/Navbar';
 import AmbientBackground from '@/components/landing/AmbientBackground';
 import ViewFullImpactButton from '@/components/ViewFullImpactButton';
+import ReadingModeToggle from '@/components/ui/ReadingModeToggle';
+import { useReadingMode } from '@/components/providers/ReadingModeProvider';
 
 const quickPrompts = [
   { icon: Home, label: 'Housing', text: 'How does the first-time homebuyer credit affect me?' },
@@ -171,6 +173,7 @@ function AdvisorInner() {
   const searchParams = useSearchParams();
   const policyParam = searchParams.get('policy');
   const contextParam = searchParams.get('context');
+  const { simple } = useReadingMode();
 
   const [sessions, setSessions] = useState<ChatSession[]>([]);
   const [activeSessionId, setActiveSessionId] = useState<string | null>(null);
@@ -277,6 +280,7 @@ function AdvisorInner() {
         body: JSON.stringify({
           messages: [...history, { role: 'user', parts: [{ text: text.trim() }] }],
           ...(policyMeta ? { policyContext: policyMeta } : {}),
+          simpleMode: simple,
         }),
       });
       const data = await res.json();
@@ -327,7 +331,7 @@ function AdvisorInner() {
       }]);
     }
     setIsTyping(false);
-  }, [messages, isTyping, activeSessionId]);
+  }, [messages, isTyping, activeSessionId, simple]);
 
   // Auto-send from URL params — wait until auth resolves so saveSession has userId
   useEffect(() => {
@@ -433,6 +437,7 @@ function AdvisorInner() {
                     <p className="text-xs text-text-muted">Profile loaded • Non-partisan • Dollar-specific answers</p>
                   </div>
                 </div>
+                <ReadingModeToggle className="hidden sm:inline-flex" />
                 <button onClick={() => setFeedOpen(o => !o)} className="p-2 rounded-xl glass hover:border-white/16 transition-all hidden lg:flex" title="Toggle policy feed">
                   <Sparkles className="w-4 h-4 text-primary" />
                 </button>
