@@ -241,17 +241,13 @@ export default function DashboardPage() {
   // Realtime: keep net impact + analyzed list live as analyses are saved
   useEffect(() => {
     const supabase = createClient();
-    let channel: ReturnType<typeof supabase.channel> | null = null;
-    (async () => {
-      const { data: { user } } = await supabase.auth.getUser();
-      if (!user) return;
-      channel = supabase
-        .channel('dashboard-analyses')
-        .on('postgres_changes', { event: '*', schema: 'public', table: 'policy_analyses', filter: `user_id=eq.${user.id}` },
-          () => { refetchAnalyses(); })
-        .subscribe();
-    })();
-    return () => { if (channel) supabase.removeChannel(channel); };
+    // Subscribe without a user filter first; filter by user_id in the callback
+    const channel = supabase
+      .channel('dashboard-analyses')
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'policy_analyses' },
+        () => { refetchAnalyses(); })
+      .subscribe();
+    return () => { supabase.removeChannel(channel); };
   }, []);
 
   async function loadFeed(refresh = false) {
