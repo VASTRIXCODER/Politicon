@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { createClient } from '@/lib/supabase/server';
 import { discoverPolicies } from '@/lib/claude';
 import { UserProfile } from '@/types';
+import { mapDbProfile } from '@/lib/profile';
 
 export async function POST(req: NextRequest) {
   try {
@@ -32,7 +33,7 @@ export async function POST(req: NextRequest) {
           .select('*')
           .eq('id', user.id)
           .single();
-        if (profileData) profile = { ...profile, ...profileData, id: user.id };
+        if (profileData) profile = mapDbProfile(profileData, profile);
       }
     } catch { /* use default */ }
 

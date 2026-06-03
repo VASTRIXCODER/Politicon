@@ -60,6 +60,7 @@ export default function OnboardingPage() {
   const [step, setStep] = useState(0);
   const [showConfetti, setShowConfetti] = useState(false);
   const [saving, setSaving] = useState(false);
+  const [saveError, setSaveError] = useState('');
   const [profile, setProfile] = useState({
     state: '', city: '', country: 'United States', ageRange: '', educationStage: '',
     employmentStatus: '', occupationCategory: '', incomeRange: '', filingStatus: '',
@@ -88,28 +89,59 @@ export default function OnboardingPage() {
 
   const handleComplete = async () => {
     setSaving(true);
+    setSaveError('');
     try {
-      const { data: { user } } = await supabase.auth.getUser();
-      if (user) {
-        const { error } = await supabase.from('user_profiles').upsert({
-          id: user.id,
-          has_completed_onboarding: true,
-          state: profile.state,
-          city: profile.city,
-          age_range: profile.ageRange,
-          education_stage: profile.educationStage,
-          employment_status: profile.employmentStatus,
-          occupation_category: profile.occupationCategory,
-          income_range: profile.incomeRange,
-          filing_status: profile.filingStatus,
-          housing_situation: profile.housingSituation,
-          debt_types: profile.debtTypes,
-          has_dependents: profile.hasDependents,
-          top_financial_concerns: profile.topFinancialConcerns,
-        }, { onConflict: 'id' });
-        if (error) console.error('Profile save error:', error);
+      const { data: { user }, error: userErr } = await supabase.auth.getUser();
+      if (userErr || !user) {
+        setSaveError('Your session expired. Please sign in again.');
+        setSaving(false);
+        return;
       }
-    } catch (e) { console.error('Profile save failed:', e); }
+
+      const { error } = await supabase.from('user_profiles').upsert({
+        id: user.id,
+        email: user.email,
+        has_completed_onboarding: true,
+        country: profile.country,
+        state: profile.state,
+        city: profile.city,
+        age_range: profile.ageRange,
+        education_stage: profile.educationStage,
+        employment_status: profile.employmentStatus,
+        occupation_category: profile.occupationCategory,
+        income_range: profile.incomeRange,
+        filing_status: profile.filingStatus,
+        housing_situation: profile.housingSituation,
+        debt_types: profile.debtTypes,
+        has_dependents: profile.hasDependents,
+        top_financial_concerns: profile.topFinancialConcerns,
+        updated_at: new Date().toISOString(),
+      }, { onConflict: 'id' });
+
+      if (error) {
+        console.error('Profile save error:', error);
+        setSaveError(`Could not save your profile: ${error.message}. Please try again.`);
+        setSaving(false);
+        return;
+      }
+
+      // Verify it actually persisted before celebrating.
+      const { data: check } = await supabase
+        .from('user_profiles')
+        .select('has_completed_onboarding')
+        .eq('id', user.id)
+        .single();
+      if (!check?.has_completed_onboarding) {
+        setSaveError('Your profile did not save. Please check your connection and try again.');
+        setSaving(false);
+        return;
+      }
+    } catch (e) {
+      console.error('Profile save failed:', e);
+      setSaveError('Something went wrong saving your profile. Please try again.');
+      setSaving(false);
+      return;
+    }
     setShowConfetti(true);
     setTimeout(() => router.push('/dashboard'), 2200);
   };
@@ -263,6 +295,9 @@ export default function OnboardingPage() {
             </button>
           )}
         </div>
+        {saveError && (
+          <p className="mt-4 text-sm text-red-400 text-center">{saveError}</p>
+        )}
       </div>
 
       <AnimatePresence>
