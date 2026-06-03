@@ -91,9 +91,25 @@ export default function OnboardingPage() {
     try {
       const { data: { user } } = await supabase.auth.getUser();
       if (user) {
-        await supabase.from('user_profiles').upsert({ id: user.id, ...profile, has_completed_onboarding: true });
+        const { error } = await supabase.from('user_profiles').upsert({
+          id: user.id,
+          has_completed_onboarding: true,
+          state: profile.state,
+          city: profile.city,
+          age_range: profile.ageRange,
+          education_stage: profile.educationStage,
+          employment_status: profile.employmentStatus,
+          occupation_category: profile.occupationCategory,
+          income_range: profile.incomeRange,
+          filing_status: profile.filingStatus,
+          housing_situation: profile.housingSituation,
+          debt_types: profile.debtTypes,
+          has_dependents: profile.hasDependents,
+          top_financial_concerns: profile.topFinancialConcerns,
+        }, { onConflict: 'id' });
+        if (error) console.error('Profile save error:', error);
       }
-    } catch { /* proceed */ }
+    } catch (e) { console.error('Profile save failed:', e); }
     setShowConfetti(true);
     setTimeout(() => router.push('/dashboard'), 2200);
   };
