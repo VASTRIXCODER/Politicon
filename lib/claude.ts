@@ -6,6 +6,7 @@ import {
   FullAnalysis,
   ImpactDirection,
 } from '@/types';
+import { incomeMidpoint } from '@/lib/simpleMode';
 
 const client = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY });
 
@@ -62,6 +63,15 @@ function extractJson(raw: string): unknown {
 }
 
 function buildUserContext(profile: UserProfile): string {
+  const income = incomeMidpoint(profile);
+  const monthlyGross = Math.round(income / 12);
+  // Rough disposable anchor: take-home after an assumed blended 22% effective rate.
+  const monthlyTakeHome = Math.round((income * 0.78) / 12);
+  const isHomeowner = /own|mortgage|buy/i.test(profile.housingSituation || '');
+  const isRenter = /rent/i.test(profile.housingSituation || '');
+  const hasKids = !!profile.hasDependents;
+  const debts = profile.debtTypes?.length ? profile.debtTypes.join(', ') : 'None reported';
+
   return `User Financial Profile:
 - Location: ${profile.city || 'Unknown city'}, ${profile.state}, ${profile.country}
 - Age Range: ${profile.ageRange}
@@ -69,23 +79,49 @@ function buildUserContext(profile: UserProfile): string {
 - Employment: ${profile.employmentStatus} — ${profile.occupationCategory}
 - Income Range: ${profile.incomeRange}
 - Filing Status: ${profile.filingStatus}
-- Housing: ${profile.housingSituation}
-- Debt Types: ${profile.debtTypes?.join(', ') || 'None'}
-- Dependents: ${profile.hasDependents ? 'Yes' : 'No'}
-- Top Financial Concerns: ${profile.topFinancialConcerns?.join(', ') || 'General financial health'}`;
+- Housing: ${profile.housingSituation}${isHomeowner ? ' (HOMEOWNER — model property value, mortgage rate and equity effects)' : isRenter ? ' (RENTER — model rent burden and affordability, NOT property equity)' : ''}
+- Debt Types: ${debts}
+- Dependents: ${hasKids ? 'Yes — model child tax credits, childcare and education effects' : 'No — do NOT invent dependent-related benefits'}
+- Top Financial Concerns: ${profile.topFinancialConcerns?.join(', ') || 'General financial health'}
+
+DERIVED DOLLAR ANCHORS (use these to ground every estimate — never produce a number that contradicts them):
+- Estimated gross income: ~$${income.toLocaleString()}/yr (~$${monthlyGross.toLocaleString()}/mo gross)
+- Estimated take-home: ~$${monthlyTakeHome.toLocaleString()}/mo after taxes
+- Scale all impacts to THIS income: a "1% of income" effect ≈ $${Math.round(income * 0.01).toLocaleString()}/yr for this user. A figure that would be trivial for a high earner may be significant here, and vice-versa.
+- Tie every percentage you cite to a concrete dollar figure at this income level. Tie every macro/sector effect back to ${profile.state} and the ${profile.occupationCategory} field specifically.`;
 }
 
-/** Stream + collect a single text response (avoids request timeouts on long output). */
-async function complete(prompt: string, maxTokens: number, system?: string): Promise<string> {
+/** Pull the concatenated text out of a message (skips thinking blocks). */
+function textOf(message: Anthropic.Message): string {
+  return message.content
+    .filter((b): b is Anthropic.TextBlock => b.type === 'text')
+    .map((b) => b.text)
+    .join('');
+}
+
+/**
+ * Stream + collect a single text response (avoids request timeouts on long output).
+ * Set `think` to let the model reason adaptively before answering — this materially
+ * deepens multi-step financial reasoning at the cost of some extra tokens.
+ */
+async function complete(
+  prompt: string,
+  maxTokens: number,
+  system?: string,
+  think = false
+): Promise<string> {
+  // Give thinking a sizeable share of the budget but always leave room for the
+  // JSON answer. budget_tokens must be < max_tokens.
+  const thinkingBudget = think ? Math.min(8000, Math.floor(maxTokens * 0.45)) : 0;
   const stream = client.messages.stream({
     model: MODEL,
     max_tokens: maxTokens,
     ...(system ? { system } : {}),
+    ...(think ? { thinking: { type: 'enabled', budget_tokens: thinkingBudget } } : {}),
     messages: [{ role: 'user', content: prompt }],
   });
   const message = await stream.finalMessage();
-  const block = message.content[0];
-  return block && block.type === 'text' ? block.text : '';
+  return textOf(message);
 }
 
 // ===========================================================================
@@ -110,11 +146,11 @@ Return ONLY a valid JSON array (no markdown, no commentary, no code fences) of e
 - "region": "Federal" or the US state name
 - "reasons": array of EXACTLY 3 short strings, each a specific reason this policy is personally relevant to this user
 
-Use real, current US policies. Order by relevanceScore descending. Return ONLY the JSON array.`;
+Reason about which policies genuinely intersect THIS user's income bracket, state, housing status, dependents, debts and sector before scoring — relevanceScore must reflect real personal exposure, not general newsworthiness. Use real, current US policies. Order by relevanceScore descending. Return ONLY the JSON array.`;
 
   let raw = '';
   try {
-    raw = await complete(prompt, 4096);
+    raw = await complete(prompt, 6000, undefined, true);
   } catch (e) {
     console.error('Policy feed generation failed:', e);
     return [];
@@ -184,13 +220,26 @@ const ANALYSIS_SKELETON = `{
 export async function analyzePolicyFull(policy: Policy, profile: UserProfile): Promise<FullAnalysis> {
   const userContext = buildUserContext(profile);
 
-  const system = `You are Politicon's AI financial analyst. You translate government policies into precise, personalized dollar impacts for a specific user — never political opinions. You always respond with a single valid JSON object and nothing else.
+  const system = `You are Politicon's senior AI financial analyst. You translate government policies into precise, personalized dollar impacts for a specific user — never political opinions. You always respond with a single valid JSON object and nothing else.
 
-SIGN CONVENTION (critical): every dollar field is signed from the USER'S perspective. Positive = money the user GAINS (savings, credits, higher take-home). Negative = money the user LOSES (higher taxes, higher costs). A tax liability increase is therefore a NEGATIVE number. "netAnnualImpact" must approximately equal the sum of categoryImpacts plus ripple effects. The 12 "monthly" points must be CUMULATIVE and end near netAnnualImpact at month 12.`;
+REASONING DISCIPLINE (think before you answer):
+1. Identify the policy's actual mechanism — which taxes, transfers, prices, rates or rules change, and by how much.
+2. Map each mechanism onto THIS user's profile: their income bracket determines marginal rates and credit phase-outs; their state determines state tax and cost-of-living; their housing status determines whether property/rent channels apply; their dependents determine child-related credits; their debt types determine interest-rate sensitivity; their sector determines employment exposure.
+3. Trace SECOND-ORDER effects, not just the headline: a tax change shifts disposable income → spending → local prices; a rate change shifts mortgage/debt costs AND home values AND savings yields. Capture these in ripple, macro and spendingVelocity.
+4. Calibrate magnitude to the user's income anchor. Do not output a $5,000 effect for a policy that realistically moves this user by $200, and do not under-state a large structural change.
+5. Be honest about uncertainty: lower confidenceScore when the policy is proposed/contested or the user's exposure is indirect, and list the real uncertainties.
 
-  const prompt = `Analyze the financial impact of this policy for the user below. Fill EVERY field with realistic, specific numbers grounded in the user's income bracket, location, filing status, housing, dependents and debt. Do not leave fields at 0 unless that category is genuinely unaffected.
+SIGN CONVENTION (critical): every dollar field is signed from the USER'S perspective. Positive = money the user GAINS (savings, credits, higher take-home). Negative = money the user LOSES (higher taxes, higher costs). A tax liability increase is therefore a NEGATIVE number. "netAnnualImpact" must approximately equal the sum of categoryImpacts plus ripple effects. The 12 "monthly" points must be CUMULATIVE and end near netAnnualImpact at month 12.
+
+INTERNAL CONSISTENCY (verify before returning): netMonthlyImpact ≈ netAnnualImpact/12; personal.disposableIncomeAnnual should track netAnnualImpact; tax.effectiveRateAfter − tax.effectiveRateBefore should match the direction of the tax categoryImpact; spendingVelocity items should roughly reconcile with ripple.costOfLivingChange. Every explanation field must name a concrete dollar figure or the user's state/sector — no generic boilerplate.`;
+
+  const peerNote = `PEER BENCHMARKING: where useful, frame an impact relative to a typical household in the user's bracket and state (e.g. "roughly double the effect on a median ${profile.state} renter") so the user understands whether they are more or less exposed than average. Put such comparisons in the relevant explanation strings and tradeoffs.netAssessment.`;
+
+  const prompt = `Analyze the financial impact of this policy for the user below. Reason through the mechanism step by step (per the reasoning discipline), then fill EVERY field with realistic, specific numbers grounded in the user's income bracket, location, filing status, housing, dependents and debt. Do not leave fields at 0 unless that category is genuinely unaffected. Prefer precise, defensible figures over round guesses.
 
 ${userContext}
+
+${peerNote}
 
 Policy:
 Title: ${policy.title}
@@ -214,7 +263,7 @@ ${ANALYSIS_SKELETON}`;
 
   let raw = '';
   try {
-    raw = await complete(prompt, 12000, system);
+    raw = await complete(prompt, 18000, system, true);
   } catch (e) {
     console.error('Full analysis generation failed:', e);
   }
@@ -489,7 +538,7 @@ Return ONLY the JSON object.`;
 
   let raw = '';
   try {
-    raw = await complete(prompt, 700, system);
+    raw = await complete(prompt, 2000, system, true);
   } catch (e) {
     console.error('Advisor policy reply failed:', e);
   }
