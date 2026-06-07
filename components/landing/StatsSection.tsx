@@ -1,19 +1,38 @@
 'use client';
 
 import { motion } from 'framer-motion';
+import { useEffect, useState } from 'react';
 import AnimatedCounter from '@/components/ui/AnimatedCounter';
 
-const stats = [
+const STATIC_STATS = [
   { value: 2400, suffix: '+', label: 'Policies analyzed', sublabel: 'Federal, state & local', prefix: '' },
   { value: 4200, suffix: '/year', label: 'Avg impact found', sublabel: 'Per user across all tracked policies', prefix: '$' },
   { value: 50, suffix: ' states', label: 'States covered', sublabel: 'All 50 US states + DC', prefix: '' },
-  { value: 98, suffix: '%', label: 'User satisfaction', sublabel: 'Based on 2,000+ reviews', prefix: '' },
 ];
 
 export default function StatsSection() {
+  const [userCount, setUserCount] = useState<number>(0);
+
+  useEffect(() => {
+    fetch('/api/user-count')
+      .then(r => r.json())
+      .then(d => setUserCount(d.count ?? 0))
+      .catch(() => {});
+  }, []);
+
+  const stats = [
+    ...STATIC_STATS,
+    {
+      value: userCount,
+      suffix: '+',
+      label: 'Members joined',
+      sublabel: 'Real accounts, live count',
+      prefix: '',
+    },
+  ];
+
   return (
     <section className="py-24 relative">
-      {/* Background accent */}
       <div className="absolute inset-0 bg-gradient-to-r from-primary/5 via-transparent to-secondary/5" />
       <div className="absolute inset-x-0 h-px top-0 bg-gradient-to-r from-transparent via-primary/30 to-transparent" />
       <div className="absolute inset-x-0 h-px bottom-0 bg-gradient-to-r from-transparent via-secondary/20 to-transparent" />
