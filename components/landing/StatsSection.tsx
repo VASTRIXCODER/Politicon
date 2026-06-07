@@ -6,7 +6,7 @@ import AnimatedCounter from '@/components/ui/AnimatedCounter';
 
 const STATIC_STATS = [
   { value: 2400, suffix: '+', label: 'Policies analyzed', sublabel: 'Federal, state & local', prefix: '' },
-  { value: 4200, suffix: '/year', label: 'Avg impact found', sublabel: 'Per user across all tracked policies', prefix: '$' },
+  { value: 4200, suffix: '', label: 'Avg impact found', sublabel: 'Per user across tracked policies', prefix: '$', unit: '/year' },
   { value: 50, suffix: ' states', label: 'States covered', sublabel: 'All 50 US states + DC', prefix: '' },
 ];
 
@@ -38,7 +38,7 @@ export default function StatsSection() {
       <div className="absolute inset-x-0 h-px bottom-0 bg-gradient-to-r from-transparent via-secondary/20 to-transparent" />
 
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
-        <div className="grid grid-cols-2 lg:grid-cols-4 gap-8 lg:gap-12">
+        <div className="grid grid-cols-2 lg:grid-cols-4 gap-y-12 gap-x-6 lg:gap-12">
           {stats.map((stat, i) => (
             <motion.div
               key={stat.label}
@@ -48,16 +48,21 @@ export default function StatsSection() {
               transition={{ duration: 0.5, delay: i * 0.1 }}
               className="text-center"
             >
-              <div className="font-mono-data text-4xl lg:text-5xl font-bold gradient-text-gold mb-2">
-                <AnimatedCounter
-                  end={stat.value}
-                  prefix={stat.prefix}
-                  suffix={stat.suffix}
-                  duration={2200}
-                />
+              <div className="font-mono-data font-bold gradient-text-gold mb-1 leading-tight">
+                <span className="text-3xl sm:text-4xl lg:text-5xl">
+                  <AnimatedCounter
+                    end={stat.value}
+                    prefix={stat.prefix}
+                    suffix={stat.suffix}
+                    duration={2200}
+                  />
+                </span>
+                {'unit' in stat && stat.unit && (
+                  <span className="block text-base sm:text-lg font-semibold opacity-80">{stat.unit}</span>
+                )}
               </div>
               <p className="font-display text-sm font-semibold text-text-primary mb-1">{stat.label}</p>
-              <p className="text-xs text-text-muted">{stat.sublabel}</p>
+              <p className="text-xs text-text-muted leading-snug">{stat.sublabel}</p>
             </motion.div>
           ))}
         </div>
