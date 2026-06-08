@@ -1,6 +1,6 @@
 'use client';
 
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { useRouter } from 'next/navigation';
 import { ChevronRight, ChevronLeft, Check, Zap, MapPin, Briefcase, Home } from 'lucide-react';
@@ -61,6 +61,18 @@ export default function OnboardingPage() {
   const [showConfetti, setShowConfetti] = useState(false);
   const [saving, setSaving] = useState(false);
   const [saveError, setSaveError] = useState('');
+  const [authChecked, setAuthChecked] = useState(false);
+
+  // Guard: onboarding requires an active session.
+  useEffect(() => {
+    supabase.auth.getUser().then(({ data: { user } }) => {
+      if (!user) {
+        router.replace('/auth/signin');
+      } else {
+        setAuthChecked(true);
+      }
+    });
+  }, [router, supabase.auth]);
   const [profile, setProfile] = useState({
     state: '', city: '', country: 'United States', ageRange: '', educationStage: '',
     employmentStatus: '', occupationCategory: '', incomeRange: '', filingStatus: '',
@@ -233,6 +245,24 @@ export default function OnboardingPage() {
       </div>
     </motion.div>,
   ];
+
+  if (!authChecked) {
+    return (
+      <div className="min-h-screen relative flex items-center justify-center">
+        <AmbientBackground />
+        <div className="relative z-10 flex flex-col items-center gap-4">
+          <div className="w-10 h-10 rounded-2xl bg-primary/20 border border-primary/20 flex items-center justify-center">
+            <Zap className="w-5 h-5 text-primary" />
+          </div>
+          <div className="flex gap-1">
+            {[0,1,2].map(i => (
+              <div key={i} className="w-2 h-2 rounded-full bg-primary animate-pulse" style={{ animationDelay: `${i * 0.15}s` }} />
+            ))}
+          </div>
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div className="min-h-screen relative flex flex-col">

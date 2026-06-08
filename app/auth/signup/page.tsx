@@ -1,10 +1,10 @@
 'use client';
 
 import { useState, useEffect } from 'react';
-import { motion } from 'framer-motion';
+import { motion, AnimatePresence } from 'framer-motion';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
-import { Eye, EyeOff, Zap, ArrowLeft } from 'lucide-react';
+import { Eye, EyeOff, Zap, ArrowLeft, Mail } from 'lucide-react';
 import { createClient } from '@/lib/supabase/client';
 import ImpactCardDemo from '@/components/landing/ImpactCardDemo';
 import Button from '@/components/ui/Button';
@@ -22,7 +22,13 @@ export default function SignUpPage() {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
   const [checkingSession, setCheckingSession] = useState(true);
+  // When Supabase requires email confirmation, show a waiting screen instead of
+  // silently pushing the user somewhere they can't do anything.
+  const [awaitingConfirmation, setAwaitingConfirmation] = useState(false);
+  const [confirmedEmail, setConfirmedEmail] = useState('');
 
+  // On mount: if the user is already fully signed in, route them appropriately.
+  // We only redirect existing sessions — a brand-new signup always goes to onboarding.
   useEffect(() => {
     supabase.auth.getUser().then(async ({ data: { user } }) => {
       if (user) {
@@ -31,15 +37,27 @@ export default function SignUpPage() {
           .select('has_completed_onboarding')
           .eq('id', user.id)
           .single();
-        if (profile?.has_completed_onboarding) {
-          router.replace('/dashboard');
-        } else {
-          router.replace('/onboarding');
-        }
+        router.replace(profile?.has_completed_onboarding ? '/dashboard' : '/onboarding');
       } else {
         setCheckingSession(false);
       }
     });
+  }, [router]);
+
+  // Listen for the SIGNED_IN event that fires when a user clicks their
+  // confirmation email link. Route them to onboarding at that point.
+  useEffect(() => {
+    const { data: { subscription } } = supabase.auth.onAuthStateChange(async (event, session) => {
+      if (event === 'SIGNED_IN' && session?.user) {
+        const { data: profile } = await supabase
+          .from('user_profiles')
+          .select('has_completed_onboarding')
+          .eq('id', session.user.id)
+          .single();
+        router.push(profile?.has_completed_onboarding ? '/dashboard' : '/onboarding');
+      }
+    });
+    return () => subscription.unsubscribe();
   }, [router]);
 
   const handleSignUp = async (e: React.FormEvent) => {
@@ -47,17 +65,33 @@ export default function SignUpPage() {
     setLoading(true);
     setError('');
 
-    const { error: err } = await supabase.auth.signUp({
+    const { data, error: err } = await supabase.auth.signUp({
       email,
       password,
-      options: { data: { first_name: firstName } },
+      options: {
+        data: { first_name: firstName },
+        // After clicking the confirmation email, redirect back to the OAuth
+        // callback which already routes new vs. returning users correctly.
+        emailRedirectTo: `${window.location.origin}/auth/callback`,
+      },
     });
 
     if (err) {
       setError(err.message);
       setLoading(false);
-    } else {
+      return;
+    }
+
+    if (data.session) {
+      // Email confirmation is disabled — user is immediately signed in.
+      // Push straight to onboarding.
       router.push('/onboarding');
+    } else {
+      // Email confirmation is enabled — Supabase sent a confirmation link.
+      // Show a "check your email" screen and wait for the SIGNED_IN event.
+      setConfirmedEmail(email);
+      setAwaitingConfirmation(true);
+      setLoading(false);
     }
   };
 
@@ -68,6 +102,7 @@ export default function SignUpPage() {
     });
   };
 
+  // ── Loading / session-check spinner ──────────────────────────────────────
   if (checkingSession) {
     return (
       <div className="min-h-screen relative flex items-center justify-center">
@@ -86,6 +121,51 @@ export default function SignUpPage() {
     );
   }
 
+  // ── Awaiting email confirmation ───────────────────────────────────────────
+  if (awaitingConfirmation) {
+    return (
+      <div className="min-h-screen relative flex items-center justify-center p-8">
+        <AmbientBackground />
+        <motion.div
+          initial={{ opacity: 0, y: 24 }}
+          animate={{ opacity: 1, y: 0 }}
+          className="relative z-10 w-full max-w-md text-center"
+        >
+          <div className="glass border border-white/10 rounded-3xl p-10">
+            <div className="w-16 h-16 rounded-2xl bg-primary/20 border border-primary/30 flex items-center justify-center mx-auto mb-6">
+              <Mail className="w-8 h-8 text-primary" />
+            </div>
+            <h1 className="font-display text-2xl font-bold text-text-primary mb-3">Check your inbox</h1>
+            <p className="text-text-muted text-sm leading-relaxed mb-2">
+              We sent a confirmation link to
+            </p>
+            <p className="text-primary font-medium text-sm mb-6">{confirmedEmail}</p>
+            <p className="text-text-muted text-xs leading-relaxed mb-8">
+              Click the link in the email to confirm your account and we&apos;ll take you straight into your profile setup. The link expires in 24 hours.
+            </p>
+            <div className="flex flex-col gap-3">
+              <button
+                onClick={() => { setAwaitingConfirmation(false); setLoading(false); }}
+                className="text-sm text-text-muted hover:text-text-primary transition-colors"
+              >
+                ← Use a different email
+              </button>
+              <button
+                onClick={async () => {
+                  await supabase.auth.resend({ type: 'signup', email: confirmedEmail });
+                }}
+                className="text-xs text-primary/70 hover:text-primary transition-colors"
+              >
+                Resend confirmation email
+              </button>
+            </div>
+          </div>
+        </motion.div>
+      </div>
+    );
+  }
+
+  // ── Sign-up form ──────────────────────────────────────────────────────────
   return (
     <div className="min-h-screen relative flex">
       <AmbientBackground />
@@ -113,6 +193,7 @@ export default function SignUpPage() {
           <h1 className="font-display text-3xl font-bold text-text-primary mb-2">Get your impact report</h1>
           <p className="text-text-muted text-sm mb-8">Free forever. No credit card. Set up in 30 seconds.</p>
 
+          {/* Google OAuth */}
           <button
             onClick={handleGoogleSignIn}
             className="w-full glass border border-white/10 hover:border-white/20 rounded-2xl px-5 py-3.5 flex items-center justify-center gap-3 text-sm text-text-primary transition-all mb-6"
@@ -181,14 +262,21 @@ export default function SignUpPage() {
               </div>
             </div>
 
-            {error && (
-              <div className="bg-red-500/10 border border-red-500/20 rounded-xl px-4 py-3">
-                <p className="text-sm text-red-400">{error}</p>
-              </div>
-            )}
+            <AnimatePresence>
+              {error && (
+                <motion.div
+                  initial={{ opacity: 0, y: -8 }}
+                  animate={{ opacity: 1, y: 0 }}
+                  exit={{ opacity: 0 }}
+                  className="bg-red-500/10 border border-red-500/20 rounded-xl px-4 py-3"
+                >
+                  <p className="text-sm text-red-400">{error}</p>
+                </motion.div>
+              )}
+            </AnimatePresence>
 
             <Button type="submit" variant="primary" fullWidth size="lg" disabled={loading}>
-              {loading ? 'Creating account...' : 'Create free account'}
+              {loading ? 'Creating account…' : 'Create free account'}
             </Button>
           </form>
 
