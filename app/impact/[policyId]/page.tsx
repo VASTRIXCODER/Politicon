@@ -550,21 +550,28 @@ function EconomicContextTab({ a, simple, income }: { a: FullAnalysis; simple: bo
   const waterfall = [
     {
       label: simple ? 'The whole economy' : 'Macro — Economy',
-      sublabel: simple ? `Growth ${macro.gdpImpactPct >= 0 ? 'up' : 'down'}` : `GDP ${pct(macro.gdpImpactPct)}`,
+      sublabel: simple
+        ? `Growth ${macro.gdpImpactPct >= 0 ? 'up' : 'down'} · Prices ${macro.inflationImpactPct >= 0 ? 'rise' : 'fall'}`
+        : `GDP ${pct(macro.gdpImpactPct)} · Inflation ${pct(macro.inflationImpactPct)}`,
       magnitude: Math.min(100, Math.abs(macro.gdpImpactPct) * 25 + 10),
       direction: (macro.gdpImpactPct > 0 ? 'positive' : macro.gdpImpactPct < 0 ? 'negative' : 'neutral') as ImpactDirection,
+      detail: macro.gdpExplanation || macro.inflationExplanation || undefined,
     },
     {
       label: simple ? 'Companies you might work for' : `Corporate — ${titleCase(corporate.sector)}`,
-      sublabel: simple ? CAPEX_LABEL[corporate.capexDirection].text : `Equity ${corporate.equityImpactRange || pct(corporate.equityPortfolioImpactPct)}`,
+      sublabel: simple
+        ? CAPEX_LABEL[corporate.capexDirection].text
+        : `Equity ${corporate.equityImpactRange || pct(corporate.equityPortfolioImpactPct)} · ${CAPEX_LABEL[corporate.capexDirection].text}`,
       magnitude: Math.min(100, Math.abs(corporate.equityPortfolioImpactPct) * 12 + 15),
       direction: CAPEX_LABEL[corporate.capexDirection].dir,
+      detail: corporate.capexExplanation || corporate.leverageExplanation || undefined,
     },
     {
       label: simple ? 'Your own wallet' : 'Personal — Your Wallet',
-      sublabel: `${money(personal.disposableIncomeMonthly)}/mo`,
+      sublabel: `${money(personal.disposableIncomeMonthly)}/mo · ${money(personal.disposableIncomeAnnual)}/yr`,
       magnitude: Math.max(8, personalMag),
       direction: (personal.disposableIncomeAnnual >= 0 ? 'positive' : 'negative') as ImpactDirection,
+      detail: personal.savingsRateExplanation || personal.precautionaryExplanation || undefined,
     },
   ];
 

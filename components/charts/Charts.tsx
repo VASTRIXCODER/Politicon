@@ -273,36 +273,82 @@ function EmptyChart({ height }: { height: number }) {
 
 // ===========================================================================
 // 8. Economic transmission waterfall — macro → corporate → personal
-// Animated horizontal bars that step downward from the whole economy to the
-// user's wallet. Each level shows its magnitude on a shared 0-100 scale.
+// Card-based cascading layout: each tier shows its label, magnitude bar,
+// sublabel value, and an optional plain-English detail line.
 // ===========================================================================
+const WATERFALL_ICONS = ['🌐', '🏢', '💰'];
+
 export function TransmissionWaterfall(
-  { levels, height = 280 }:
-  { levels: { label: string; sublabel: string; magnitude: number; direction: 'positive' | 'negative' | 'neutral' }[]; height?: number }
+  { levels }:
+  { levels: { label: string; sublabel: string; magnitude: number; direction: 'positive' | 'negative' | 'neutral'; detail?: string }[] }
 ) {
   if (!levels || levels.length === 0) {
-    return <div style={{ height }} className="flex items-center justify-center"><p className="text-xs text-text-muted">No data to chart yet.</p></div>;
+    return (
+      <div className="flex items-center justify-center py-12">
+        <p className="text-xs text-text-muted">No data to chart yet.</p>
+      </div>
+    );
   }
-  const colorFor = (d: string) => (d === 'positive' ? CHART.emerald : d === 'negative' ? CHART.red : CHART.secondary);
+
+  const borderFor = (d: string) =>
+    d === 'positive' ? 'border-emerald-500/30' : d === 'negative' ? 'border-red-500/30' : 'border-white/10';
+  const bgFor = (d: string) =>
+    d === 'positive' ? 'rgba(16,185,129,0.08)' : d === 'negative' ? 'rgba(239,68,68,0.08)' : 'rgba(255,255,255,0.03)';
+  const barFor = (d: string) =>
+    d === 'positive' ? CHART.emerald : d === 'negative' ? CHART.red : CHART.secondary;
+  const valueColor = (d: string) =>
+    d === 'positive' ? 'text-emerald-400' : d === 'negative' ? 'text-red-400' : 'text-secondary';
+
   return (
-    <div className="space-y-3" style={{ minHeight: height }}>
+    <div className="space-y-0">
       {levels.map((lvl, i) => (
-        <div key={lvl.label} className="relative" style={{ paddingLeft: `${i * 6}%` }}>
-          <div className="flex items-center justify-between mb-1">
-            <span className="text-xs font-medium text-text-primary">{lvl.label}</span>
-            <span className="text-[10px] text-text-muted">{lvl.sublabel}</span>
+        <div key={lvl.label}>
+          {/* Card */}
+          <div
+            className={`rounded-2xl border p-5 ${borderFor(lvl.direction)}`}
+            style={{ background: bgFor(lvl.direction), marginLeft: `${i * 5}%` }}
+          >
+            {/* Header row */}
+            <div className="flex items-center justify-between mb-3">
+              <div className="flex items-center gap-2.5">
+                <span className="text-xl leading-none">{WATERFALL_ICONS[i] ?? '📊'}</span>
+                <span className="text-sm font-semibold text-text-primary">{lvl.label}</span>
+              </div>
+              <span className={`font-mono-data text-sm font-bold ${valueColor(lvl.direction)}`}>
+                {lvl.sublabel}
+              </span>
+            </div>
+
+            {/* Magnitude bar */}
+            <div className="h-2.5 rounded-full bg-white/8 overflow-hidden mb-3">
+              <div
+                className="h-full rounded-full transition-all duration-700 ease-out"
+                style={{
+                  width: `${Math.max(6, Math.min(100, lvl.magnitude))}%`,
+                  background: barFor(lvl.direction),
+                  animationDelay: `${i * 150}ms`,
+                }}
+              />
+            </div>
+
+            {/* Detail text */}
+            {lvl.detail && (
+              <p className="text-xs text-text-muted leading-relaxed">{lvl.detail}</p>
+            )}
           </div>
-          <div className="h-3 rounded-full bg-white/5 overflow-hidden">
-            <div
-              className="h-full rounded-full transition-all duration-700 ease-out"
-              style={{ width: `${Math.max(4, Math.min(100, lvl.magnitude))}%`, background: colorFor(lvl.direction), animationDelay: `${i * 120}ms` }}
-            />
-          </div>
+
+          {/* Connector arrow */}
           {i < levels.length - 1 && (
-            <div className="flex justify-start mt-1" style={{ paddingLeft: '6%' }}>
-              <svg width="14" height="12" viewBox="0 0 14 12" className="text-text-muted/40">
-                <path d="M7 0v8M3 6l4 4 4-4" stroke="currentColor" strokeWidth="1.5" fill="none" strokeLinecap="round" strokeLinejoin="round" />
-              </svg>
+            <div
+              className="flex items-center py-1"
+              style={{ marginLeft: `calc(${(i + 0.5) * 5}% + 24px)` }}
+            >
+              <div className="flex flex-col items-center">
+                <div className="w-px h-3 bg-white/15" />
+                <svg width="10" height="6" viewBox="0 0 10 6" className="text-white/20">
+                  <path d="M0 0L5 6L10 0" stroke="currentColor" strokeWidth="1.5" fill="none" strokeLinecap="round" strokeLinejoin="round" />
+                </svg>
+              </div>
             </div>
           )}
         </div>
