@@ -120,9 +120,11 @@ export default function SignInPage() {
           <p className="text-text-muted text-sm mb-8">Sign in to see your personalized policy impact.</p>
 
           {/* Google OAuth */}
+          <div className="relative mb-6">
           <button
             onClick={handleGoogleSignIn}
-            className="w-full glass border border-white/10 hover:border-white/20 rounded-2xl px-5 py-3.5 flex items-center justify-center gap-3 text-sm text-text-primary transition-all mb-6"
+            disabled
+            className="w-full glass border border-white/10 rounded-2xl px-5 py-3.5 flex items-center justify-center gap-3 text-sm text-text-muted opacity-50 cursor-not-allowed"
           >
             <svg className="w-4 h-4" viewBox="0 0 24 24">
               <path fill="#4285F4" d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92c-.26 1.37-1.04 2.53-2.21 3.31v2.77h3.57c2.08-1.92 3.28-4.74 3.28-8.09z" />
@@ -132,6 +134,12 @@ export default function SignInPage() {
             </svg>
             Continue with Google
           </button>
+          <div className="absolute inset-0 flex items-center justify-center rounded-2xl">
+            <span className="bg-surface border border-primary/30 text-primary text-xs font-semibold px-3 py-1 rounded-full">
+              Coming Soon
+            </span>
+          </div>
+          </div>
 
           <div className="flex items-center gap-4 mb-6">
             <div className="flex-1 h-px bg-white/8" />
