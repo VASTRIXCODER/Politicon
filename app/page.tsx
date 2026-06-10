@@ -7,7 +7,6 @@ import StatsSection from '@/components/landing/StatsSection';
 import FeatureShowcase from '@/components/landing/FeatureShowcase';
 import ShareableCards from '@/components/landing/ShareableCards';
 import PublicExplorer from '@/components/landing/PublicExplorer';
-import SocialProof from '@/components/landing/SocialProof';
 import NewsletterSection from '@/components/landing/NewsletterSection';
 import Footer from '@/components/layout/Footer';
 
@@ -25,7 +24,6 @@ export default function LandingPage() {
           <FeatureShowcase />
           <ShareableCards />
           <PublicExplorer />
-          <SocialProof />
           <NewsletterSection />
         </main>
         <Footer />
