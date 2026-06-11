@@ -59,6 +59,41 @@ def cmd_dashboard(_args) -> int:
     return 0
 
 
+def cmd_web(_args) -> int:
+    """Launch the signals-only web dashboard (no broker needed)."""
+    from webapp import run
+    run(CONFIG)
+    return 0
+
+
+def cmd_scan(_args) -> int:
+    """Print ranked, actionable signals for each ticker (no broker needed)."""
+    from scanner import Scanner
+    from ai_brief import AIBriefer
+
+    scanner = Scanner(CONFIG, briefer=AIBriefer(CONFIG))
+    print(f"Scanning {len(CONFIG.tickers)} tickers "
+          f"(lookback {CONFIG.lookback_length}, {CONFIG.interval}, "
+          f"account ${CONFIG.account_size:,.0f})...\n")
+    results = scanner.scan()
+    header = f"{'TICKER':<8}{'SIGNAL':<12}{'CONV':>5}  {'PRICE':>9}  {'ENTRY':>9}  {'STOP':>9}  {'TARGET':>9}  {'SHARES':>7}  EQ1/EQ2"
+    print(header)
+    print("-" * len(header))
+    for s in results:
+        if s.error:
+            print(f"{s.ticker:<8}{'ERROR':<12}  {s.error}")
+            continue
+        eqs = f"{s.eq1.stance}/{s.eq2.stance}" if s.eq1 and s.eq2 else "-"
+        agree = "  ✓agree" if s.agree else ""
+        print(f"{s.ticker:<8}{s.recommendation:<12}{s.conviction:>5.0f}  "
+              f"{s.price:>9.2f}  {s.entry:>9.2f}  {s.stop:>9.2f}  {s.target:>9.2f}  "
+              f"{s.shares:>7}  {eqs}{agree}")
+        if s.ai_brief:
+            for line in s.ai_brief.splitlines():
+                print(f"          {line}")
+    return 0
+
+
 def cmd_signals(_args) -> int:
     """Print the current signal/vote state for each ticker (no trading)."""
     from data import DataProvider
@@ -140,9 +175,11 @@ def build_parser() -> argparse.ArgumentParser:
     sub = p.add_subparsers(dest="command", required=True)
 
     sub.add_parser("check", help="run connectivity / config checks")
-    sub.add_parser("run", help="start the live trading loop")
-    sub.add_parser("dashboard", help="launch the monitoring dashboard")
-    sub.add_parser("signals", help="print the latest signal for each ticker")
+    sub.add_parser("scan", help="signals-only: print ranked actionable signals (no broker)")
+    sub.add_parser("web", help="signals-only: launch the web dashboard (no broker)")
+    sub.add_parser("run", help="start the live trading loop (needs a broker)")
+    sub.add_parser("dashboard", help="launch the broker monitoring dashboard")
+    sub.add_parser("signals", help="print the latest raw signal/votes for each ticker")
     sub.add_parser("report", help="print a performance report from the trade log")
 
     bt = sub.add_parser("backtest", help="backtest one or both equations")
@@ -167,6 +204,8 @@ def build_parser() -> argparse.ArgumentParser:
 
 _HANDLERS = {
     "check": cmd_check,
+    "scan": cmd_scan,
+    "web": cmd_web,
     "run": cmd_run,
     "dashboard": cmd_dashboard,
     "signals": cmd_signals,

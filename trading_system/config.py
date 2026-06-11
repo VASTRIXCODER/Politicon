@@ -131,6 +131,25 @@ class Config:
         default_factory=lambda: _bool("REQUIRE_MARKET_OPEN", True)
     )
 
+    # --- signals-only mode / web UI --------------------------------------- #
+    # Notional account size used to size share suggestions when not connected
+    # to a broker (signals-only mode).
+    account_size: float = field(default_factory=lambda: _float("ACCOUNT_SIZE", 100_000.0))
+    # Years of history used to compute each ticker's backtested "edge".
+    edge_years: float = field(default_factory=lambda: _float("EDGE_YEARS", 3.0))
+    web_host: str = field(default_factory=lambda: _str("WEB_HOST", "127.0.0.1"))
+    web_port: int = field(default_factory=lambda: _int("WEB_PORT", 5000))
+    web_refresh_seconds: int = field(
+        default_factory=lambda: _int("WEB_REFRESH_SECONDS", 30)
+    )
+
+    # --- optional Claude AI briefing layer (off by default) --------------- #
+    ai_briefing: bool = field(default_factory=lambda: _bool("AI_BRIEFING", False))
+    anthropic_api_key: str = field(default_factory=lambda: _str("ANTHROPIC_API_KEY", ""))
+    anthropic_model: str = field(
+        default_factory=lambda: _str("ANTHROPIC_MODEL", "claude-haiku-4-5")
+    )
+
     # --- infra ------------------------------------------------------------- #
     db_path: str = field(default_factory=lambda: _str("DB_PATH", str(BASE_DIR / "trades.db")))
     dashboard_refresh_seconds: int = field(

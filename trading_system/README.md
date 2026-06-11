@@ -88,6 +88,9 @@ different strategy — this port's contract is *match the original chart*.
 trading_system/
 ├── config.py             # all settings (env-driven, paper by default)
 ├── signals.py            # the ported equation logic + signal state machine
+├── scanner.py            # signals-only engine: ranked, actionable signals + edge
+├── webapp.py             # Flask web dashboard (signals-only)
+├── ai_brief.py           # optional Claude AI briefing layer (off by default)
 ├── data.py               # OHLCV fetching (yfinance / Alpaca), normalised
 ├── broker.py             # Broker interface + Alpaca implementation
 ├── coinbase_broker.py    # optional crypto scaffold (Coinbase Advanced Trade)
@@ -95,23 +98,40 @@ trading_system/
 ├── engine.py             # the live trading loop
 ├── backtest.py           # historical simulation + report + equity-curve chart
 ├── database.py           # SQLite trade log + performance analytics
-├── dashboard.py          # rich terminal monitoring UI
+├── dashboard.py          # rich terminal monitoring UI (broker mode)
 ├── connectivity_check.py # pre-flight checks
 ├── main.py               # CLI entry point
 ├── requirements.txt
 ├── .env.example
 ├── setup.sh              # installs deps + runs the connectivity check
-└── tests/test_signals.py
+└── tests/                # test_signals.py, test_scanner.py
 ```
 
-## Quick start
+## Two ways to run it
+
+| Mode | What it does | Needs a broker / API keys? |
+|---|---|---|
+| **Signals-only** (`scan`, `web`) | Tells you **what / when / how** to buy — ranked signals with entry, stop, target, exact share count, conviction, and each ticker's backtested edge. You place trades yourself. | **No.** Uses free yfinance data. |
+| **Automated** (`run`, `dashboard`) | Auto-executes signals through Alpaca with full risk management. | Yes — Alpaca paper keys. |
+
+Start with **signals-only** — it needs no keys.
+
+## Quick start (signals-only — no keys)
 
 ```bash
 cd trading_system
-./setup.sh                      # creates a venv, installs deps, writes .env, runs checks
+./setup.sh                      # creates a venv, installs deps
+source .venv/bin/activate       # activate it in your shell
+python main.py scan             # ranked signals in the terminal
+python main.py web              # browser dashboard → http://127.0.0.1:5000
+python main.py backtest --ticker AAPL --start 2022-01-01 --equation both
+```
+
+## Quick start (automated paper trading — needs Alpaca keys)
+
+```bash
 # edit .env and paste your Alpaca PAPER keys (https://app.alpaca.markets)
 python main.py check            # confirm broker + data connectivity
-python main.py backtest --ticker AAPL --start 2022-01-01 --equation both
 python main.py run              # start PAPER trading
 python main.py dashboard        # monitor it (separate terminal)
 ```
@@ -146,18 +166,65 @@ All settings live in `config.py` and are overridable via environment variables
 | `MAX_DAILY_LOSS_PCT` | `3` | halt new entries if equity drops this % in a day |
 | `FLATTEN_ON_DAILY_LOSS` | `false` | also close everything when the limit hits |
 | `REQUIRE_MARKET_OPEN` | `true` | only enter while the equities market is open |
+| `ACCOUNT_SIZE` | `100000` | notional account used to size share suggestions (signals-only) |
+| `EDGE_YEARS` | `3` | years of history used to compute each ticker's backtested edge |
+| `WEB_HOST` / `WEB_PORT` | `127.0.0.1` / `5000` | web dashboard bind address |
+| `WEB_REFRESH_SECONDS` | `30` | how often the web dashboard re-scans |
+| `AI_BRIEFING` | `false` | enable the optional Claude AI briefing layer |
+| `ANTHROPIC_API_KEY` | — | required only when `AI_BRIEFING=true` |
+| `ANTHROPIC_MODEL` | `claude-haiku-4-5` | model for AI briefings |
 
 ## Usage
 
 ```bash
-python main.py check                 # pre-flight connectivity + config checks
-python main.py run                   # live trading loop (paper unless TRADING_MODE=live)
-python main.py dashboard             # monitoring UI, refreshes every 30s
-python main.py signals               # print the current signal/votes per ticker
-python main.py report                # performance report from the trade log
+# signals-only (no broker)
+python main.py scan                  # ranked actionable signals in the terminal
+python main.py web                   # browser dashboard, auto-refreshes every 30s
 python main.py backtest --ticker AAPL --start 2022-01-01 --end 2024-01-01 \
     --equation both --interval 1d --stop 5 --take 10
+
+# automated (needs Alpaca keys)
+python main.py check                 # pre-flight connectivity + config checks
+python main.py run                   # live trading loop (paper unless TRADING_MODE=live)
+python main.py dashboard             # broker monitoring UI, refreshes every 30s
+python main.py report                # performance report from the trade log
+python main.py signals               # print the raw signal/votes per ticker
 ```
+
+### The web dashboard
+
+`python main.py web` serves a browser dashboard at `http://127.0.0.1:5000` that
+re-scans every `WEB_REFRESH_SECONDS` and shows:
+
+- a **"Top Buys"** section — cards for every ticker currently flashing a buy,
+  with conviction, entry/stop/target, and exact share count for your `ACCOUNT_SIZE`;
+- a full table of all monitored tickers with both equations' stances and each
+  ticker's backtested edge;
+- a **STRONG BUY** highlight when both equations agree;
+- the optional AI briefing inline (if enabled).
+
+Each signal shows a **conviction** score (0–100, from the buy/sell vote margin),
+whether **both equations agree**, and the historical **edge** (win rate + return)
+of the strategy on that specific ticker — so you can weight signals by where the
+strategy has actually worked.
+
+### Optional Claude AI briefing layer
+
+Off by default. When enabled it adds, to the top buy signals, a plain-English
+**rationale** plus a **news/earnings risk-check** (via Claude's web search) — for
+example, flagging when a technical buy collides with an upcoming earnings date.
+
+```env
+AI_BRIEFING=true
+ANTHROPIC_API_KEY=sk-ant-...
+ANTHROPIC_MODEL=claude-haiku-4-5     # cheap + fast; good for many tickers
+```
+
+> **Honest scope:** the AI layer **does not** improve the quant signal's math or
+> its statistical edge (those are fixed formulas), and it does not predict
+> prices — it annotates and risk-checks. It costs per API call and can be wrong,
+> so treat it as context, not a recommendation. It degrades gracefully: if the
+> key is missing or web search is unavailable, signals still display without it.
 
 The backtest prints a full report (win rate, total return, avg win/loss, largest
 win, max drawdown, Sharpe) plus the indicator's own Wins/Trades/Win-Loss figures,
