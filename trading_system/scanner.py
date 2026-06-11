@@ -64,6 +64,7 @@ class EquationView:
 @dataclass
 class TickerSignal:
     ticker: str
+    sector: str = "Other"
     price: float = 0.0
     recommendation: str = "WAIT"
     conviction: float = 0.0
@@ -109,7 +110,7 @@ class TickerSignal:
 
     def as_dict(self) -> Dict:
         d = {
-            "ticker": self.ticker, "price": self.price,
+            "ticker": self.ticker, "sector": self.sector, "price": self.price,
             "recommendation": self.recommendation, "conviction": self.conviction,
             "agree": self.agree, "entry": self.entry, "stop": self.stop,
             "target": self.target, "shares": self.shares, "notional": self.notional,
@@ -137,13 +138,19 @@ class Scanner:
 
     # ------------------------------------------------------------------ #
     def scan(self, brief_top: int = 3) -> List[TickerSignal]:
-        results: List[TickerSignal] = []
-        for ticker in self.config.tickers:
+        from concurrent.futures import ThreadPoolExecutor
+
+        def one(ticker):
             try:
-                results.append(self.scan_ticker(ticker))
+                return self.scan_ticker(ticker)
             except Exception as exc:
                 log.warning("scan failed for %s: %s", ticker, exc)
-                results.append(TickerSignal(ticker=ticker, error=str(exc), asof=_now_iso()))
+                return TickerSignal(ticker=ticker, sector=self.config.sector_for(ticker),
+                                    error=str(exc), asof=_now_iso())
+
+        workers = max(1, min(self.config.scan_workers, len(self.config.tickers) or 1))
+        with ThreadPoolExecutor(max_workers=workers) as pool:
+            results = list(pool.map(one, self.config.tickers))
 
         results.sort(key=lambda s: s.rank, reverse=True)
 
@@ -159,10 +166,11 @@ class Scanner:
 
     # ------------------------------------------------------------------ #
     def scan_ticker(self, ticker: str) -> TickerSignal:
+        sector = self.config.sector_for(ticker)
         df = self._fetch(ticker)
         if len(df) < self.config.lookback_length + 2:
             return TickerSignal(
-                ticker=ticker, asof=_now_iso(),
+                ticker=ticker, sector=sector, asof=_now_iso(),
                 error=f"only {len(df)} bars (need > {self.config.lookback_length})",
             )
 
@@ -190,7 +198,7 @@ class Scanner:
         ev_pct = (ev_dollars / cost * 100.0) if cost > 0 else 0.0
 
         sig = TickerSignal(
-            ticker=ticker, price=round(price, 2), recommendation=rec,
+            ticker=ticker, sector=sector, price=round(price, 2), recommendation=rec,
             conviction=conviction, agree=agree, entry=round(entry, 2),
             stop=round(stop, 2), target=round(target, 2), shares=shares,
             notional=round(cost, 2), cost=round(cost, 2),
@@ -246,7 +254,8 @@ class Scanner:
 
         view = sig.eq1 if equation_set == 1 else sig.eq2
         return {
-            "ticker": ticker, "equation_set": equation_set, "error": None,
+            "ticker": ticker, "sector": sig.sector,
+            "equation_set": equation_set, "error": None,
             "recommendation": sig.recommendation, "conviction": sig.conviction,
             "agree": sig.agree, "price": sig.price, "entry": sig.entry,
             "stop": sig.stop, "target": sig.target, "shares": sig.shares,
