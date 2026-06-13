@@ -32,6 +32,46 @@ except Exception:  # python-dotenv not installed yet -- env vars still work
 BASE_DIR = Path(__file__).resolve().parent
 
 
+# A diverse default universe across sectors (used when TICKERS isn't set in .env).
+DEFAULT_TICKERS = [
+    # Technology
+    "AAPL", "MSFT", "NVDA", "AMD", "CRM", "ADBE",
+    # Communication
+    "GOOGL", "META", "NFLX", "DIS",
+    # Consumer Discretionary
+    "AMZN", "HD", "MCD",
+    # Consumer Staples
+    "WMT", "COST", "KO", "PG",
+    # Financials
+    "JPM", "BAC", "V", "MA", "GS",
+    # Healthcare
+    "UNH", "JNJ", "LLY", "ABBV",
+    # Energy
+    "XOM", "CVX",
+    # Industrials
+    "CAT", "BA",
+    # Index ETFs
+    "SPY", "QQQ", "IWM",
+]
+
+# Sector tags so the dashboard can show diversification.
+SECTORS = {
+    "AAPL": "Technology", "MSFT": "Technology", "NVDA": "Technology",
+    "AMD": "Technology", "CRM": "Technology", "ADBE": "Technology",
+    "GOOGL": "Communication", "META": "Communication", "NFLX": "Communication",
+    "DIS": "Communication",
+    "AMZN": "Consumer Disc.", "HD": "Consumer Disc.", "MCD": "Consumer Disc.",
+    "WMT": "Consumer Staples", "COST": "Consumer Staples", "KO": "Consumer Staples",
+    "PG": "Consumer Staples",
+    "JPM": "Financials", "BAC": "Financials", "V": "Financials",
+    "MA": "Financials", "GS": "Financials",
+    "UNH": "Healthcare", "JNJ": "Healthcare", "LLY": "Healthcare", "ABBV": "Healthcare",
+    "XOM": "Energy", "CVX": "Energy",
+    "CAT": "Industrials", "BA": "Industrials",
+    "SPY": "Index ETF", "QQQ": "Index ETF", "IWM": "Index ETF",
+}
+
+
 # --------------------------------------------------------------------------- #
 # Env parsing helpers
 # --------------------------------------------------------------------------- #
@@ -90,8 +130,10 @@ class Config:
 
     # --- universe & cadence ------------------------------------------------ #
     tickers: List[str] = field(
-        default_factory=lambda: _list("TICKERS", ["AAPL", "MSFT", "SPY"])
+        default_factory=lambda: _list("TICKERS", DEFAULT_TICKERS)
     )
+    # Parallel workers for the multi-ticker scan (keeps a big universe fast).
+    scan_workers: int = field(default_factory=lambda: _int("SCAN_WORKERS", 8))
     interval: str = field(default_factory=lambda: _str("INTERVAL", "1d"))
     data_source: str = field(default_factory=lambda: _str("DATA_SOURCE", "yfinance"))
 
@@ -182,6 +224,9 @@ class Config:
         """
         env_key = "MAX_POSITION_PCT_" + ticker.upper().replace("-", "_")
         return _float(env_key, self.max_position_pct)
+
+    def sector_for(self, ticker: str) -> str:
+        return SECTORS.get(ticker.upper(), "Other")
 
     @property
     def interval_seconds(self) -> int:

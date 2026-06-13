@@ -191,22 +191,33 @@ python main.py report                # performance report from the trade log
 python main.py signals               # print the raw signal/votes per ticker
 ```
 
-### The web dashboard
+### The web dashboard (an advisor — it places no orders)
 
-`python main.py web` serves a browser dashboard at `http://127.0.0.1:5000` that
-re-scans every `WEB_REFRESH_SECONDS` and shows:
+`python main.py web` serves a browser dashboard at `http://127.0.0.1:5000`
+(use `WEB_PORT=5001` on macOS, where AirPlay grabs 5000). It is **advisory**: it
+tells you exactly what to do and you place the trade in your own broker. It
+re-scans a diverse default universe (~33 names across 9 sectors) every
+`WEB_REFRESH_SECONDS`, in parallel (`SCAN_WORKERS`), and shows:
 
-- a **"Top Buys"** section — cards for every ticker currently flashing a buy,
-  with conviction, entry/stop/target, and exact share count for your `ACCOUNT_SIZE`;
-- a full table of all monitored tickers with both equations' stances and each
-  ticker's backtested edge;
-- a **STRONG BUY** highlight when both equations agree;
-- the optional AI briefing inline (if enabled).
+- a **settings panel** — type in your real capital, max % per position, stop %
+  and take-profit %; every share count, dollar amount, stop, target and plan
+  recomputes instantly and is saved in your browser;
+- **order tickets** for each buy — the exact order type (limit / market / stop /
+  bracket), share count, dollar cost, stop and target prices, dollar risk and
+  reward, and when to place it, step by step;
+- a **diversification** breakdown of your buy signals by sector;
+- a **portfolio summary** (capital to deploy, total risk, profit-at-targets, EV);
+- a full ranked table where every ticker links to a **detail page** with
+  interactive price/equity charts, full edge stats, and signal history.
 
 Each signal shows a **conviction** score (0–100, from the buy/sell vote margin),
-whether **both equations agree**, and the historical **edge** (win rate + return)
-of the strategy on that specific ticker — so you can weight signals by where the
-strategy has actually worked.
+whether **both equations agree** (a STRONG BUY), and the historical **edge** of
+the strategy on that specific ticker.
+
+> **No Anthropic key is needed for any of this** — it's all computed from price
+> data. **Robinhood** can't be auto-linked (no official stock API; unofficial
+> ones violate its ToS and risk your account) — place the dashboard's exact
+> orders in the Robinhood app yourself, or use Alpaca for automation.
 
 ### Optional Claude AI briefing layer
 

@@ -26,13 +26,10 @@ import math
 from dataclasses import dataclass, field
 from typing import List, Optional
 
-import matplotlib
-matplotlib.use("Agg")  # headless-safe
-import matplotlib.pyplot as plt  # noqa: E402
-import pandas as pd  # noqa: E402
+import pandas as pd
 
-from data import fetch_history_yf  # noqa: E402
-from signals import SignalGenerator  # noqa: E402
+from data import fetch_history_yf
+from signals import SignalGenerator
 
 # Approx bars per year for Sharpe annualisation, by trading interval.
 _PERIODS_PER_YEAR = {"1d": 252, "1h": 252 * 7, "1m": 252 * 390}
@@ -276,6 +273,11 @@ def format_report(res: BacktestResult) -> str:
 
 def plot_equity_curves(results: List[BacktestResult], ticker: str,
                        chart_path: Optional[str]) -> str:
+    # Imported lazily so the scanner / web dashboard don't require matplotlib.
+    import matplotlib
+    matplotlib.use("Agg")  # headless-safe
+    import matplotlib.pyplot as plt
+
     chart_path = chart_path or f"backtest_{ticker}.png"
     plt.figure(figsize=(11, 6))
     for res in results:
