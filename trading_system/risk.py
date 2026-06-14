@@ -131,6 +131,31 @@ class RiskManager:
         pct = self.config.take_profit_pct / 100.0
         return entry * (1 + pct) if side == "long" else entry * (1 - pct)
 
+    # -- ATR-adaptive (volatility-based) variants -------------------------- #
+    def atr_stop_price(self, entry: float, atr: float) -> float:
+        return entry - atr * self.config.atr_stop_mult
+
+    def atr_take_profit_price(self, entry: float, atr: float) -> float:
+        return entry + atr * self.config.atr_target_mult
+
+    def size_position_atr(self, entry: float, atr: float, equity: float,
+                          buying_power: float) -> SizingDecision:
+        """Volatility-normalised sizing: risk ATR_RISK_PCT of equity per trade,
+        with the ATR-based stop distance setting the share count (capped by the
+        max position % and buying power)."""
+        risk_per_share = atr * self.config.atr_stop_mult
+        if entry <= 0 or risk_per_share <= 0:
+            return SizingDecision(False, 0.0, "no ATR / price")
+        risk_budget = equity * (self.config.atr_risk_pct / 100.0)
+        qty_by_risk = risk_budget / risk_per_share
+        max_dollars = min(equity * (self.config.max_position_pct / 100.0), buying_power)
+        qty_by_cap = (max_dollars / entry) if max_dollars > 0 else 0.0
+        qty = min(qty_by_risk, qty_by_cap)
+        qty = qty if self.fractional else math.floor(qty)
+        if qty <= 0:
+            return SizingDecision(False, 0.0, "position too small for ATR risk")
+        return SizingDecision(True, float(qty), "atr")
+
     def exit_reason(
         self, entry: float, current_price: float, side: str = "long"
     ) -> Optional[str]:

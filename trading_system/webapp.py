@@ -36,6 +36,21 @@ from scanner import Scanner, TickerSignal
 log = logging.getLogger("webapp")
 
 
+def _build_tag() -> str:
+    """Short git commit of the running code, so the UI can show which build it is."""
+    import os
+    import subprocess
+    try:
+        h = subprocess.check_output(
+            ["git", "rev-parse", "--short", "HEAD"],
+            cwd=os.path.dirname(os.path.abspath(__file__)),
+            stderr=subprocess.DEVNULL, text=True,
+        ).strip()
+        return h or "unknown"
+    except Exception:
+        return "zip (not a git clone)"
+
+
 # --------------------------------------------------------------------------- #
 # Background signal scanning
 # --------------------------------------------------------------------------- #
@@ -86,7 +101,9 @@ class ScannerService:
             "status": status, "updated": updated, "error": error,
             "ai_enabled": bool(self.scanner.briefer and self.scanner.briefer.enabled),
             "config": {"equation_set": self.config.equation_set, "lookback": self.config.lookback_length,
-                       "interval": self.config.interval, "universe": len(self.config.tickers)},
+                       "interval": self.config.interval, "universe": len(self.config.tickers),
+                       "atr_adaptive": self.config.atr_adaptive, "atr_risk_pct": self.config.atr_risk_pct,
+                       "atr_stop_mult": self.config.atr_stop_mult, "atr_target_mult": self.config.atr_target_mult},
             "signals": [_signal_json(s) for s in signals],
         }
 
@@ -213,7 +230,9 @@ def create_app(config=CONFIG):
     defaults = {
         "__REFRESH__": str(config.web_refresh_seconds), "__CAP__": str(config.account_size),
         "__MAXPCT__": str(config.max_position_pct), "__STOPPCT__": str(config.stop_loss_pct),
-        "__TGTPCT__": str(config.take_profit_pct),
+        "__TGTPCT__": str(config.take_profit_pct), "__ATRRISK__": str(config.atr_risk_pct),
+        "__ATRSTOPM__": str(config.atr_stop_mult), "__ATRTGTM__": str(config.atr_target_mult),
+        "__BUILD__": _build_tag(),
     }
 
     def fill(tpl: str, extra: Optional[Dict] = None) -> str:
@@ -283,6 +302,13 @@ def create_app(config=CONFIG):
     def api_engine_preview():
         return jsonify({"rows": controller.preview()})
 
+    @app.route("/api/config", methods=["POST"])
+    def api_config():
+        body = request.get_json(silent=True) or {}
+        if "atr_adaptive" in body:
+            config.atr_adaptive = bool(body["atr_adaptive"])
+        return jsonify({"ok": True, "atr_adaptive": config.atr_adaptive})
+
     app.scanner_service = service
     app.engine_controller = controller
     return app
@@ -312,6 +338,8 @@ _CSS = """
   @keyframes spin{to{transform:rotate(360deg)}}
   header{position:sticky;top:0;z-index:20;padding:13px 26px;display:flex;align-items:center;gap:14px;
          flex-wrap:wrap;background:rgba(10,14,20,.74);backdrop-filter:blur(14px);border-bottom:1px solid var(--border)}
+  body::before{content:"";position:fixed;top:0;left:0;right:0;height:3px;background:var(--grad);z-index:40}
+  header::after{content:"";position:absolute;left:0;right:0;bottom:-1px;height:1px;background:var(--grad);opacity:.55}
   header h1{font-size:17px;margin:0;font-weight:700;letter-spacing:-.01em}
   header h1 .g{background:var(--grad);-webkit-background-clip:text;background-clip:text;color:transparent}
   .meta{color:var(--muted);font-size:12px}
@@ -415,8 +443,11 @@ const pct = x => (x*100).toFixed(0)+'%';
 const cls = r => (r||'').replace(/\\s/g,'');
 const edgeWin = x => (x.eq1 && x.eq1.edge_win_rate!=null) ? x.eq1.edge_win_rate : 0.5;
 let CAPITAL = __CAP__;  // set from the live Alpaca account when connected
+let SIZEMODE = 'fixed';  // driven by the server config (config.atr_adaptive)
+const ATR_RISK = __ATRRISK__, ATR_STOPM = __ATRSTOPM__, ATR_TGTM = __ATRTGTM__;
 function getSettings(){return {maxPct:+(localStorage.getItem('maxPct')||__MAXPCT__),stopPct:+(localStorage.getItem('stopPct')||__STOPPCT__),targetPct:+(localStorage.getItem('targetPct')||__TGTPCT__)};}
 function economics(price,winRate,s){const entry=price,stop=entry*(1-s.stopPct/100),target=entry*(1+s.targetPct/100);const budget=CAPITAL*(s.maxPct/100);const shares=entry>0?Math.max(0,Math.floor(budget/entry)):0;const cost=shares*entry,risk=shares*(entry-stop),reward=shares*(target-entry);const rr=risk>0?reward/risk:0,w=(winRate==null)?0.5:winRate;return {entry,stop,target,shares,cost,risk,reward,rr,ev:w*reward-(1-w)*risk,pctCap:CAPITAL?cost/CAPITAL*100:0};}
+function econ(x,s){const win=edgeWin(x);if(SIZEMODE==='atr'&&x.atr>0){const entry=x.price,stop=x.atr_stop,target=x.atr_target,rps=entry-stop;const byRisk=rps>0?Math.floor(CAPITAL*ATR_RISK/100/rps):0;const byCap=entry>0?Math.floor(CAPITAL*s.maxPct/100/entry):0;const shares=Math.max(0,Math.min(byRisk,byCap));const cost=shares*entry,risk=shares*rps,reward=shares*(target-entry);return {entry,stop,target,shares,cost,risk,reward,rr:risk>0?reward/risk:0,ev:win*reward-(1-win)*risk,pctCap:CAPITAL?cost/CAPITAL*100:0};}return economics(x.price,win,s);}
 function sparkline(arr){if(!arr||arr.length<2)return '';const w=104,h=28,p=3,min=Math.min(...arr),max=Math.max(...arr),rng=(max-min)||1;const pts=arr.map((v,i)=>{const x=p+i*(w-2*p)/(arr.length-1),y=p+(h-2*p)*(1-(v-min)/rng);return x.toFixed(1)+','+y.toFixed(1);}).join(' ');const col=arr[arr.length-1]>=arr[0]?'#41d18b':'#ff5d6c';return `<svg width="${w}" height="${h}" viewBox="0 0 ${w} ${h}"><polyline fill="none" stroke="${col}" stroke-width="1.6" stroke-linejoin="round" points="${pts}"/></svg>`;}
 function rsiCls(r){return r>=70?'red':(r<=30?'green':'muted');}
 function contextBadges(s){return `<span class="badge ${s.trend==='Uptrend'?'green':'red'}">${s.trend||'—'}</span><span class="badge ${rsiCls(s.rsi)}">RSI ${Math.round(s.rsi)}</span><span class="badge ${s.momentum>=0?'green':'red'}">Mom ${s.momentum>=0?'+':''}${(s.momentum||0).toFixed(1)}%</span><span class="badge muted">Vol ${s.vol_note||'—'}</span>`;}
@@ -457,11 +488,15 @@ _MAIN_PAGE = """<!doctype html><html lang="en"><head>
 
   <h2>⚙️ Risk preferences — applied to the signals &amp; the engine</h2>
   <div class="account">
+    <div class="field"><span>Sizing mode</span>
+      <span><button class="btn" id="mFixed" onclick="setSizeMode('fixed')">Fixed %</button>
+      <button class="btn" id="mAtr" onclick="setSizeMode('atr')">📈 ATR-adaptive</button></span></div>
     <div class="field"><span>Max % / position</span><input id="maxPct" type="number" min="1" max="100" step="1"></div>
     <div class="field"><span>Stop-loss %</span><input id="stopPct" type="number" min="0.5" step="0.5"></div>
     <div class="field"><span>Take-profit %</span><input id="targetPct" type="number" min="0.5" step="0.5"></div>
     <div class="hint" id="caphint">Sizing off your account balance.</div>
   </div>
+  <div class="hint" id="modehint" style="margin-top:9px"></div>
 
   <h2>📊 Portfolio — if you take every buy below</h2>
   <div class="summary" id="summary"></div>
@@ -501,6 +536,8 @@ const recRank = {'STRONG BUY':5,'BUY':4,'HOLD':3,'WAIT':2,'SELL':1,'STRONG SELL'
 function initInputs(){const s=getSettings();['maxPct','stopPct','targetPct'].forEach(k=>{const el=document.getElementById(k);el.value=s[k];el.onchange=()=>{const v=parseFloat(el.value);if(!isNaN(v)&&v>0){localStorage.setItem(k,v);renderSignals();}};});document.getElementById('search').oninput=e=>{SEARCH=e.target.value.trim().toLowerCase();renderSignals();};}
 function setFilter(el){FILTER=el.dataset.f;document.querySelectorAll('.fchip').forEach(c=>c.classList.toggle('active',c===el));renderSignals();}
 function setSort(k){if(SORTK===k)SORTD*=-1;else{SORTK=k;SORTD=-1;}renderSignals();}
+function setSizeMode(m){SIZEMODE=m;updateModeUI();renderSignals();fetch('/api/config',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({atr_adaptive:m==='atr'})});}
+function updateModeUI(){const f=document.getElementById('mFixed'),a=document.getElementById('mAtr');if(!f)return;f.classList.toggle('active',SIZEMODE==='fixed');a.classList.toggle('active',SIZEMODE==='atr');document.getElementById('modehint').innerHTML=SIZEMODE==='atr'?`<b>ATR-adaptive sizing is ON</b> — stops &amp; targets come from each stock's recent volatility (×${ATR_STOPM} stop, ×${ATR_TGTM} target), risking <b>${ATR_RISK}%</b> of equity per trade. Calm stocks get tight stops, volatile ones wider — automatically. The Stop/Take-profit % above are ignored in this mode, and the live engine uses it too.`:`<b>Fixed % sizing</b> — every trade uses the Stop / Take-profit % above. Switch to ATR-adaptive for volatility-aware risk that also drives the engine.`;}
 
 // ---- engine control ----
 async function eng(path,body){const r=await fetch(path,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(body||{})});return r.json();}
@@ -563,13 +600,13 @@ function renderAccount(){
 }
 
 // ---- signals ----
-function metric(x,k,s){const e=economics(x.price,edgeWin(x),s);switch(k){case 'rank':return recRank[x.recommendation]??2;case 'conviction':return x.conviction;case 'price':return x.price;case 'change':return x.change_pct||0;case 'rsi':return x.rsi||0;case 'shares':return e.shares;case 'ev':return e.ev;case 'win':return edgeWin(x);}return 0;}
-function card(x,s){const e=economics(x.price,edgeWin(x),s);const strong=x.recommendation==='STRONG BUY'?' strong':'';const agree=x.agree?'<span class="agree">✓ both agree</span>':'';const brief=x.ai_brief?`<div class="brief">${briefHTML(x.ai_brief)}</div>`:'';return `<div class="card${strong}"><div class="top"><div><a class="tk" href="/ticker/${x.ticker}">${x.ticker}</a> <span class="meta">${x.sector}</span></div><span><span class="chip ${cls(x.recommendation)}">${x.recommendation}</span>${agree}</span></div><div class="subline">${usd(x.price)} · conv ${x.conviction.toFixed(0)}/100 · edge ${pct(edgeWin(x))} win ${sparkline(x.spark)}</div><div class="bar"><span data-w="${x.conviction}"></span></div><div class="badges">${contextBadges(x)}</div>${orderTicket(x,e,s,LAST.config.interval)}${brief}</div>`;}
-function row(x,s){if(x.error)return `<tr><td><a href="/ticker/${x.ticker}">${x.ticker}</a></td><td colspan="9" class="red">${x.error}</td></tr>`;const e=economics(x.price,edgeWin(x),s);return `<tr style="cursor:pointer" onclick="location.href='/ticker/${x.ticker}'"><td><a href="/ticker/${x.ticker}"><b>${x.ticker}</b></a> <span class="chip ${cls(x.recommendation)}">${x.recommendation}</span><div class="meta">${x.sector}</div></td><td><span class="badge ${x.trend==='Uptrend'?'green':'red'}">${x.trend||'—'}</span></td><td class="num">${x.conviction.toFixed(0)}</td><td class="num">${usd(x.price)}</td><td class="num ${(x.change_pct||0)>=0?'green':'red'}">${(x.change_pct||0)>=0?'+':''}${(x.change_pct||0).toFixed(1)}%</td><td class="num ${rsiCls(x.rsi)}">${Math.round(x.rsi)}</td><td class="num">${e.shares}</td><td class="num ${e.ev>=0?'green':'red'}">${money(e.ev)}</td><td class="num">${pct(edgeWin(x))} <span class="muted">(${x.eq1?x.eq1.edge_trades:0}t)</span></td><td>${sparkline(x.spark)}</td></tr>`;}
+function metric(x,k,s){const e=econ(x,s);switch(k){case 'rank':return recRank[x.recommendation]??2;case 'conviction':return x.conviction;case 'price':return x.price;case 'change':return x.change_pct||0;case 'rsi':return x.rsi||0;case 'shares':return e.shares;case 'ev':return e.ev;case 'win':return edgeWin(x);}return 0;}
+function card(x,s){const e=econ(x,s);const strong=x.recommendation==='STRONG BUY'?' strong':'';const agree=x.agree?'<span class="agree">✓ both agree</span>':'';const brief=x.ai_brief?`<div class="brief">${briefHTML(x.ai_brief)}</div>`:'';return `<div class="card${strong}"><div class="top"><div><a class="tk" href="/ticker/${x.ticker}">${x.ticker}</a> <span class="meta">${x.sector}</span></div><span><span class="chip ${cls(x.recommendation)}">${x.recommendation}</span>${agree}</span></div><div class="subline">${usd(x.price)} · conv ${x.conviction.toFixed(0)}/100 · edge ${pct(edgeWin(x))} win ${sparkline(x.spark)}</div><div class="bar"><span data-w="${x.conviction}"></span></div><div class="badges">${contextBadges(x)}</div>${orderTicket(x,e,s,LAST.config.interval)}${brief}</div>`;}
+function row(x,s){if(x.error)return `<tr><td><a href="/ticker/${x.ticker}">${x.ticker}</a></td><td colspan="9" class="red">${x.error}</td></tr>`;const e=econ(x,s);return `<tr style="cursor:pointer" onclick="location.href='/ticker/${x.ticker}'"><td><a href="/ticker/${x.ticker}"><b>${x.ticker}</b></a> <span class="chip ${cls(x.recommendation)}">${x.recommendation}</span><div class="meta">${x.sector}</div></td><td><span class="badge ${x.trend==='Uptrend'?'green':'red'}">${x.trend||'—'}</span></td><td class="num">${x.conviction.toFixed(0)}</td><td class="num">${usd(x.price)}</td><td class="num ${(x.change_pct||0)>=0?'green':'red'}">${(x.change_pct||0)>=0?'+':''}${(x.change_pct||0).toFixed(1)}%</td><td class="num ${rsiCls(x.rsi)}">${Math.round(x.rsi)}</td><td class="num">${e.shares}</td><td class="num ${e.ev>=0?'green':'red'}">${money(e.ev)}</td><td class="num">${pct(edgeWin(x))} <span class="muted">(${x.eq1?x.eq1.edge_trades:0}t)</span></td><td>${sparkline(x.spark)}</td></tr>`;}
 function visible(s){let arr=LAST.signals.slice();if(SEARCH)arr=arr.filter(x=>x.ticker.toLowerCase().includes(SEARCH)||(x.sector||'').toLowerCase().includes(SEARCH));if(FILTER==='buys')arr=arr.filter(x=>x.is_buy);else if(FILTER==='strong')arr=arr.filter(x=>x.recommendation==='STRONG BUY');else if(FILTER==='hold')arr=arr.filter(x=>x.recommendation==='HOLD');else if(FILTER==='sell')arr=arr.filter(x=>(x.recommendation||'').includes('SELL'));arr.sort((a,b)=>{const va=metric(a,SORTK,s),vb=metric(b,SORTK,s);return va<vb?SORTD:va>vb?-SORTD:0;});return arr;}
-function renderSignals(){if(!LAST)return;const s=getSettings();const buys=LAST.signals.filter(x=>x.is_buy&&!x.error);let tc=0,tr=0,tw=0,te=0;buys.forEach(x=>{const e=economics(x.price,edgeWin(x),s);tc+=e.cost;tr+=e.risk;tw+=e.reward;te+=e.ev;});const dep=CAPITAL?(tc/CAPITAL*100):0;document.getElementById('summary').innerHTML=[['Account equity',money(CAPITAL),''],['Buy signals',buys.length,'blue'],['Capital to deploy',money(tc)+' ('+dep.toFixed(0)+'%)',''],['Total risk (stops)',money(tr),'red'],['Profit at targets',money(tw),'green'],['Expected value',money(te),te>=0?'green':'red']].map((c,i)=>`<div class="stat" style="animation-delay:${i*40}ms"><div class="k">${c[0]}</div><div class="v ${c[2]}">${c[1]}</div></div>`).join('');const bySec={};buys.forEach(x=>bySec[x.sector]=(bySec[x.sector]||0)+1);const secs=Object.keys(bySec).sort();document.getElementById('sectors').innerHTML=secs.length?secs.map((k,i)=>`<div class="secchip" style="animation-delay:${i*40}ms">${k} <b>${bySec[k]}</b></div>`).join(''):'<span class="hint">No buy signals right now.</span>';document.getElementById('topbuys').innerHTML=buys.length?buys.map((x,i)=>card(x,s).replace('<div class="card','<div style="animation-delay:'+(i*50)+'ms" class="card')).join(''):'<div class="card"><div class="subline">No fresh buy signals right now. The scanner re-checks automatically.</div></div>';document.getElementById('allbody').innerHTML=visible(s).map(x=>row(x,s)).join('');requestAnimationFrame(()=>document.querySelectorAll('.bar>span').forEach(b=>b.style.width=b.dataset.w+'%'));document.getElementById('foot').textContent=`${LAST.signals.length} tickers monitored · refreshing every ${REFRESH/1000}s · click any ticker for charts & detail`;}
+function renderSignals(){if(!LAST)return;const s=getSettings();const buys=LAST.signals.filter(x=>x.is_buy&&!x.error);let tc=0,tr=0,tw=0,te=0;buys.forEach(x=>{const e=econ(x,s);tc+=e.cost;tr+=e.risk;tw+=e.reward;te+=e.ev;});const dep=CAPITAL?(tc/CAPITAL*100):0;document.getElementById('summary').innerHTML=[['Account equity',money(CAPITAL),''],['Buy signals',buys.length,'blue'],['Capital to deploy',money(tc)+' ('+dep.toFixed(0)+'%)',''],['Total risk (stops)',money(tr),'red'],['Profit at targets',money(tw),'green'],['Expected value',money(te),te>=0?'green':'red']].map((c,i)=>`<div class="stat" style="animation-delay:${i*40}ms"><div class="k">${c[0]}</div><div class="v ${c[2]}">${c[1]}</div></div>`).join('');const bySec={};buys.forEach(x=>bySec[x.sector]=(bySec[x.sector]||0)+1);const secs=Object.keys(bySec).sort();document.getElementById('sectors').innerHTML=secs.length?secs.map((k,i)=>`<div class="secchip" style="animation-delay:${i*40}ms">${k} <b>${bySec[k]}</b></div>`).join(''):'<span class="hint">No buy signals right now.</span>';document.getElementById('topbuys').innerHTML=buys.length?buys.map((x,i)=>card(x,s).replace('<div class="card','<div style="animation-delay:'+(i*50)+'ms" class="card')).join(''):'<div class="card"><div class="subline">No fresh buy signals right now. The scanner re-checks automatically.</div></div>';document.getElementById('allbody').innerHTML=visible(s).map(x=>row(x,s)).join('');requestAnimationFrame(()=>document.querySelectorAll('.bar>span').forEach(b=>b.style.width=b.dataset.w+'%'));document.getElementById('foot').textContent=`${LAST.signals.length} tickers monitored · refreshing every ${REFRESH/1000}s · click any ticker for full detail · build __BUILD__`;}
 
-async function tickSignals(){try{LAST=await (await fetch('/api/signals')).json();const dot=LAST.status==='ok'?'ok':(LAST.status==='error'?'error':'scanning');document.getElementById('sigstatus').innerHTML=`<span class="dot ${dot}"></span>signals ${LAST.status==='scanning'?'scanning '+LAST.config.universe+'…':LAST.status}`;const c=LAST.config;document.getElementById('cfg').textContent=`eq${c.equation_set} · ${c.interval} · ${c.universe} stocks`+(LAST.ai_enabled?' · AI on':'');document.getElementById('updated').textContent=LAST.updated?'updated '+LAST.updated:'';renderSignals();}catch(e){document.getElementById('sigstatus').innerHTML='<span class="dot error"></span>fetch error';}}
+async function tickSignals(){try{LAST=await (await fetch('/api/signals')).json();const dot=LAST.status==='ok'?'ok':(LAST.status==='error'?'error':'scanning');document.getElementById('sigstatus').innerHTML=`<span class="dot ${dot}"></span>signals ${LAST.status==='scanning'?'scanning '+LAST.config.universe+'…':LAST.status}`;const c=LAST.config;document.getElementById('cfg').textContent=`eq${c.equation_set} · ${c.interval} · ${c.universe} stocks`+(LAST.ai_enabled?' · AI on':'');document.getElementById('updated').textContent=LAST.updated?'updated '+LAST.updated:'';SIZEMODE=LAST.config.atr_adaptive?'atr':'fixed';updateModeUI();renderSignals();}catch(e){document.getElementById('sigstatus').innerHTML='<span class="dot error"></span>fetch error';}}
 async function tickAccount(){try{ACC=await (await fetch('/api/account')).json();renderAccount();}catch(e){}}
 initInputs(); tickSignals(); tickAccount(); setInterval(tickSignals,REFRESH); setInterval(tickAccount,Math.min(REFRESH,15000));
 </script></body></html>"""
@@ -589,8 +626,10 @@ _DETAIL_PAGE = """<!doctype html><html lang="en"><head>
 <div class="wrap">
   <div class="disclaimer">⚠️ Educational only — not financial advice. Backtested edge is historical, not a guarantee.</div>
   <h2>📋 Your order ticket</h2><div id="planbox"></div>
-  <h2>📈 Price &amp; signals · Equity curve (backtest)</h2>
-  <div class="grid2"><div class="chartbox"><canvas id="priceChart"></canvas></div><div class="chartbox"><canvas id="equityChart"></canvas></div></div>
+  <h2>📈 Price &amp; signals</h2>
+  <div class="chartbox" style="margin-bottom:18px"><canvas id="priceChart"></canvas></div>
+  <h2>💹 Equity curve (backtest)</h2>
+  <div class="chartbox"><canvas id="equityChart"></canvas></div>
   <h2>🧮 Edge — this strategy on __TICKER__</h2><div class="summary" id="stats"></div>
   <h2>🕓 Recent signal history</h2>
   <div class="tablewrap"><table><thead><tr><th>Date</th><th>Signal</th><th class="num">Price</th></tr></thead><tbody id="hist"></tbody></table></div>
@@ -602,6 +641,6 @@ const TICKER="__TICKER__"; let EQ=1, priceChart, equityChart;
 function setEq(n){EQ=n;document.getElementById('b1').classList.toggle('active',n===1);document.getElementById('b2').classList.toggle('active',n===2);load();}
 function statCard(k,v,c){return `<div class="stat"><div class="k">${k}</div><div class="v ${c||''}">${v}</div></div>`;}
 function drawCharts(d){if(typeof Chart==='undefined'){document.getElementById('foot').textContent='(charts need internet to load chart library)';return;}const ax={grid:{color:'#1a2230'},ticks:{color:'#8a96a8',maxTicksLimit:8}};if(priceChart)priceChart.destroy();priceChart=new Chart(document.getElementById('priceChart'),{type:'line',data:{labels:d.chart.labels,datasets:[{label:'Price',data:d.chart.price,borderColor:'#5aa9ff',borderWidth:1.6,pointRadius:0,tension:.12},{label:'Buy',data:d.chart.buys,borderColor:'#41d18b',backgroundColor:'#41d18b',showLine:false,pointRadius:6,pointStyle:'triangle'},{label:'Sell',data:d.chart.sells,borderColor:'#ff5d6c',backgroundColor:'#ff5d6c',showLine:false,pointRadius:6,pointStyle:'triangle',rotation:180}]},options:{responsive:true,maintainAspectRatio:false,plugins:{legend:{labels:{color:'#e8eef7'}}},scales:{x:ax,y:ax}}});if(equityChart)equityChart.destroy();equityChart=new Chart(document.getElementById('equityChart'),{type:'line',data:{labels:d.equity.labels,datasets:[{label:'Equity ($)',data:d.equity.values,borderColor:'#41d18b',borderWidth:1.6,pointRadius:0,fill:true,backgroundColor:'rgba(65,209,139,.09)',tension:.12}]},options:{responsive:true,maintainAspectRatio:false,plugins:{legend:{labels:{color:'#e8eef7'}}},scales:{x:ax,y:ax}}});}
-async function load(){document.getElementById('head').textContent='loading…';const d=await (await fetch(`/api/ticker/${TICKER}?eq=${EQ}`)).json();if(d.error){document.getElementById('head').innerHTML=`<span class="red">${d.error}</span>`;return;}document.getElementById('head').innerHTML=`<span class="chip ${cls(d.recommendation)}">${d.recommendation}</span> · ${d.sector} · ${usd(d.price)} · conv ${d.conviction.toFixed(0)}/100`;const s=getSettings(),e=economics(d.price,(d.stats?d.stats.win_rate:0.5),s);document.getElementById('planbox').innerHTML=`<div class="card">${orderTicket(d,e,s,'bar')}</div>`;const st=d.stats;document.getElementById('stats').innerHTML=statCard('Win rate',(st.win_rate*100).toFixed(0)+'%','blue')+statCard('Total return',(st.return_pct>=0?'+':'')+st.return_pct.toFixed(0)+'%',st.return_pct>=0?'green':'red')+statCard('Trades',st.trades)+statCard('Avg win',money(st.avg_win),'green')+statCard('Avg loss',money(st.avg_loss),'red')+statCard('Max drawdown',st.max_dd_pct.toFixed(1)+'%','red')+statCard('Sharpe',st.sharpe.toFixed(2))+statCard('Profit factor',st.profit_factor.toFixed(2));document.getElementById('hist').innerHTML=(d.history||[]).map(h=>`<tr><td>${h.date}</td><td><span class="chip ${h.action}">${h.action}</span></td><td class="num">${usd(h.price)}</td></tr>`).join('')||'<tr><td colspan="3" class="muted">no signals in range</td></tr>';document.getElementById('foot').textContent=`as of ${d.asof} · equation set ${d.equation_set} · ${st.trades} historical trades`;drawCharts(d);}
+async function load(){document.getElementById('head').textContent='loading…';const d=await (await fetch(`/api/ticker/${TICKER}?eq=${EQ}`)).json();if(d.error){document.getElementById('head').innerHTML=`<span class="red">${d.error}</span>`;return;}document.getElementById('head').innerHTML=`<span class="chip ${cls(d.recommendation)}">${d.recommendation}</span> · ${d.sector} · ${usd(d.price)} · conv ${d.conviction.toFixed(0)}/100`;SIZEMODE=d.atr_adaptive?'atr':'fixed';const s=getSettings();const _x={ticker:d.ticker,recommendation:d.recommendation,price:d.price,atr:d.atr,atr_stop:d.atr_stop,atr_target:d.atr_target,eq1:{edge_win_rate:(d.stats?d.stats.win_rate:0.5)}};const e=econ(_x,s);document.getElementById('planbox').innerHTML=`<div class="card">${orderTicket(d,e,s,'bar')}</div>`;const st=d.stats;document.getElementById('stats').innerHTML=statCard('Win rate',(st.win_rate*100).toFixed(0)+'%','blue')+statCard('Total return',(st.return_pct>=0?'+':'')+st.return_pct.toFixed(0)+'%',st.return_pct>=0?'green':'red')+statCard('Trades',st.trades)+statCard('Avg win',money(st.avg_win),'green')+statCard('Avg loss',money(st.avg_loss),'red')+statCard('Max drawdown',st.max_dd_pct.toFixed(1)+'%','red')+statCard('Sharpe',st.sharpe.toFixed(2))+statCard('Profit factor',st.profit_factor.toFixed(2));document.getElementById('hist').innerHTML=(d.history||[]).map(h=>`<tr><td>${h.date}</td><td><span class="chip ${h.action}">${h.action}</span></td><td class="num">${usd(h.price)}</td></tr>`).join('')||'<tr><td colspan="3" class="muted">no signals in range</td></tr>';document.getElementById('foot').textContent=`as of ${d.asof} · equation set ${d.equation_set} · ${st.trades} historical trades`;drawCharts(d);}
 fetch('/api/account').then(r=>r.json()).then(a=>{if(a&&a.account)CAPITAL=a.account.equity;}).catch(()=>{}).finally(()=>{load();setInterval(load,__REFRESH__*1000);});
 </script></body></html>"""
