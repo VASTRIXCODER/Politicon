@@ -104,47 +104,68 @@ class TradingEngine:
     # ------------------------------------------------------------------ #
     # Preview (dry-run, no broker, no keys)
     # ------------------------------------------------------------------ #
-    def preview(self) -> None:
-        """Print exactly what the engine WOULD do this cycle. Places no orders."""
+    def preview_rows(self) -> list:
+        """Structured 'what it would do this cycle' rows (no orders). For the UI/CLI."""
         eq = self.config.account_size
-        print("=" * 78)
-        print(f" AUTO-TRADE PREVIEW (dry run, no orders) | policy={self.config.autotrade_signal} "
-              f"min_conv={self.config.autotrade_min_conviction:.0f} "
-              f"uptrend_only={self.config.autotrade_require_uptrend}")
-        print(f" Account ${eq:,.0f} | max {self.config.max_position_pct:.0f}%/pos | "
-              f"stop {self.config.stop_loss_pct:.0f}% | target {self.config.take_profit_pct:.0f}%")
-        print("=" * 78)
-        buys = sells = 0
+        rows = []
         for ticker in self.config.tickers:
             try:
                 sig = self.scanner.scan_ticker(ticker)
             except Exception as exc:
-                print(f"  {ticker:<6} scan error: {exc}")
+                rows.append({"ticker": ticker, "action": "ERROR", "reason": str(exc)})
                 continue
             if sig.error:
-                print(f"  {ticker:<6} {sig.error}")
+                rows.append({"ticker": ticker, "action": "ERROR", "reason": sig.error})
                 continue
             action = self.decide(sig)
+            row = {"ticker": ticker, "sector": sig.sector, "recommendation": sig.recommendation,
+                   "conviction": sig.conviction, "trend": sig.trend, "price": sig.price,
+                   "action": "HOLD", "reason": ""}
             if action == "BUY":
                 d = self.risk.size_position(sig.price, eq, eq,
                                             max_pct=self.config.position_pct_for(ticker))
                 if d.allowed:
-                    buys += 1
-                    print(f"  ✅ BUY  {ticker:<6} {int(d.qty)} sh @ ~${sig.price:,.2f} "
-                          f"(${d.qty * sig.price:,.0f}) | stop ${self.risk.stop_price(sig.price):,.2f} "
-                          f"target ${self.risk.take_profit_price(sig.price):,.2f} | "
-                          f"{sig.recommendation} conv {sig.conviction:.0f} {sig.trend}")
+                    row.update(action="BUY", shares=int(d.qty), cost=round(d.qty * sig.price, 2),
+                               stop=round(self.risk.stop_price(sig.price), 2),
+                               target=round(self.risk.take_profit_price(sig.price), 2))
                 else:
-                    print(f"  ⚠️  BUY  {ticker:<6} skipped: {d.reason}")
+                    row.update(action="SKIP", reason=d.reason)
             elif action == "SELL":
-                sells += 1
-                print(f"  ❎ SELL {ticker:<6} exit @ ~${sig.price:,.2f} | {sig.recommendation}")
+                row.update(action="SELL")
             else:
-                print(f"  ·  hold {ticker:<6} {sig.recommendation:<11} conv {sig.conviction:>3.0f} "
-                      f"{sig.trend:<9} — {self._reject_reason(sig)}")
+                row.update(action="HOLD", reason=self._reject_reason(sig))
+            rows.append(row)
+        return rows
+
+    def preview(self) -> None:
+        """Print exactly what the engine WOULD do this cycle. Places no orders."""
+        print("=" * 78)
+        print(f" AUTO-TRADE PREVIEW (dry run, no orders) | policy={self.config.autotrade_signal} "
+              f"min_conv={self.config.autotrade_min_conviction:.0f} "
+              f"uptrend_only={self.config.autotrade_require_uptrend}")
+        print(f" Account ${self.config.account_size:,.0f} | max {self.config.max_position_pct:.0f}%/pos | "
+              f"stop {self.config.stop_loss_pct:.0f}% | target {self.config.take_profit_pct:.0f}%")
+        print("=" * 78)
+        buys = sells = 0
+        for r in self.preview_rows():
+            t = r["ticker"]
+            if r["action"] == "ERROR":
+                print(f"  {t:<6} error: {r['reason']}")
+            elif r["action"] == "BUY":
+                buys += 1
+                print(f"  ✅ BUY  {t:<6} {r['shares']} sh @ ~${r['price']:,.2f} (${r['cost']:,.0f}) | "
+                      f"stop ${r['stop']:,.2f} target ${r['target']:,.2f} | "
+                      f"{r['recommendation']} conv {r['conviction']:.0f} {r['trend']}")
+            elif r["action"] == "SELL":
+                sells += 1
+                print(f"  ❎ SELL {t:<6} exit @ ~${r['price']:,.2f} | {r['recommendation']}")
+            elif r["action"] == "SKIP":
+                print(f"  ⚠️  BUY  {t:<6} skipped: {r['reason']}")
+            else:
+                print(f"  ·  hold {t:<6} {r['recommendation']:<11} conv {r['conviction']:>3.0f} "
+                      f"{r['trend']:<9} — {r['reason']}")
         print("-" * 78)
-        print(f"  Would place {buys} buy and {sells} sell order(s). "
-              f"No orders were sent (dry run).")
+        print(f"  Would place {buys} buy and {sells} sell order(s). No orders were sent (dry run).")
         print("  Start paper trading for real (no money) with:  python main.py autotrade")
 
     # ------------------------------------------------------------------ #
