@@ -53,6 +53,23 @@ def cmd_run(_args) -> int:
     return 0
 
 
+def cmd_autotrade(args) -> int:
+    """Auto-trade what the dashboard shows. --dry-run previews with no broker/keys."""
+    from engine import TradingEngine
+    if getattr(args, "dry_run", False):
+        TradingEngine(CONFIG, dry_run=True).preview()
+        return 0
+    problems = [p for p in CONFIG.validate() if "TRADING_MODE=live" not in p]
+    if problems:
+        print("Refusing to start -- fix configuration first:")
+        for p in problems:
+            print(f"  - {p}")
+        print("Tip: `python main.py autotrade --dry-run` previews decisions with no keys needed.")
+        return 1
+    TradingEngine(CONFIG).run()
+    return 0
+
+
 def cmd_dashboard(_args) -> int:
     from dashboard import Dashboard
     Dashboard(CONFIG).run()
@@ -177,7 +194,10 @@ def build_parser() -> argparse.ArgumentParser:
     sub.add_parser("check", help="run connectivity / config checks")
     sub.add_parser("scan", help="signals-only: print ranked actionable signals (no broker)")
     sub.add_parser("web", help="signals-only: launch the web dashboard (no broker)")
-    sub.add_parser("run", help="start the live trading loop (needs a broker)")
+    at = sub.add_parser("autotrade", help="auto-trade the dashboard's signals (paper by default)")
+    at.add_argument("--dry-run", action="store_true",
+                    help="preview what it WOULD do — no orders, no broker/keys needed")
+    sub.add_parser("run", help="alias for `autotrade` (live loop, needs a broker)")
     sub.add_parser("dashboard", help="launch the broker monitoring dashboard")
     sub.add_parser("signals", help="print the latest raw signal/votes for each ticker")
     sub.add_parser("report", help="print a performance report from the trade log")
@@ -206,6 +226,7 @@ _HANDLERS = {
     "check": cmd_check,
     "scan": cmd_scan,
     "web": cmd_web,
+    "autotrade": cmd_autotrade,
     "run": cmd_run,
     "dashboard": cmd_dashboard,
     "signals": cmd_signals,

@@ -35,41 +35,38 @@ BASE_DIR = Path(__file__).resolve().parent
 # A diverse default universe across sectors (used when TICKERS isn't set in .env).
 DEFAULT_TICKERS = [
     # Technology
-    "AAPL", "MSFT", "NVDA", "AMD", "CRM", "ADBE",
+    "AAPL", "MSFT", "NVDA", "AMD", "CRM", "ADBE", "ORCL", "INTC", "CSCO", "QCOM", "AVGO", "TXN",
     # Communication
-    "GOOGL", "META", "NFLX", "DIS",
+    "GOOGL", "META", "NFLX", "DIS", "T", "VZ",
     # Consumer Discretionary
-    "AMZN", "HD", "MCD",
+    "AMZN", "HD", "MCD", "NKE", "SBUX", "TSLA", "LOW",
     # Consumer Staples
-    "WMT", "COST", "KO", "PG",
+    "WMT", "COST", "KO", "PG", "PEP",
     # Financials
-    "JPM", "BAC", "V", "MA", "GS",
+    "JPM", "BAC", "V", "MA", "GS", "WFC", "MS", "C",
     # Healthcare
-    "UNH", "JNJ", "LLY", "ABBV",
+    "UNH", "JNJ", "LLY", "ABBV", "PFE", "MRK", "TMO",
     # Energy
-    "XOM", "CVX",
+    "XOM", "CVX", "COP",
     # Industrials
-    "CAT", "BA",
+    "CAT", "BA", "GE", "HON", "UPS",
     # Index ETFs
-    "SPY", "QQQ", "IWM",
+    "SPY", "QQQ", "IWM", "DIA",
 ]
 
-# Sector tags so the dashboard can show diversification.
-SECTORS = {
-    "AAPL": "Technology", "MSFT": "Technology", "NVDA": "Technology",
-    "AMD": "Technology", "CRM": "Technology", "ADBE": "Technology",
-    "GOOGL": "Communication", "META": "Communication", "NFLX": "Communication",
-    "DIS": "Communication",
-    "AMZN": "Consumer Disc.", "HD": "Consumer Disc.", "MCD": "Consumer Disc.",
-    "WMT": "Consumer Staples", "COST": "Consumer Staples", "KO": "Consumer Staples",
-    "PG": "Consumer Staples",
-    "JPM": "Financials", "BAC": "Financials", "V": "Financials",
-    "MA": "Financials", "GS": "Financials",
-    "UNH": "Healthcare", "JNJ": "Healthcare", "LLY": "Healthcare", "ABBV": "Healthcare",
-    "XOM": "Energy", "CVX": "Energy",
-    "CAT": "Industrials", "BA": "Industrials",
-    "SPY": "Index ETF", "QQQ": "Index ETF", "IWM": "Index ETF",
+_SECTOR_GROUPS = {
+    "Technology": ["AAPL", "MSFT", "NVDA", "AMD", "CRM", "ADBE", "ORCL", "INTC", "CSCO", "QCOM", "AVGO", "TXN"],
+    "Communication": ["GOOGL", "META", "NFLX", "DIS", "T", "VZ"],
+    "Consumer Disc.": ["AMZN", "HD", "MCD", "NKE", "SBUX", "TSLA", "LOW"],
+    "Consumer Staples": ["WMT", "COST", "KO", "PG", "PEP"],
+    "Financials": ["JPM", "BAC", "V", "MA", "GS", "WFC", "MS", "C"],
+    "Healthcare": ["UNH", "JNJ", "LLY", "ABBV", "PFE", "MRK", "TMO"],
+    "Energy": ["XOM", "CVX", "COP"],
+    "Industrials": ["CAT", "BA", "GE", "HON", "UPS"],
+    "Index ETF": ["SPY", "QQQ", "IWM", "DIA"],
 }
+# Flattened ticker -> sector map.
+SECTORS = {t: sec for sec, names in _SECTOR_GROUPS.items() for t in names}
 
 
 # --------------------------------------------------------------------------- #
@@ -133,7 +130,7 @@ class Config:
         default_factory=lambda: _list("TICKERS", DEFAULT_TICKERS)
     )
     # Parallel workers for the multi-ticker scan (keeps a big universe fast).
-    scan_workers: int = field(default_factory=lambda: _int("SCAN_WORKERS", 8))
+    scan_workers: int = field(default_factory=lambda: _int("SCAN_WORKERS", 12))
     interval: str = field(default_factory=lambda: _str("INTERVAL", "1d"))
     data_source: str = field(default_factory=lambda: _str("DATA_SOURCE", "yfinance"))
 
@@ -162,6 +159,21 @@ class Config:
     flatten_on_daily_loss: bool = field(
         default_factory=lambda: _bool("FLATTEN_ON_DAILY_LOSS", False)
     )
+
+    # --- auto-trading policy (which dashboard signals the engine acts on) --- #
+    # "strong" = only act on STRONG BUY (both equations agree) -- conservative.
+    # "buy"    = act on BUY or STRONG BUY.
+    autotrade_signal: str = field(default_factory=lambda: _str("AUTOTRADE_SIGNAL", "strong"))
+    # Only enter when conviction >= this (0-100). 0 disables the gate.
+    autotrade_min_conviction: float = field(
+        default_factory=lambda: _float("AUTOTRADE_MIN_CONVICTION", 0.0)
+    )
+    # Only enter when the ticker is in an uptrend (price >= SMA50) -- market-tuned.
+    autotrade_require_uptrend: bool = field(
+        default_factory=lambda: _bool("AUTOTRADE_REQUIRE_UPTREND", True)
+    )
+    # Global preview switch (the CLI --dry-run flag is the usual way to set this).
+    dry_run: bool = field(default_factory=lambda: _bool("DRY_RUN", False))
 
     # --- safety ------------------------------------------------------------ #
     # The kill switch is re-read from the environment on every loop iteration so

@@ -33,11 +33,30 @@ from dataclasses import dataclass, field
 from datetime import datetime, timedelta, timezone
 from typing import Dict, List, Optional
 
+import numpy as np
+
 from backtest import simulate
 from data import fetch_history_yf
 from signals import SignalGenerator, generate_signals
 
 log = logging.getLogger("scanner")
+
+
+def _rsi14(closes, period: int = 14) -> float:
+    """Textbook Wilder RSI on chronological closes (context display only)."""
+    closes = np.asarray(closes, dtype=float)
+    if len(closes) <= period:
+        return 50.0
+    d = np.diff(closes)
+    up = np.clip(d, 0, None)
+    dn = -np.clip(d, None, 0)
+    ru, rd = up[:period].mean(), dn[:period].mean()
+    for i in range(period, len(d)):
+        ru = (ru * (period - 1) + up[i]) / period
+        rd = (rd * (period - 1) + dn[i]) / period
+    if rd == 0:
+        return 100.0
+    return 100.0 - 100.0 / (1.0 + ru / rd)
 
 _REC_RANK = {
     "STRONG BUY": 5, "BUY": 4, "HOLD": 3, "WAIT": 2, "SELL": 1, "STRONG SELL": 0,
@@ -85,6 +104,13 @@ class TickerSignal:
     ev_pct: float = 0.0
     plan: List[str] = field(default_factory=list)
     price_summary: str = ""
+    # context indicators (depth / "why")
+    trend: str = ""
+    rsi: float = 50.0
+    momentum: float = 0.0
+    vol_note: str = ""
+    change_pct: float = 0.0
+    spark: List[float] = field(default_factory=list)
     eq1: Optional[EquationView] = None
     eq2: Optional[EquationView] = None
     ai_brief: Optional[str] = None
@@ -119,6 +145,8 @@ class TickerSignal:
             "reward_pct": self.reward_pct, "risk_reward": self.risk_reward,
             "ev_dollars": self.ev_dollars, "ev_pct": self.ev_pct, "plan": self.plan,
             "price_summary": self.price_summary, "equation_summary": self.equation_summary,
+            "trend": self.trend, "rsi": self.rsi, "momentum": self.momentum,
+            "vol_note": self.vol_note, "change_pct": self.change_pct, "spark": self.spark,
             "ai_brief": self.ai_brief, "error": self.error, "asof": self.asof,
         }
         drive = self.eq1 or self.eq2
@@ -208,6 +236,13 @@ class Scanner:
             ev_pct=round(ev_pct, 2), price_summary=self._price_summary(df),
             eq1=eq1, eq2=eq2, asof=_now_iso(),
         )
+        ctx = self._context(df)
+        sig.trend = ctx["trend"]
+        sig.rsi = ctx["rsi"]
+        sig.momentum = ctx["momentum"]
+        sig.vol_note = ctx["vol_note"]
+        sig.change_pct = ctx["change_pct"]
+        sig.spark = ctx["spark"]
         sig.plan = self._build_plan(sig)
         return sig
 
@@ -310,28 +345,16 @@ class Scanner:
         total = bv + sv
         conviction = (abs(bv - sv) / total * 100.0) if total else 0.0
 
-        try:
-            res = simulate(
-                df, ticker="scan", equation_set=equation_set,
-                lookback=self.config.lookback_length,
-                signal_value=self.config.signal_value, interval=self.config.interval,
-                position_pct=100.0,
-            )
-            rep = res.report
-            edge = EquationView(
-                stance=stance, fresh=fresh, conviction=round(conviction, 1),
-                buy_votes=bv, sell_votes=sv, edge_win_rate=rep["win_rate"],
-                edge_return_pct=round(rep["total_return_pct"], 1), edge_trades=rep["trades"],
-                avg_win=round(rep["avg_win"], 2), avg_loss=round(rep["avg_loss"], 2),
-                max_dd_pct=round(rep["largest_drawdown_pct"], 1),
-                sharpe=round(rep["sharpe"], 2),
-                profit_factor=round(min(rep["profit_factor"], 99.9), 2),
-            )
-        except Exception:
-            edge = EquationView(stance=stance, fresh=fresh, conviction=round(conviction, 1),
-                                buy_votes=bv, sell_votes=sv, edge_win_rate=0.0,
-                                edge_return_pct=0.0, edge_trades=0)
-        return edge
+        # Edge = the Pine Script's OWN win/trade accounting (its native, central
+        # measure of success) — also far faster than a full portfolio backtest,
+        # which is what makes a large universe practical. The detail page still
+        # runs the full backtest for return/drawdown/Sharpe + the equity curve.
+        win_rate = (gen.wins / gen.trades) if gen.trades else 0.0
+        return EquationView(
+            stance=stance, fresh=fresh, conviction=round(conviction, 1),
+            buy_votes=bv, sell_votes=sv, edge_win_rate=win_rate,
+            edge_return_pct=0.0, edge_trades=gen.trades,
+        )
 
     @staticmethod
     def _combine(eq1: EquationView, eq2: EquationView):
@@ -422,6 +445,23 @@ class Scanner:
         df = fetch_history_yf(ticker, yf_interval, start.strftime("%Y-%m-%d"))
         self._df_cache[ticker] = (time.time(), df)
         return df
+
+    @staticmethod
+    def _context(df) -> Dict:
+        """Cheap supporting indicators shown for depth (don't change the signal)."""
+        closes = df["close"].to_numpy(dtype=float)
+        vols = df["volume"].to_numpy(dtype=float)
+        last = float(closes[-1])
+        sma50 = float(closes[-50:].mean()) if len(closes) >= 50 else float(closes.mean())
+        v20 = float(vols[-20:].mean()) if len(vols) >= 20 else float(vols.mean())
+        return {
+            "trend": "Uptrend" if last >= sma50 else "Downtrend",
+            "rsi": round(_rsi14(closes), 0),
+            "momentum": round((last / closes[-11] - 1) * 100, 1) if len(closes) > 11 else 0.0,
+            "vol_note": "Above avg" if (len(vols) and vols[-1] > v20) else "Below avg",
+            "change_pct": round((last / closes[-21] - 1) * 100, 1) if len(closes) > 21 else 0.0,
+            "spark": [round(float(x), 2) for x in closes[-32:]],
+        }
 
     @staticmethod
     def _price_summary(df) -> str:
