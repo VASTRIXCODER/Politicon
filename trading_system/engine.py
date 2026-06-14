@@ -39,6 +39,16 @@ from scanner import Scanner, TickerSignal
 log = logging.getLogger("engine")
 
 
+def _fmt_dur(secs: float) -> str:
+    if secs >= 86400:
+        return f"{secs / 86400:.0f}d"
+    if secs >= 3600:
+        return f"{secs / 3600:.0f}h"
+    if secs >= 60:
+        return f"{secs / 60:.0f}m"
+    return f"{secs:.0f}s"
+
+
 class TradingEngine:
     def __init__(
         self,
@@ -165,6 +175,8 @@ class TradingEngine:
                 log.exception("error during trading step")
 
             next_run += interval
+            log.info("idle until next cycle (~%s) -- engine is running; Ctrl-C to stop.",
+                     _fmt_dur(interval))
             while not self._stop and time.monotonic() < next_run:
                 if not self.dry_run and self.risk.kill_switch_active():
                     self._handle_kill_switch()
@@ -213,22 +225,40 @@ class TradingEngine:
             except Exception as exc:
                 log.warning("could not read market clock: %s", exc)
 
+        opened = closed = errors = 0
         for ticker in self.config.tickers:
             try:
-                self._process_ticker(ticker, account, positions, open_trades,
-                                     market_open=market_open, halt_new_entries=halt_new_entries)
+                r = self._process_ticker(ticker, account, positions, open_trades,
+                                         market_open=market_open, halt_new_entries=halt_new_entries)
+                if r == "open":
+                    opened += 1
+                elif r == "close":
+                    closed += 1
+                elif r == "error":
+                    errors += 1
             except Exception:
                 log.exception("error processing %s", ticker)
+                errors += 1
+
+        holding = len(self.db.get_open_trades())
+        log.info("cycle complete: scanned %d/%d, market %s, holding %d position(s), "
+                 "%d opened / %d closed this cycle",
+                 len(self.config.tickers) - errors, len(self.config.tickers),
+                 "OPEN" if market_open else "CLOSED", holding, opened, closed)
+        if not self.dry_run and self.config.require_market_open and not market_open:
+            log.info("market is closed (weekend / after-hours) -- signals are still computed, "
+                     "but new entries wait until it reopens.")
 
     def _process_ticker(self, ticker, account, positions, open_trades,
-                        *, market_open, halt_new_entries) -> None:
+                        *, market_open, halt_new_entries) -> Optional[str]:
         sig = self.scanner.scan_ticker(ticker)
         if sig.error:
             log.debug("%s scan error: %s", ticker, sig.error)
-            return
+            return "error"
         action = self.decide(sig)
         current_price = self._latest_price(ticker, sig.price)
         open_trade = open_trades.get(ticker)
+        did: Optional[str] = None
 
         # 1. protective exits first
         if open_trade and current_price > 0:
@@ -238,6 +268,7 @@ class TradingEngine:
                 open_trades.pop(ticker, None)
                 positions.pop(ticker, None)
                 open_trade = None
+                did = "close"
 
         # 2. signal-driven exit
         if action == "SELL" and open_trade:
@@ -245,20 +276,23 @@ class TradingEngine:
             open_trades.pop(ticker, None)
             positions.pop(ticker, None)
             open_trade = None
+            did = "close"
 
         # 3. signal-driven entry
         if action == "BUY" and open_trade is None:
             if halt_new_entries:
                 log.info("%s BUY suppressed (daily-loss halt).", ticker)
-                return
+                return did
             if not self.dry_run and self.config.require_market_open and not market_open:
-                log.info("%s BUY suppressed (market closed).", ticker)
-                return
+                log.info("%s BUY signal -- suppressed (market closed).", ticker)
+                return did
             can_open, why = self.risk.can_open_new(len(open_trades))
             if not can_open:
                 log.info("%s BUY suppressed (%s).", ticker, why)
-                return
+                return did
             self._open(ticker, account, current_price, open_trades, sig)
+            did = "open"
+        return did
 
     # ------------------------------------------------------------------ #
     # Order helpers (dry-run guarded)
