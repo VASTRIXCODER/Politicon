@@ -175,6 +175,17 @@ class Config:
     # Global preview switch (the CLI --dry-run flag is the usual way to set this).
     dry_run: bool = field(default_factory=lambda: _bool("DRY_RUN", False))
 
+    # --- ATR-adaptive (volatility-based) risk ----------------------------- #
+    # When on, stops/targets/sizing adapt to each stock's recent volatility
+    # (Average True Range) instead of fixed percentages. The default sizing
+    # risks ATR_RISK_PCT of equity per trade, with the stop distance setting the
+    # share count -- proper volatility-normalised risk.
+    atr_adaptive: bool = field(default_factory=lambda: _bool("ATR_ADAPTIVE", False))
+    atr_period: int = field(default_factory=lambda: _int("ATR_PERIOD", 14))
+    atr_stop_mult: float = field(default_factory=lambda: _float("ATR_STOP_MULT", 2.0))
+    atr_target_mult: float = field(default_factory=lambda: _float("ATR_TARGET_MULT", 4.0))
+    atr_risk_pct: float = field(default_factory=lambda: _float("ATR_RISK_PCT", 1.0))
+
     # --- safety ------------------------------------------------------------ #
     # The kill switch is re-read from the environment on every loop iteration so
     # it can be flipped without restarting the process.

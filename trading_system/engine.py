@@ -104,6 +104,22 @@ class TradingEngine:
     # ------------------------------------------------------------------ #
     # Preview (dry-run, no broker, no keys)
     # ------------------------------------------------------------------ #
+    # ------------------------------------------------------------------ #
+    # Sizing / level helpers (fixed-% or ATR-adaptive)
+    # ------------------------------------------------------------------ #
+    def _size(self, price, sig, equity, buying_power):
+        if self.config.atr_adaptive and sig and getattr(sig, "atr", 0) > 0:
+            return self.risk.size_position_atr(price, sig.atr, equity, buying_power)
+        ticker = sig.ticker if sig else ""
+        return self.risk.size_position(price, equity, buying_power,
+                                       max_pct=self.config.position_pct_for(ticker))
+
+    def _stop_target(self, price, sig):
+        if self.config.atr_adaptive and sig and getattr(sig, "atr", 0) > 0:
+            return (self.risk.atr_stop_price(price, sig.atr),
+                    self.risk.atr_take_profit_price(price, sig.atr))
+        return self.risk.stop_price(price), self.risk.take_profit_price(price)
+
     def preview_rows(self) -> list:
         """Structured 'what it would do this cycle' rows (no orders). For the UI/CLI."""
         eq = self.config.account_size
@@ -122,12 +138,11 @@ class TradingEngine:
                    "conviction": sig.conviction, "trend": sig.trend, "price": sig.price,
                    "action": "HOLD", "reason": ""}
             if action == "BUY":
-                d = self.risk.size_position(sig.price, eq, eq,
-                                            max_pct=self.config.position_pct_for(ticker))
+                d = self._size(sig.price, sig, eq, eq)
                 if d.allowed:
+                    st, tg = self._stop_target(sig.price, sig)
                     row.update(action="BUY", shares=int(d.qty), cost=round(d.qty * sig.price, 2),
-                               stop=round(self.risk.stop_price(sig.price), 2),
-                               target=round(self.risk.take_profit_price(sig.price), 2))
+                               stop=round(st, 2), target=round(tg, 2))
                 else:
                     row.update(action="SKIP", reason=d.reason)
             elif action == "SELL":
@@ -322,17 +337,16 @@ class TradingEngine:
         if ref_price <= 0:
             log.warning("%s: no price available, skipping entry.", ticker)
             return
-        decision = self.risk.size_position(ref_price, account.equity, account.buying_power,
-                                           max_pct=self.config.position_pct_for(ticker))
+        decision = self._size(ref_price, sig, account.equity, account.buying_power)
         if not decision.allowed:
             log.info("%s BUY skipped: %s", ticker, decision.reason)
             return
 
         tag = f"{sig.recommendation} conv {sig.conviction:.0f}" if sig else ""
         if self.dry_run:
+            ds, dt = self._stop_target(ref_price, sig)
             log.info("[DRY RUN] would BUY %s %.4f sh @ ~%.2f (stop %.2f / target %.2f) [%s]",
-                     ticker, decision.qty, ref_price, self.risk.stop_price(ref_price),
-                     self.risk.take_profit_price(ref_price), tag)
+                     ticker, decision.qty, ref_price, ds, dt, tag)
             return
 
         log.info("%s BUY %.4f @ ~%.2f [%s]", ticker, decision.qty, ref_price, tag)
@@ -342,8 +356,7 @@ class TradingEngine:
             log.error("%s order failed: %s", ticker, exc)
             return
         fill = self._resolve_fill_price(ticker, ref_price)
-        stop = self.risk.stop_price(fill)
-        target = self.risk.take_profit_price(fill)
+        stop, target = self._stop_target(fill, sig)
         trade_id = self.db.record_entry(
             ticker=ticker, equation_set=self.config.equation_set, qty=decision.qty,
             entry_price=fill, stop_price=stop, take_profit_price=target,

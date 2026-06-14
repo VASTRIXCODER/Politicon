@@ -40,6 +40,51 @@ def cmd_check(_args) -> int:
     return run_checks()
 
 
+def cmd_testorder(args) -> int:
+    """Place a tiny PAPER order to prove the bot can execute, then clean up."""
+    import time
+    if CONFIG.is_live and not args.force:
+        print("Refusing: TRADING_MODE=live would place a REAL order.")
+        print("Switch to paper, or pass --force if you really mean to test live.")
+        return 1
+    if CONFIG.broker == "alpaca" and not (CONFIG.alpaca_api_key and CONFIG.alpaca_secret_key):
+        print("No Alpaca keys found in .env (ALPACA_API_KEY / ALPACA_SECRET_KEY).")
+        return 1
+    from broker import build_broker
+    try:
+        broker = build_broker(CONFIG)
+        acct = broker.get_account()
+    except Exception as exc:
+        print(f"Could not connect to the broker: {exc}")
+        return 1
+    mode = "PAPER" if getattr(broker, "paper", True) else "LIVE"
+    print(f"Connected: {mode} account | equity ${acct.equity:,.2f} | "
+          f"buying power ${acct.buying_power:,.2f}")
+    ticker, qty = args.ticker.upper(), args.qty
+    print(f"Placing a TEST market BUY: {qty} share(s) of {ticker} ...")
+    try:
+        order_id = broker.submit_market_order(ticker, qty, "buy")
+    except Exception as exc:
+        print(f"❌ Order was REJECTED by Alpaca: {exc}")
+        return 1
+    print(f"✅ Order ACCEPTED by Alpaca — id {order_id}")
+    time.sleep(2.0)
+    pos = broker.get_position(ticker)
+    if pos and pos.qty > 0:
+        print(f"   Filled — you now hold {pos.qty} {ticker} @ ${pos.avg_entry_price:,.2f}.")
+        if not args.keep:
+            broker.close_position(ticker)
+            print("   Cleaned up: sent an order to close the test position.")
+    else:
+        try:
+            broker.cancel_all_orders()
+            print("   Market closed, so it queued — cancelled it to keep your account clean.")
+        except Exception:
+            pass
+    print("\n✅ Confirmed: the bot CAN place orders on your Alpaca account.")
+    return 0
+
+
 def cmd_run(_args) -> int:
     problems = [p for p in CONFIG.validate() if "TRADING_MODE=live" not in p]
     if problems:
@@ -192,6 +237,11 @@ def build_parser() -> argparse.ArgumentParser:
     sub = p.add_subparsers(dest="command", required=True)
 
     sub.add_parser("check", help="run connectivity / config checks")
+    to = sub.add_parser("testorder", help="place a tiny PAPER order to prove execution works, then clean up")
+    to.add_argument("--ticker", default="AAPL")
+    to.add_argument("--qty", type=int, default=1)
+    to.add_argument("--keep", action="store_true", help="don't auto-close/cancel the test order")
+    to.add_argument("--force", action="store_true", help="allow even in live mode (places a REAL order)")
     sub.add_parser("scan", help="signals-only: print ranked actionable signals (no broker)")
     sub.add_parser("web", help="signals-only: launch the web dashboard (no broker)")
     at = sub.add_parser("autotrade", help="auto-trade the dashboard's signals (paper by default)")
@@ -224,6 +274,7 @@ def build_parser() -> argparse.ArgumentParser:
 
 _HANDLERS = {
     "check": cmd_check,
+    "testorder": cmd_testorder,
     "scan": cmd_scan,
     "web": cmd_web,
     "autotrade": cmd_autotrade,

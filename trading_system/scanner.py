@@ -58,6 +58,18 @@ def _rsi14(closes, period: int = 14) -> float:
         return 100.0
     return 100.0 - 100.0 / (1.0 + ru / rd)
 
+
+def _atr(df, period: int = 14) -> float:
+    """Average True Range over the last `period` bars (dollar volatility)."""
+    h = df["high"].to_numpy(dtype=float)
+    l = df["low"].to_numpy(dtype=float)
+    c = df["close"].to_numpy(dtype=float)
+    if len(c) < period + 1:
+        return 0.0
+    pc = c[:-1]
+    tr = np.maximum(h[1:] - l[1:], np.maximum(np.abs(h[1:] - pc), np.abs(l[1:] - pc)))
+    return float(np.mean(tr[-period:]))
+
 _REC_RANK = {
     "STRONG BUY": 5, "BUY": 4, "HOLD": 3, "WAIT": 2, "SELL": 1, "STRONG SELL": 0,
 }
@@ -111,6 +123,10 @@ class TickerSignal:
     vol_note: str = ""
     change_pct: float = 0.0
     spark: List[float] = field(default_factory=list)
+    # ATR-adaptive (volatility) levels
+    atr: float = 0.0
+    atr_stop: float = 0.0
+    atr_target: float = 0.0
     eq1: Optional[EquationView] = None
     eq2: Optional[EquationView] = None
     ai_brief: Optional[str] = None
@@ -147,6 +163,7 @@ class TickerSignal:
             "price_summary": self.price_summary, "equation_summary": self.equation_summary,
             "trend": self.trend, "rsi": self.rsi, "momentum": self.momentum,
             "vol_note": self.vol_note, "change_pct": self.change_pct, "spark": self.spark,
+            "atr": self.atr, "atr_stop": self.atr_stop, "atr_target": self.atr_target,
             "ai_brief": self.ai_brief, "error": self.error, "asof": self.asof,
         }
         drive = self.eq1 or self.eq2
@@ -243,6 +260,9 @@ class Scanner:
         sig.vol_note = ctx["vol_note"]
         sig.change_pct = ctx["change_pct"]
         sig.spark = ctx["spark"]
+        sig.atr = round(_atr(df, self.config.atr_period), 2)
+        sig.atr_stop = round(price - sig.atr * self.config.atr_stop_mult, 2)
+        sig.atr_target = round(price + sig.atr * self.config.atr_target_mult, 2)
         sig.plan = self._build_plan(sig)
         return sig
 
@@ -293,6 +313,8 @@ class Scanner:
             "equation_set": equation_set, "error": None,
             "recommendation": sig.recommendation, "conviction": sig.conviction,
             "agree": sig.agree, "price": sig.price, "entry": sig.entry,
+            "atr": sig.atr, "atr_stop": sig.atr_stop, "atr_target": sig.atr_target,
+            "atr_adaptive": self.config.atr_adaptive,
             "stop": sig.stop, "target": sig.target, "shares": sig.shares,
             "cost": sig.cost, "risk_dollars": sig.risk_dollars,
             "reward_dollars": sig.reward_dollars, "risk_reward": sig.risk_reward,
