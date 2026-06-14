@@ -81,6 +81,7 @@ def simulate(
     position_pct: float = 100.0,
     stop_loss_pct: Optional[float] = None,
     take_profit_pct: Optional[float] = None,
+    start_timestamp=None,
 ) -> BacktestResult:
     """Run the strategy across ``df`` (chronological OHLCV) and return results."""
     gen = SignalGenerator(equation_set=equation_set, lookback=lookback,
@@ -100,7 +101,9 @@ def simulate(
     for ts, row in df.iterrows():
         o, h, l, c, v = (float(row["open"]), float(row["high"]), float(row["low"]),
                          float(row["close"]), float(row["volume"]))
-        res = gen.update({"open": o, "high": h, "low": l, "close": c, "volume": v})
+        can_plot = start_timestamp is None or ts > start_timestamp
+        res = gen.update({"open": o, "high": h, "low": l, "close": c, "volume": v},
+                         can_plot=can_plot)
 
         # --- intrabar protective exits (check before acting on signal) ---
         if open_trade is not None and (stop is not None or target is not None):

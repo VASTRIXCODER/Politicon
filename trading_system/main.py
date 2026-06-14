@@ -205,6 +205,20 @@ def cmd_report(_args) -> int:
     return 0
 
 
+def cmd_walkforward(args) -> int:
+    from walkforward import run_walkforward
+    interval = args.interval or CONFIG.interval
+    yf_interval = INTERVAL_MAP.get(interval, INTERVAL_MAP["1d"])["yf"]
+    run_walkforward(
+        tickers=args.tickers, start=args.start, end=args.end,
+        equation_set=CONFIG.equation_set, signal_value=CONFIG.signal_value,
+        interval=interval, yf_interval=yf_interval,
+        train_bars=args.train_bars, test_bars=args.test_bars,
+        objective=args.objective, chart_path=args.chart,
+    )
+    return 0
+
+
 def cmd_backtest(args) -> int:
     from backtest import run_backtest
 
@@ -252,6 +266,18 @@ def build_parser() -> argparse.ArgumentParser:
     sub.add_parser("signals", help="print the latest raw signal/votes for each ticker")
     sub.add_parser("report", help="print a performance report from the trade log")
 
+    wf = sub.add_parser("walkforward", help="walk-forward validation (honest out-of-sample edge test)")
+    wf.add_argument("--tickers", default="AAPL,MSFT,SPY", help="comma-separated")
+    wf.add_argument("--start", default="2015-01-01", help="start date YYYY-MM-DD")
+    wf.add_argument("--end", default=None)
+    wf.add_argument("--interval", default=None, choices=list(INTERVAL_MAP))
+    wf.add_argument("--train-bars", type=int, default=504, dest="train_bars",
+                    help="in-sample training window (bars); 504 ~ 2y daily")
+    wf.add_argument("--test-bars", type=int, default=126, dest="test_bars",
+                    help="out-of-sample test window (bars); 126 ~ 6mo daily")
+    wf.add_argument("--objective", default="sharpe", choices=["sharpe", "return", "profit_factor"])
+    wf.add_argument("--chart", default=None)
+
     bt = sub.add_parser("backtest", help="backtest one or both equations")
     bt.add_argument("--ticker", required=True)
     bt.add_argument("--start", required=True, help="start date YYYY-MM-DD")
@@ -282,6 +308,7 @@ _HANDLERS = {
     "dashboard": cmd_dashboard,
     "signals": cmd_signals,
     "report": cmd_report,
+    "walkforward": cmd_walkforward,
     "backtest": cmd_backtest,
 }
 

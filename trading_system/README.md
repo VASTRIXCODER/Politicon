@@ -183,6 +183,12 @@ python main.py web                   # browser dashboard, auto-refreshes every 3
 python main.py backtest --ticker AAPL --start 2022-01-01 --end 2024-01-01 \
     --equation both --interval 1d --stop 5 --take 10
 
+# walk-forward validation — the honest out-of-sample edge test (run this first!)
+python main.py walkforward --tickers AAPL,MSFT,SPY --start 2015-01-01
+
+# verify execution works — places a tiny PAPER order, then cleans up
+python main.py testorder
+
 # auto-trading (trades exactly what the dashboard shows)
 python main.py autotrade --dry-run   # PREVIEW what it would do — no orders, no keys needed
 python main.py check                 # pre-flight connectivity + config checks (needs keys)
