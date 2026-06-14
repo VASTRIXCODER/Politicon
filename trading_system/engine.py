@@ -2,27 +2,25 @@
 engine.py
 =========
 
-The live trading loop.
+The automated trading loop — it trades **exactly what the dashboard shows**.
 
-On each interval the engine:
+Each cycle, for every configured ticker it runs the same :class:`scanner.Scanner`
+the web UI uses, applies the auto-trade **policy** (which signals to act on, plus
+market-tuned gates), and — honouring position sizing, max-concurrent-positions,
+stop-loss / take-profit, the daily-loss halt and the kill switch — places (or, in
+dry-run, just *describes*) orders through the broker.
 
-1. Re-reads the **kill switch**; if set, it cancels all orders, flattens every
-   position, and stops.
-2. Pulls the account and current positions.
-3. Rolls the daily baseline and checks the **daily-loss limit**.
-4. (Equities) checks the market clock.
-5. For every configured ticker: fetches fresh bars, advances that ticker's
-   :class:`SignalGenerator` with any newly-closed bar, and acts on the result --
-   honouring position sizing, the max-concurrent-positions cap, stop-loss and
-   take-profit levels.
+Safety:
+* **Paper is the hard default.** Live trading needs ``TRADING_MODE=live`` set
+  deliberately; the engine warns loudly when live.
+* **Dry-run** (``--dry-run``) places no orders and needs **no broker/keys** — it
+  uses your configured ``ACCOUNT_SIZE`` to show exactly what it *would* do.
+* The **kill switch** (``KILL_SWITCH=true``) cancels orders + flattens everything
+  on the next cycle, then stops.
 
-State (the per-ticker signal machine) is warmed up from recent history at
-startup and then advanced incrementally, so the consecutive-vote logic behaves
-like the original indicator running bar by bar.
-
-NOTE: live warmup primes the signal state from *recent* history only; for state
-that exactly matches a full-history TradingView chart, validate with
-``backtest.py`` over the same range.
+Policy (config): ``AUTOTRADE_SIGNAL`` ("strong" = only STRONG BUY where both
+equations agree, or "buy"), ``AUTOTRADE_MIN_CONVICTION``, and
+``AUTOTRADE_REQUIRE_UPTREND`` (only enter when price >= SMA50).
 """
 
 from __future__ import annotations
@@ -30,15 +28,13 @@ from __future__ import annotations
 import logging
 import signal as _signal
 import time
-from datetime import datetime, timezone
 from typing import Dict, Optional
 
-from broker import Broker, build_broker
+from broker import AccountInfo, Broker, build_broker
 from config import CONFIG, Config
-from data import DataProvider
 from database import Database
 from risk import RiskManager
-from signals import SignalGenerator
+from scanner import Scanner, TickerSignal
 
 log = logging.getLogger("engine")
 
@@ -49,88 +45,131 @@ class TradingEngine:
         config: Config = CONFIG,
         broker: Optional[Broker] = None,
         db: Optional[Database] = None,
+        dry_run: Optional[bool] = None,
     ):
         self.config = config
-        self.broker = broker or build_broker(config)
+        self.dry_run = config.dry_run if dry_run is None else dry_run
+        # Dry-run needs no broker/keys -- it only previews decisions.
+        self.broker = broker if broker is not None else (None if self.dry_run else build_broker(config))
         self.db = db or Database(config.db_path)
         self.risk = RiskManager(config)
-        self.data = DataProvider(config)
-
-        self.generators: Dict[str, SignalGenerator] = {
-            t: SignalGenerator(
-                equation_set=config.equation_set,
-                lookback=config.lookback_length,
-                signal_value=config.signal_value,
-            )
-            for t in config.tickers
-        }
-        self._last_bar_ts: Dict[str, object] = {}
+        self.scanner = Scanner(config)
         self._stop = False
 
     # ------------------------------------------------------------------ #
-    # Warmup
+    # Decision policy (shared by live trading and the preview)
     # ------------------------------------------------------------------ #
-    def warmup(self) -> None:
-        """Prime each ticker's signal state from recent history (no trading)."""
-        bars_needed = max(self.config.lookback_length * 3, self.config.lookback_length + 50)
-        for ticker in self.config.tickers:
-            try:
-                df = self.data.recent(ticker, bars_needed)
-            except Exception as exc:
-                log.warning("warmup fetch failed for %s: %s", ticker, exc)
-                continue
-            if len(df) < self.config.lookback_length:
-                log.warning(
-                    "warmup: only %d bars for %s (need %d) -- signals delayed",
-                    len(df), ticker, self.config.lookback_length,
-                )
-            gen = self.generators[ticker]
-            for ts, row in df.iterrows():
-                gen.update(
-                    {
-                        "open": float(row["open"]), "high": float(row["high"]),
-                        "low": float(row["low"]), "close": float(row["close"]),
-                        "volume": float(row["volume"]),
-                    },
-                    can_plot=True,
-                )
-                self._last_bar_ts[ticker] = ts
-            log.info("warmed up %s: %d bars, state buy=%d sell=%d",
-                     ticker, len(df), gen.buy_signal, gen.sell_signal)
+    def decide(self, sig: TickerSignal) -> Optional[str]:
+        """Map a dashboard signal to an action under the auto-trade policy."""
+        if sig.error:
+            return None
+        rec = sig.recommendation
+        # Exit on a sell signal.
+        if rec in ("SELL", "STRONG SELL"):
+            return "SELL"
+        # Entry gates.
+        allowed = {"STRONG BUY"} if self.config.autotrade_signal == "strong" else {"STRONG BUY", "BUY"}
+        if rec not in allowed:
+            return None
+        if sig.conviction < self.config.autotrade_min_conviction:
+            return None
+        if self.config.autotrade_require_uptrend and sig.trend != "Uptrend":
+            return None
+        return "BUY"
+
+    def _reject_reason(self, sig: TickerSignal) -> str:
+        """Human-readable reason a buy-ish signal was NOT taken (for the preview)."""
+        rec = sig.recommendation
+        allowed = {"STRONG BUY"} if self.config.autotrade_signal == "strong" else {"STRONG BUY", "BUY"}
+        if rec in ("HOLD",):
+            return "already triggered earlier (not a fresh entry)"
+        if rec not in allowed and rec not in ("SELL", "STRONG SELL"):
+            return f"{rec} below policy ({self.config.autotrade_signal})"
+        if rec in allowed and sig.conviction < self.config.autotrade_min_conviction:
+            return f"conviction {sig.conviction:.0f} < {self.config.autotrade_min_conviction:.0f}"
+        if rec in allowed and self.config.autotrade_require_uptrend and sig.trend != "Uptrend":
+            return "not in an uptrend"
+        return "no signal"
 
     # ------------------------------------------------------------------ #
-    # Main loop
+    # Preview (dry-run, no broker, no keys)
+    # ------------------------------------------------------------------ #
+    def preview(self) -> None:
+        """Print exactly what the engine WOULD do this cycle. Places no orders."""
+        eq = self.config.account_size
+        print("=" * 78)
+        print(f" AUTO-TRADE PREVIEW (dry run, no orders) | policy={self.config.autotrade_signal} "
+              f"min_conv={self.config.autotrade_min_conviction:.0f} "
+              f"uptrend_only={self.config.autotrade_require_uptrend}")
+        print(f" Account ${eq:,.0f} | max {self.config.max_position_pct:.0f}%/pos | "
+              f"stop {self.config.stop_loss_pct:.0f}% | target {self.config.take_profit_pct:.0f}%")
+        print("=" * 78)
+        buys = sells = 0
+        for ticker in self.config.tickers:
+            try:
+                sig = self.scanner.scan_ticker(ticker)
+            except Exception as exc:
+                print(f"  {ticker:<6} scan error: {exc}")
+                continue
+            if sig.error:
+                print(f"  {ticker:<6} {sig.error}")
+                continue
+            action = self.decide(sig)
+            if action == "BUY":
+                d = self.risk.size_position(sig.price, eq, eq,
+                                            max_pct=self.config.position_pct_for(ticker))
+                if d.allowed:
+                    buys += 1
+                    print(f"  ✅ BUY  {ticker:<6} {int(d.qty)} sh @ ~${sig.price:,.2f} "
+                          f"(${d.qty * sig.price:,.0f}) | stop ${self.risk.stop_price(sig.price):,.2f} "
+                          f"target ${self.risk.take_profit_price(sig.price):,.2f} | "
+                          f"{sig.recommendation} conv {sig.conviction:.0f} {sig.trend}")
+                else:
+                    print(f"  ⚠️  BUY  {ticker:<6} skipped: {d.reason}")
+            elif action == "SELL":
+                sells += 1
+                print(f"  ❎ SELL {ticker:<6} exit @ ~${sig.price:,.2f} | {sig.recommendation}")
+            else:
+                print(f"  ·  hold {ticker:<6} {sig.recommendation:<11} conv {sig.conviction:>3.0f} "
+                      f"{sig.trend:<9} — {self._reject_reason(sig)}")
+        print("-" * 78)
+        print(f"  Would place {buys} buy and {sells} sell order(s). "
+              f"No orders were sent (dry run).")
+        print("  Start paper trading for real (no money) with:  python main.py autotrade")
+
+    # ------------------------------------------------------------------ #
+    # Live loop
     # ------------------------------------------------------------------ #
     def run(self) -> None:
         self._install_signal_handlers()
-        log.info("starting engine | %s", self.config.summary())
-        if self.config.is_live:
-            log.warning("LIVE TRADING ENABLED -- real orders will be placed.")
+        log.info("starting auto-trade | %s", self.config.summary())
+        log.info("policy: signal=%s min_conviction=%.0f uptrend_only=%s",
+                 self.config.autotrade_signal, self.config.autotrade_min_conviction,
+                 self.config.autotrade_require_uptrend)
+        if self.dry_run:
+            log.warning("DRY RUN -- decisions only, no orders will be placed.")
+        elif self.config.is_live:
+            log.warning("LIVE TRADING ENABLED -- REAL orders will be placed.")
         else:
             log.info("paper trading mode (no real money).")
-
-        self.warmup()
 
         interval = self.config.interval_seconds
         next_run = time.monotonic()
         while not self._stop:
-            if self.risk.kill_switch_active():
+            if not self.dry_run and self.risk.kill_switch_active():
                 self._handle_kill_switch()
                 break
-
             try:
                 self.step()
-            except Exception:  # never let one bad cycle kill the loop
+            except Exception:
                 log.exception("error during trading step")
 
             next_run += interval
-            # Sleep in short slices so the kill switch stays responsive.
             while not self._stop and time.monotonic() < next_run:
-                if self.risk.kill_switch_active():
+                if not self.dry_run and self.risk.kill_switch_active():
                     self._handle_kill_switch()
                     return
                 time.sleep(min(5.0, max(0.0, next_run - time.monotonic())))
-
         log.info("engine stopped.")
 
     def _install_signal_handlers(self) -> None:
@@ -141,33 +180,34 @@ class TradingEngine:
             _signal.signal(_signal.SIGINT, _handler)
             _signal.signal(_signal.SIGTERM, _handler)
         except ValueError:
-            pass  # not in main thread (e.g. tests) -- skip
+            pass
 
     # ------------------------------------------------------------------ #
     # One trading cycle
     # ------------------------------------------------------------------ #
     def step(self) -> None:
-        account = self.broker.get_account()
-        self.risk.roll_day(account.equity)
+        if self.dry_run or self.broker is None:
+            eq = self.config.account_size
+            account = AccountInfo(equity=eq, cash=eq, buying_power=eq, portfolio_value=eq)
+            positions: Dict = {}
+        else:
+            account = self.broker.get_account()
+            positions = {p.symbol: p for p in self.broker.get_positions()}
 
-        positions = {p.symbol: p for p in self.broker.get_positions()}
+        self.risk.roll_day(account.equity)
         open_trades = {t["ticker"]: t for t in self.db.get_open_trades()}
 
-        # --- daily loss guard ---
-        if self.risk.daily_loss_breached(account.equity):
-            log.warning(
-                "daily loss limit hit (equity %.2f vs start %.2f) -- no new entries.",
-                account.equity, self.risk.start_of_day_equity or 0.0,
-            )
+        halt_new_entries = False
+        if not self.dry_run and self.risk.daily_loss_breached(account.equity):
+            log.warning("daily loss limit hit (equity %.2f vs start %.2f) -- no new entries.",
+                        account.equity, self.risk.start_of_day_equity or 0.0)
             if self.config.flatten_on_daily_loss:
                 self._flatten_all(open_trades, reason="daily_loss")
                 return
             halt_new_entries = True
-        else:
-            halt_new_entries = False
 
         market_open = True
-        if self.config.require_market_open and self.config.broker == "alpaca":
+        if not self.dry_run and self.config.require_market_open and self.config.broker == "alpaca":
             try:
                 market_open = self.broker.is_market_open()
             except Exception as exc:
@@ -175,39 +215,22 @@ class TradingEngine:
 
         for ticker in self.config.tickers:
             try:
-                self._process_ticker(
-                    ticker, account, positions, open_trades,
-                    market_open=market_open, halt_new_entries=halt_new_entries,
-                )
+                self._process_ticker(ticker, account, positions, open_trades,
+                                     market_open=market_open, halt_new_entries=halt_new_entries)
             except Exception:
                 log.exception("error processing %s", ticker)
 
     def _process_ticker(self, ticker, account, positions, open_trades,
-                         *, market_open, halt_new_entries) -> None:
-        gen = self.generators[ticker]
-
-        # Advance the signal state with any newly-closed bars.
-        df = self.data.recent(ticker, self.config.lookback_length + 5)
-        action = None
-        if len(df):
-            last_ts = self._last_bar_ts.get(ticker)
-            new_rows = df[df.index > last_ts] if last_ts is not None else df
-            for ts, row in new_rows.iterrows():
-                res = gen.update(
-                    {
-                        "open": float(row["open"]), "high": float(row["high"]),
-                        "low": float(row["low"]), "close": float(row["close"]),
-                        "volume": float(row["volume"]),
-                    },
-                    can_plot=True,
-                )
-                action = res.action
-                self._last_bar_ts[ticker] = ts
-
-        current_price = self._latest_price(ticker, df)
+                        *, market_open, halt_new_entries) -> None:
+        sig = self.scanner.scan_ticker(ticker)
+        if sig.error:
+            log.debug("%s scan error: %s", ticker, sig.error)
+            return
+        action = self.decide(sig)
+        current_price = self._latest_price(ticker, sig.price)
         open_trade = open_trades.get(ticker)
 
-        # --- 1. protective exits always run first ---
+        # 1. protective exits first
         if open_trade and current_price > 0:
             reason = self.risk.exit_reason(open_trade["entry_price"], current_price)
             if reason:
@@ -216,62 +239,70 @@ class TradingEngine:
                 positions.pop(ticker, None)
                 open_trade = None
 
-        # --- 2. signal-driven SELL (exit long) ---
+        # 2. signal-driven exit
         if action == "SELL" and open_trade:
             self._close(ticker, open_trade, current_price, "signal")
             open_trades.pop(ticker, None)
             positions.pop(ticker, None)
             open_trade = None
 
-        # --- 3. signal-driven BUY (enter long) ---
+        # 3. signal-driven entry
         if action == "BUY" and open_trade is None:
             if halt_new_entries:
                 log.info("%s BUY suppressed (daily-loss halt).", ticker)
                 return
-            if self.config.require_market_open and not market_open:
+            if not self.dry_run and self.config.require_market_open and not market_open:
                 log.info("%s BUY suppressed (market closed).", ticker)
                 return
             can_open, why = self.risk.can_open_new(len(open_trades))
             if not can_open:
                 log.info("%s BUY suppressed (%s).", ticker, why)
                 return
-            self._open(ticker, account, current_price, open_trades)
+            self._open(ticker, account, current_price, open_trades, sig)
 
     # ------------------------------------------------------------------ #
-    # Order helpers
+    # Order helpers (dry-run guarded)
     # ------------------------------------------------------------------ #
-    def _open(self, ticker, account, ref_price, open_trades) -> None:
+    def _open(self, ticker, account, ref_price, open_trades, sig: Optional[TickerSignal] = None) -> None:
         if ref_price <= 0:
             log.warning("%s: no price available, skipping entry.", ticker)
             return
-        decision = self.risk.size_position(
-            ref_price, account.equity, account.buying_power,
-            max_pct=self.config.position_pct_for(ticker),
-        )
+        decision = self.risk.size_position(ref_price, account.equity, account.buying_power,
+                                           max_pct=self.config.position_pct_for(ticker))
         if not decision.allowed:
             log.info("%s BUY skipped: %s", ticker, decision.reason)
             return
 
-        log.info("%s BUY %.4f @ ~%.2f", ticker, decision.qty, ref_price)
+        tag = f"{sig.recommendation} conv {sig.conviction:.0f}" if sig else ""
+        if self.dry_run:
+            log.info("[DRY RUN] would BUY %s %.4f sh @ ~%.2f (stop %.2f / target %.2f) [%s]",
+                     ticker, decision.qty, ref_price, self.risk.stop_price(ref_price),
+                     self.risk.take_profit_price(ref_price), tag)
+            return
+
+        log.info("%s BUY %.4f @ ~%.2f [%s]", ticker, decision.qty, ref_price, tag)
         try:
             order_id = self.broker.submit_market_order(ticker, decision.qty, "buy")
         except Exception as exc:
             log.error("%s order failed: %s", ticker, exc)
             return
-
         fill = self._resolve_fill_price(ticker, ref_price)
         stop = self.risk.stop_price(fill)
         target = self.risk.take_profit_price(fill)
         trade_id = self.db.record_entry(
             ticker=ticker, equation_set=self.config.equation_set, qty=decision.qty,
             entry_price=fill, stop_price=stop, take_profit_price=target,
-            broker_order_id=order_id, notes=f"signal entry (eq{self.config.equation_set})",
+            broker_order_id=order_id, notes=f"auto entry ({tag})",
         )
         open_trades[ticker] = self.db.get_open_trade(ticker)
         log.info("%s opened trade #%d @ %.2f (stop %.2f / target %.2f)",
                  ticker, trade_id, fill, stop, target)
 
     def _close(self, ticker, open_trade, ref_price, reason) -> None:
+        if self.dry_run:
+            log.info("[DRY RUN] would CLOSE %s qty %.4f @ ~%.2f [%s]",
+                     ticker, open_trade["qty"], ref_price, reason)
+            return
         log.info("%s CLOSE (%s) qty %.4f @ ~%.2f", ticker, reason, open_trade["qty"], ref_price)
         try:
             self.broker.close_position(ticker)
@@ -282,18 +313,20 @@ class TradingEngine:
         row = self.db.record_exit(open_trade["id"], exit_price=exit_price, exit_reason=reason)
         if row:
             log.info("%s closed trade #%d: pnl $%.2f (%.2f%%) [%s]",
-                     ticker, row["id"], row["pnl_dollars"] or 0.0,
-                     row["pnl_pct"] or 0.0, reason)
+                     ticker, row["id"], row["pnl_dollars"] or 0.0, row["pnl_pct"] or 0.0, reason)
 
     def _flatten_all(self, open_trades, reason: str) -> None:
         log.warning("flattening all positions (%s).", reason)
+        if self.dry_run or self.broker is None:
+            for ticker, trade in list(open_trades.items()):
+                self._close(ticker, trade, self._latest_price(ticker, 0.0), reason)
+            return
         try:
             self.broker.cancel_all_orders()
         except Exception as exc:
             log.error("cancel_all_orders failed: %s", exc)
         for ticker, trade in list(open_trades.items()):
-            price = self._latest_price(ticker, None)
-            self._close(ticker, trade, price, reason)
+            self._close(ticker, trade, self._latest_price(ticker, 0.0), reason)
         try:
             self.broker.close_all_positions()
         except Exception as exc:
@@ -308,19 +341,20 @@ class TradingEngine:
     # ------------------------------------------------------------------ #
     # Pricing helpers
     # ------------------------------------------------------------------ #
-    def _latest_price(self, ticker, df) -> float:
-        try:
-            return float(self.broker.get_latest_price(ticker))
-        except Exception:
-            pass
-        if df is not None and len(df):
-            return float(df["close"].iloc[-1])
-        return 0.0
+    def _latest_price(self, ticker, fallback) -> float:
+        if self.broker is not None:
+            try:
+                p = float(self.broker.get_latest_price(ticker))
+                if p > 0:
+                    return p
+            except Exception:
+                pass
+        return float(fallback) if fallback else 0.0
 
     def _resolve_fill_price(self, ticker, fallback, expect_flat: bool = False,
                             attempts: int = 3) -> float:
-        """Best-effort fill price: read the (new) position's avg entry, else use
-        the latest price, else the reference price."""
+        if self.broker is None:
+            return float(fallback)
         for _ in range(attempts):
             try:
                 pos = self.broker.get_position(ticker)
@@ -331,5 +365,5 @@ class TradingEngine:
             except Exception:
                 pass
             time.sleep(0.4)
-        live = self._latest_price(ticker, None)
+        live = self._latest_price(ticker, fallback)
         return live if live > 0 else float(fallback)

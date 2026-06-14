@@ -160,6 +160,21 @@ class Config:
         default_factory=lambda: _bool("FLATTEN_ON_DAILY_LOSS", False)
     )
 
+    # --- auto-trading policy (which dashboard signals the engine acts on) --- #
+    # "strong" = only act on STRONG BUY (both equations agree) -- conservative.
+    # "buy"    = act on BUY or STRONG BUY.
+    autotrade_signal: str = field(default_factory=lambda: _str("AUTOTRADE_SIGNAL", "strong"))
+    # Only enter when conviction >= this (0-100). 0 disables the gate.
+    autotrade_min_conviction: float = field(
+        default_factory=lambda: _float("AUTOTRADE_MIN_CONVICTION", 0.0)
+    )
+    # Only enter when the ticker is in an uptrend (price >= SMA50) -- market-tuned.
+    autotrade_require_uptrend: bool = field(
+        default_factory=lambda: _bool("AUTOTRADE_REQUIRE_UPTREND", True)
+    )
+    # Global preview switch (the CLI --dry-run flag is the usual way to set this).
+    dry_run: bool = field(default_factory=lambda: _bool("DRY_RUN", False))
+
     # --- safety ------------------------------------------------------------ #
     # The kill switch is re-read from the environment on every loop iteration so
     # it can be flipped without restarting the process.

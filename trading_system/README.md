@@ -183,13 +183,35 @@ python main.py web                   # browser dashboard, auto-refreshes every 3
 python main.py backtest --ticker AAPL --start 2022-01-01 --end 2024-01-01 \
     --equation both --interval 1d --stop 5 --take 10
 
-# automated (needs Alpaca keys)
-python main.py check                 # pre-flight connectivity + config checks
-python main.py run                   # live trading loop (paper unless TRADING_MODE=live)
+# auto-trading (trades exactly what the dashboard shows)
+python main.py autotrade --dry-run   # PREVIEW what it would do — no orders, no keys needed
+python main.py check                 # pre-flight connectivity + config checks (needs keys)
+python main.py autotrade             # paper trading (real orders need TRADING_MODE=live)
 python main.py dashboard             # broker monitoring UI, refreshes every 30s
 python main.py report                # performance report from the trade log
 python main.py signals               # print the raw signal/votes per ticker
 ```
+
+### The path to auto-trading (do it in this order)
+
+The engine trades **exactly** what the dashboard recommends, gated by a
+market-tuned policy (`AUTOTRADE_SIGNAL`, `AUTOTRADE_MIN_CONVICTION`,
+`AUTOTRADE_REQUIRE_UPTREND`). Move through these steps deliberately:
+
+1. **Preview** — `python main.py autotrade --dry-run`. No keys, no orders; it
+   prints exactly what it *would* buy/sell (shares, dollars, stops, targets) for
+   your `ACCOUNT_SIZE`. Use this to sanity-check the policy.
+2. **Paper trade** — add your Alpaca **paper** keys, then `python main.py autotrade`.
+   This places **simulated** orders and is a real-time forward-test. Let it run
+   for weeks and review `python main.py report`.
+3. **Go live (only after paper proves out)** — set `TRADING_MODE=live` and add
+   **live** Alpaca keys. This places **real-money** orders. The engine warns
+   loudly, paper stays the default, and the **kill switch** (`KILL_SWITCH=true`)
+   flattens everything on the next cycle.
+
+> Honest note: paper auto-trading **is** the validation step — it forward-tests
+> the strategy with zero risk. Don't skip to live, and remember no strategy
+> guarantees profit.
 
 ### The web dashboard (an advisor — it places no orders)
 
