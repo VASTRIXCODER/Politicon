@@ -73,6 +73,7 @@ class TradingEngine:
                 self.briefer = None
         self._stop = False
         self._last_summary_ts = 0.0  # throttles the per-cycle log at fast cadences
+        self._clock_cache = (0.0, True)  # (monotonic_ts, is_open) -- avoids polling every cycle
 
     # ------------------------------------------------------------------ #
     # Decision policy (shared by live trading and the preview)
@@ -213,9 +214,8 @@ class TradingEngine:
         # The loop cadence is DECOUPLED from the bar timeframe: we re-check every
         # `engine_interval_seconds` (default 60s, as low as 1s) so stop-loss /
         # take-profit are enforced against the LATEST price continuously.
-        interval = max(1, self.config.engine_interval_seconds)
         log.info("checking every ~%s (independent of the %s bar timeframe).",
-                 _fmt_dur(interval), self.config.interval)
+                 _fmt_dur(max(1, self.config.engine_interval_seconds)), self.config.interval)
         next_run = time.monotonic()
         while not self._stop:
             if not self.dry_run and self.risk.kill_switch_active():
@@ -226,6 +226,9 @@ class TradingEngine:
             except Exception:
                 log.exception("error during trading step")
 
+            # Re-read each cycle so toggling Day-trade mode (or the interval) takes
+            # effect on a running engine without a restart.
+            interval = max(1, self.config.engine_interval_seconds)
             next_run += interval
             # Only emit the between-cycle heartbeat for slower cadences; at 1s it
             # would just spam (the throttled cycle summary already shows liveness).
@@ -275,10 +278,7 @@ class TradingEngine:
 
         market_open = True
         if not self.dry_run and self.config.require_market_open and self.config.broker == "alpaca":
-            try:
-                market_open = self.broker.is_market_open()
-            except Exception as exc:
-                log.warning("could not read market clock: %s", exc)
+            market_open = self._is_market_open_cached()
 
         opened = closed = errors = 0
         for ticker in self.config.tickers:
@@ -326,6 +326,21 @@ class TradingEngine:
             return f"{nxt.strftime('%a %H:%M %Z')}, ~{_fmt_dur(max(0.0, secs))} away"
         except Exception:
             return ""
+
+    def _is_market_open_cached(self, ttl: float = 30.0) -> bool:
+        """Market open/closed with a short cache -- the clock only flips twice a
+        day, so a fast (e.g. 1s) loop must not query it every cycle."""
+        now = time.monotonic()
+        ts, val = self._clock_cache
+        if now - ts < ttl:
+            return val
+        try:
+            val = bool(self.broker.is_market_open())
+        except Exception as exc:
+            log.warning("could not read market clock: %s", exc)
+            val = self._clock_cache[1]  # keep last known value on a hiccup
+        self._clock_cache = (now, val)
+        return val
 
     def _process_ticker(self, ticker, account, positions, open_trades,
                         *, market_open, halt_new_entries) -> Optional[str]:

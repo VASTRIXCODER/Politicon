@@ -229,6 +229,47 @@ def create_app(config=CONFIG):
                 broker_holder["error"] = str(exc)
         return broker_holder["broker"]
 
+    # ----- one-click "Day-trade mode" preset ------------------------------- #
+    # Bundles the three levers that actually create fast-paced behaviour:
+    # 1h bars (signals refresh intraday), aggressive entries (act on any BUY),
+    # and a fast engine loop. Turning it off restores whatever was set before.
+    daytrade: Dict = {"on": False, "saved": None}
+
+    def _flush_scanner_caches():
+        # The df cache is keyed by ticker only, so a timeframe change must clear
+        # it or stale daily bars get served for the new hourly requests.
+        try:
+            service.scanner._df_cache.clear()
+        except Exception:
+            pass
+        eng = getattr(controller, "_engine", None)
+        if eng is not None:
+            try:
+                eng.scanner._df_cache.clear()
+            except Exception:
+                pass
+
+    def _set_day_trade(on: bool):
+        if on and not daytrade["on"]:
+            daytrade["saved"] = {
+                "interval": config.interval,
+                "aggressive_mode": config.aggressive_mode,
+                "engine_interval_seconds": config.engine_interval_seconds,
+            }
+            config.interval = "1h"
+            config.aggressive_mode = True
+            config.engine_interval_seconds = 3  # fast, but safe on broker rate limits
+            daytrade["on"] = True
+            _flush_scanner_caches()
+        elif not on and daytrade["on"]:
+            saved = daytrade["saved"] or {}
+            config.interval = saved.get("interval", "1d")
+            config.aggressive_mode = saved.get("aggressive_mode", False)
+            config.engine_interval_seconds = saved.get("engine_interval_seconds", 60)
+            daytrade["on"] = False
+            daytrade["saved"] = None
+            _flush_scanner_caches()
+
     defaults = {
         "__REFRESH__": str(config.web_refresh_seconds), "__CAP__": str(config.account_size),
         "__MAXPCT__": str(config.max_position_pct), "__STOPPCT__": str(config.stop_loss_pct),
@@ -267,6 +308,9 @@ def create_app(config=CONFIG):
     def api_account():
         out: Dict = {"account": None, "broker_error": None, "positions": [],
                      "engine": controller.status()}
+        out["engine"]["day_trade"] = daytrade["on"]
+        out["engine"]["interval"] = config.interval
+        out["engine"]["loop_secs"] = config.engine_interval_seconds
         broker = display_broker()
         if broker is None:
             out["broker_error"] = broker_holder["error"] or "no broker configured"
@@ -313,8 +357,12 @@ def create_app(config=CONFIG):
             config.aggressive_mode = bool(body["aggressive_mode"])
         if "ai_gate" in body:
             config.ai_gate = bool(body["ai_gate"])
+        if "day_trade" in body:
+            _set_day_trade(bool(body["day_trade"]))
         return jsonify({"ok": True, "atr_adaptive": config.atr_adaptive,
-                        "aggressive_mode": config.aggressive_mode, "ai_gate": config.ai_gate})
+                        "aggressive_mode": config.aggressive_mode, "ai_gate": config.ai_gate,
+                        "day_trade": daytrade["on"], "interval": config.interval,
+                        "engine_interval_seconds": config.engine_interval_seconds})
 
     app.scanner_service = service
     app.engine_controller = controller
@@ -489,6 +537,7 @@ _MAIN_PAGE = """<!doctype html><html lang="en"><head>
     <span class="meta">Trading mode:</span>
     <button class="btn" id="aggOff" onclick="setAggressive(false)">🛡 Conservative</button>
     <button class="btn" id="aggOn" onclick="setAggressive(true)">🔥 Aggressive</button>
+    <button class="btn" id="dayBtn" onclick="toggleDayTrade()">⚡ Day-trade mode: off</button>
     <button class="btn" id="gateBtn" onclick="toggleGate()">🤖 AI risk-gate: off</button>
     <span class="meta" id="aggwarn"></span>
   </div>
@@ -564,6 +613,7 @@ async function startEngine(){
 async function stopEngine(){ await eng('/api/engine/stop',{}); tickAccount(); }
 function setAggressive(on){if(on&&!confirm('🔥 Aggressive mode takes more, lower-conviction trades (any BUY, any trend) — higher risk. Turn it on?'))return;eng('/api/config',{aggressive_mode:on}).then(tickAccount);}
 function toggleGate(){const on=!(ACC&&ACC.engine&&ACC.engine.ai_gate);eng('/api/config',{ai_gate:on}).then(tickAccount);}
+function toggleDayTrade(){const on=!(ACC&&ACC.engine&&ACC.engine.day_trade);if(on&&!confirm('⚡ Day-trade mode switches to 1-hour bars, turns ON aggressive entries (any BUY), and runs the engine every ~3s.\\n\\nMore frequent trades, higher risk. Turn it on?'))return;eng('/api/config',{day_trade:on}).then(tickAccount);}
 async function previewEngine(){
   document.getElementById('previewbox').innerHTML='<div class="note">Running preview…</div>';
   const r=await eng('/api/engine/preview',{}); const rows=r.rows||[];
@@ -592,7 +642,9 @@ function renderEngine(){
   document.getElementById('aggOff').classList.toggle('active',!agg);
   document.getElementById('aggOn').classList.toggle('active',agg);
   const gb=document.getElementById('gateBtn');gb.textContent='🤖 AI risk-gate: '+(e.ai_gate?'on':'off');gb.classList.toggle('active',e.ai_gate);
-  document.getElementById('aggwarn').innerHTML=agg?'<span style="color:var(--red);font-weight:700">🔥 AGGRESSIVE: more, lower-conviction trades — higher risk</span>':'';
+  const dt=e.day_trade;const dtb=document.getElementById('dayBtn');
+  if(dtb){dtb.textContent=dt?`⚡ Day-trade mode: ON (${e.interval||'1h'} · ${e.loop_secs||3}s loop)`:'⚡ Day-trade mode: off';dtb.classList.toggle('active',dt);}
+  document.getElementById('aggwarn').innerHTML=dt?'<span style="color:var(--amber);font-weight:700">⚡ DAY-TRADE: 1h bars · aggressive · ~3s loop — more trades, higher risk</span>':(agg?'<span style="color:var(--red);font-weight:700">🔥 AGGRESSIVE: more, lower-conviction trades — higher risk</span>':'');
   const feed=e.recent&&e.recent.length?e.recent.slice(-40).map(l=>`<div>${l.replace(/</g,'&lt;')}</div>`).join(''):'<div class="muted">No engine activity yet.</div>';
   const af=document.getElementById('actfeed'); af.innerHTML=feed; af.scrollTop=af.scrollHeight;
 }
