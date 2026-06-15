@@ -19,6 +19,7 @@ from __future__ import annotations
 
 from abc import ABC, abstractmethod
 from dataclasses import dataclass
+from datetime import datetime
 from typing import List, Optional
 
 
@@ -81,6 +82,10 @@ class Broker(ABC):
 
     @abstractmethod
     def is_market_open(self) -> bool: ...
+
+    def next_market_open(self) -> Optional[datetime]:
+        """When the next regular session opens (None if unknown / always-on)."""
+        return None
 
 
 # --------------------------------------------------------------------------- #
@@ -182,6 +187,12 @@ class AlpacaBroker(Broker):
     # -- market clock ------------------------------------------------------ #
     def is_market_open(self) -> bool:
         return bool(self._client.get_clock().is_open)
+
+    def next_market_open(self) -> Optional[datetime]:
+        try:
+            return self._client.get_clock().next_open
+        except Exception:
+            return None
 
 
 # --------------------------------------------------------------------------- #

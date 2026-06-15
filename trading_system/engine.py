@@ -297,8 +297,24 @@ class TradingEngine:
                  len(self.config.tickers) - errors, len(self.config.tickers),
                  "OPEN" if market_open else "CLOSED", holding, opened, closed)
         if not self.dry_run and self.config.require_market_open and not market_open:
-            log.info("market is closed (weekend / after-hours) -- signals are still computed, "
-                     "but new entries wait until it reopens.")
+            when = self._next_open_str()
+            log.info("market is closed (weekend / after-hours) -- signals are still computed; "
+                     "new entries are HELD until the next open%s. Leave the engine running and "
+                     "it will place them then.", f" ({when})" if when else "")
+
+    def _next_open_str(self) -> str:
+        """Friendly 'when does the market next open' string, or '' if unknown."""
+        if self.broker is None:
+            return ""
+        try:
+            nxt = self.broker.next_market_open()
+            if not nxt:
+                return ""
+            from datetime import datetime
+            secs = (nxt - datetime.now(nxt.tzinfo)).total_seconds()
+            return f"{nxt.strftime('%a %H:%M %Z')}, ~{_fmt_dur(max(0.0, secs))} away"
+        except Exception:
+            return ""
 
     def _process_ticker(self, ticker, account, positions, open_trades,
                         *, market_open, halt_new_entries) -> Optional[str]:
@@ -335,7 +351,7 @@ class TradingEngine:
                 log.info("%s BUY suppressed (daily-loss halt).", ticker)
                 return did
             if not self.dry_run and self.config.require_market_open and not market_open:
-                log.info("%s BUY signal -- suppressed (market closed).", ticker)
+                log.info("%s BUY signal HELD -- market closed; will place at the next open.", ticker)
                 return did
             can_open, why = self.risk.can_open_new(len(open_trades))
             if not can_open:
