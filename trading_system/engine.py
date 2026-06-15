@@ -72,6 +72,7 @@ class TradingEngine:
             except Exception:
                 self.briefer = None
         self._stop = False
+        self._last_summary_ts = 0.0  # throttles the per-cycle log at fast cadences
 
     # ------------------------------------------------------------------ #
     # Decision policy (shared by live trading and the preview)
@@ -210,9 +211,9 @@ class TradingEngine:
             log.info("paper trading mode (no real money).")
 
         # The loop cadence is DECOUPLED from the bar timeframe: we re-check every
-        # `engine_interval_seconds` (default 60s) so stop-loss / take-profit are
-        # enforced against the LATEST price continuously -- not once a day.
-        interval = max(5, self.config.engine_interval_seconds)
+        # `engine_interval_seconds` (default 60s, as low as 1s) so stop-loss /
+        # take-profit are enforced against the LATEST price continuously.
+        interval = max(1, self.config.engine_interval_seconds)
         log.info("checking every ~%s (independent of the %s bar timeframe).",
                  _fmt_dur(interval), self.config.interval)
         next_run = time.monotonic()
@@ -226,8 +227,11 @@ class TradingEngine:
                 log.exception("error during trading step")
 
             next_run += interval
-            log.info("next check in ~%s -- engine running, watching %d tickers & live stops; "
-                     "Ctrl-C to stop.", _fmt_dur(interval), len(self.config.tickers))
+            # Only emit the between-cycle heartbeat for slower cadences; at 1s it
+            # would just spam (the throttled cycle summary already shows liveness).
+            if interval >= 30:
+                log.info("next check in ~%s -- engine running, watching %d tickers & live stops; "
+                         "Ctrl-C to stop.", _fmt_dur(interval), len(self.config.tickers))
             while not self._stop and time.monotonic() < next_run:
                 if not self.dry_run and self.risk.kill_switch_active():
                     self._handle_kill_switch()
@@ -292,15 +296,22 @@ class TradingEngine:
                 errors += 1
 
         holding = len(self.db.get_open_trades())
-        log.info("cycle complete: scanned %d/%d, market %s, holding %d position(s), "
-                 "%d opened / %d closed this cycle",
-                 len(self.config.tickers) - errors, len(self.config.tickers),
-                 "OPEN" if market_open else "CLOSED", holding, opened, closed)
-        if not self.dry_run and self.config.require_market_open and not market_open:
-            when = self._next_open_str()
-            log.info("market is closed (weekend / after-hours) -- signals are still computed; "
-                     "new entries are HELD until the next open%s. Leave the engine running and "
-                     "it will place them then.", f" ({when})" if when else "")
+        # At fast cadences (e.g. every 1s) logging every cycle floods the feed, so
+        # the keep-alive summary is throttled; any actual open/close still logs now.
+        now = time.monotonic()
+        verbose = bool(opened or closed) or (now - self._last_summary_ts) >= 15
+        log.log(logging.INFO if verbose else logging.DEBUG,
+                "cycle complete: scanned %d/%d, market %s, holding %d position(s), "
+                "%d opened / %d closed this cycle",
+                len(self.config.tickers) - errors, len(self.config.tickers),
+                "OPEN" if market_open else "CLOSED", holding, opened, closed)
+        if verbose:
+            self._last_summary_ts = now
+            if not self.dry_run and self.config.require_market_open and not market_open:
+                when = self._next_open_str()
+                log.info("market is closed (weekend / after-hours) -- signals are still computed; "
+                         "new entries are HELD until the next open%s. Leave the engine running and "
+                         "it will place them then.", f" ({when})" if when else "")
 
     def _next_open_str(self) -> str:
         """Friendly 'when does the market next open' string, or '' if unknown."""
@@ -323,8 +334,13 @@ class TradingEngine:
             log.debug("%s scan error: %s", ticker, sig.error)
             return "error"
         action = self.decide(sig)
-        current_price = self._latest_price(ticker, sig.price)
         open_trade = open_trades.get(ticker)
+        # Only spend a broker API call for a live price when we actually need one:
+        # an open position (to check its stop/target) or an actionable BUY/SELL this
+        # cycle. Otherwise reuse the scan price -- this keeps a 1-second loop over a
+        # big universe from blowing past the broker's rate limit.
+        need_live = open_trade is not None or action in ("BUY", "SELL")
+        current_price = self._latest_price(ticker, sig.price) if need_live else sig.price
         did: Optional[str] = None
 
         # 1. protective exits first

@@ -232,7 +232,9 @@ class Config:
     log_level: str = field(default_factory=lambda: _str("LOG_LEVEL", "INFO"))
     # How often the auto-trade engine wakes to re-check signals and (critically)
     # enforce stop-loss / take-profit against the LATEST price -- independent of
-    # the bar timeframe. Default 60s so it runs continuously, not once a day.
+    # the bar timeframe. Default 60s; set as low as 1s for a fast / day-trade feel
+    # (the engine only calls the broker for a live price on open positions and
+    # fresh BUY/SELL signals, so even a 1s loop stays within rate limits).
     engine_interval_seconds: int = field(
         default_factory=lambda: _int("ENGINE_INTERVAL_SECONDS", 60)
     )
