@@ -186,6 +186,15 @@ class Config:
     atr_target_mult: float = field(default_factory=lambda: _float("ATR_TARGET_MULT", 4.0))
     atr_risk_pct: float = field(default_factory=lambda: _float("ATR_RISK_PCT", 1.0))
 
+    # --- aggressive / active mode + AI risk-gate -------------------------- #
+    # Aggressive mode loosens entries: acts on BUY (not just STRONG BUY) and
+    # ignores the uptrend gate -> more, lower-conviction trades. HIGHER RISK.
+    aggressive_mode: bool = field(default_factory=lambda: _bool("AGGRESSIVE_MODE", False))
+    # Optional AI risk-gate: before a BUY the engine asks Claude to veto on
+    # imminent event risk (earnings/halt/major news). It is a SAFETY FILTER only
+    # -- it does NOT train the model or change the strategy. Needs ANTHROPIC_API_KEY.
+    ai_gate: bool = field(default_factory=lambda: _bool("AI_GATE", False))
+
     # --- safety ------------------------------------------------------------ #
     # The kill switch is re-read from the environment on every loop iteration so
     # it can be flipped without restarting the process.

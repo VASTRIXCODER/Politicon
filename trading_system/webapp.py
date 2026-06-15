@@ -187,6 +187,8 @@ class EngineController:
         return {
             "running": self.running,
             "mode": mode,
+            "aggressive": self.config.aggressive_mode,
+            "ai_gate": self.config.ai_gate,
             "started_at": self._started_at if self.running else None,
             "kill_switch": self.config.kill_switch,
             "policy": {
@@ -307,7 +309,12 @@ def create_app(config=CONFIG):
         body = request.get_json(silent=True) or {}
         if "atr_adaptive" in body:
             config.atr_adaptive = bool(body["atr_adaptive"])
-        return jsonify({"ok": True, "atr_adaptive": config.atr_adaptive})
+        if "aggressive_mode" in body:
+            config.aggressive_mode = bool(body["aggressive_mode"])
+        if "ai_gate" in body:
+            config.ai_gate = bool(body["ai_gate"])
+        return jsonify({"ok": True, "atr_adaptive": config.atr_adaptive,
+                        "aggressive_mode": config.aggressive_mode, "ai_gate": config.ai_gate})
 
     app.scanner_service = service
     app.engine_controller = controller
@@ -478,6 +485,13 @@ _MAIN_PAGE = """<!doctype html><html lang="en"><head>
     <button class="bigbtn stop" id="btnStop" onclick="stopEngine()" disabled>■ Stop</button>
     <span class="estatus" id="estatus"></span>
   </div>
+  <div class="ctrl" style="margin-top:10px">
+    <span class="meta">Trading mode:</span>
+    <button class="btn" id="aggOff" onclick="setAggressive(false)">🛡 Conservative</button>
+    <button class="btn" id="aggOn" onclick="setAggressive(true)">🔥 Aggressive</button>
+    <button class="btn" id="gateBtn" onclick="toggleGate()">🤖 AI risk-gate: off</button>
+    <span class="meta" id="aggwarn"></span>
+  </div>
   <div id="previewbox"></div>
   <div style="margin-top:12px"><div class="osh" style="margin-bottom:6px">Engine activity</div>
     <div class="actfeed" id="actfeed"><div class="muted">Engine idle. Press Preview to see what it would do, or Start to run it.</div></div></div>
@@ -548,6 +562,8 @@ async function startEngine(){
   const r=await eng('/api/engine/start',{}); if(!r.ok) alert('Could not start: '+(r.error||'unknown')); tickAccount();
 }
 async function stopEngine(){ await eng('/api/engine/stop',{}); tickAccount(); }
+function setAggressive(on){if(on&&!confirm('🔥 Aggressive mode takes more, lower-conviction trades (any BUY, any trend) — higher risk. Turn it on?'))return;eng('/api/config',{aggressive_mode:on}).then(tickAccount);}
+function toggleGate(){const on=!(ACC&&ACC.engine&&ACC.engine.ai_gate);eng('/api/config',{ai_gate:on}).then(tickAccount);}
 async function previewEngine(){
   document.getElementById('previewbox').innerHTML='<div class="note">Running preview…</div>';
   const r=await eng('/api/engine/preview',{}); const rows=r.rows||[];
@@ -572,6 +588,11 @@ function renderEngine(){
   document.getElementById('estatus').innerHTML=
     `<span class="dot ${dot}"></span><span class="mode ${cls(e.mode)}">${e.mode}</span>`+
     `<span class="meta">${running?'running since '+e.started_at:'stopped'} · policy ${pol.signal}${pol.require_uptrend?' · uptrend-only':''}${e.kill_switch?' · <span class="red">KILL SWITCH ON</span>':''}</span>`;
+  const agg=e.aggressive;
+  document.getElementById('aggOff').classList.toggle('active',!agg);
+  document.getElementById('aggOn').classList.toggle('active',agg);
+  const gb=document.getElementById('gateBtn');gb.textContent='🤖 AI risk-gate: '+(e.ai_gate?'on':'off');gb.classList.toggle('active',e.ai_gate);
+  document.getElementById('aggwarn').innerHTML=agg?'<span style="color:var(--red);font-weight:700">🔥 AGGRESSIVE: more, lower-conviction trades — higher risk</span>':'';
   const feed=e.recent&&e.recent.length?e.recent.slice(-40).map(l=>`<div>${l.replace(/</g,'&lt;')}</div>`).join(''):'<div class="muted">No engine activity yet.</div>';
   const af=document.getElementById('actfeed'); af.innerHTML=feed; af.scrollTop=af.scrollHeight;
 }

@@ -55,6 +55,16 @@ catalyst check was inconclusive."""
 # Output cap is small — these briefings are short.
 _MAX_TOKENS = 1024
 
+# System prompt for the pre-trade risk gate (a veto-only safety check).
+_GATE_SYSTEM = (
+    "You are a pre-trade risk checker for an automated trading system. You do NOT "
+    "pick trades, predict prices, or change the strategy. You ONLY flag an imminent "
+    "EVENT risk that would make taking a freshly-signalled long trade unwise right "
+    "now (earnings within ~2 trading days, a trading halt, bankruptcy/fraud/delisting "
+    "risk, or major adverse breaking news in the last day or two). Be conservative — "
+    "only say SKIP for a clear, imminent red flag; otherwise say PROCEED."
+)
+
 
 class AIBriefer:
     """Wraps the Anthropic client with caching and graceful degradation."""
@@ -109,6 +119,60 @@ class AIBriefer:
         if text:
             self._cache[cache_key] = (time.time(), text)
         return text
+
+    # ------------------------------------------------------------------ #
+    def gate(self, signal: Dict) -> Dict:
+        """Pre-trade risk veto. Returns {'proceed': bool, 'reason': str}.
+
+        Fail-open: any error / disabled / inconclusive -> proceed (the gate is an
+        extra safety filter, not a hard requirement; it must never silently halt
+        trading on an API hiccup).
+        """
+        if not self.enabled:
+            return {"proceed": True, "reason": "AI gate off"}
+        client = self._get_client()
+        if client is None:
+            return {"proceed": True, "reason": "no AI client"}
+        prompt = (
+            f"A momentum trading system wants to BUY {signal.get('ticker')} at about "
+            f"${signal.get('price')} right now. Check for an imminent red flag that means "
+            "we should skip this entry. First line: exactly PROCEED or SKIP. "
+            "Second line: one short reason."
+        )
+        text = self._call_gate(client, prompt)
+        if not text or not text.strip():
+            return {"proceed": True, "reason": "AI gate inconclusive (proceeding)"}
+        first = text.strip().split()[0].upper()
+        return {"proceed": not first.startswith("SKIP"), "reason": text.strip()[:300]}
+
+    def _call_gate(self, client, prompt: str) -> Optional[str]:
+        import anthropic
+
+        base = dict(model=self.config.anthropic_model, max_tokens=300, system=_GATE_SYSTEM)
+
+        def run(tools):
+            msgs = [{"role": "user", "content": prompt}]
+            resp = None
+            for _ in range(4):
+                kw = dict(base, messages=msgs)
+                if tools:
+                    kw["tools"] = tools
+                resp = client.messages.create(**kw)
+                if resp.stop_reason == "pause_turn":
+                    msgs = msgs + [{"role": "assistant", "content": resp.content}]
+                    continue
+                return self._extract_text(resp)
+            return self._extract_text(resp)
+
+        try:
+            return run([{"type": "web_search_20250305", "name": "web_search", "max_uses": 2}])
+        except anthropic.APIError:
+            try:
+                return run(None)
+            except Exception:
+                return None
+        except Exception:
+            return None
 
     # ------------------------------------------------------------------ #
     def _call(self, client, prompt: str, *, use_web_search: bool) -> Optional[str]:

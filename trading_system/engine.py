@@ -64,6 +64,13 @@ class TradingEngine:
         self.db = db or Database(config.db_path)
         self.risk = RiskManager(config)
         self.scanner = Scanner(config)
+        self.briefer = None
+        if config.ai_gate:
+            try:
+                from ai_brief import AIBriefer
+                self.briefer = AIBriefer(config)
+            except Exception:
+                self.briefer = None
         self._stop = False
 
     # ------------------------------------------------------------------ #
@@ -77,7 +84,10 @@ class TradingEngine:
         # Exit on a sell signal.
         if rec in ("SELL", "STRONG SELL"):
             return "SELL"
-        # Entry gates.
+        # Aggressive mode: take any fresh BUY, any conviction, any trend.
+        if self.config.aggressive_mode:
+            return "BUY" if rec in ("STRONG BUY", "BUY") else None
+        # Conservative entry gates.
         allowed = {"STRONG BUY"} if self.config.autotrade_signal == "strong" else {"STRONG BUY", "BUY"}
         if rec not in allowed:
             return None
@@ -326,6 +336,11 @@ class TradingEngine:
             if not can_open:
                 log.info("%s BUY suppressed (%s).", ticker, why)
                 return did
+            if self.briefer is not None and not self.dry_run:
+                g = self.briefer.gate(sig.as_dict())
+                if not g.get("proceed", True):
+                    log.info("%s BUY VETOED by AI risk-gate: %s", ticker, g.get("reason", ""))
+                    return did
             self._open(ticker, account, current_price, open_trades, sig)
             did = "open"
         return did
