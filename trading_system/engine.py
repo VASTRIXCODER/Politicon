@@ -209,7 +209,12 @@ class TradingEngine:
         else:
             log.info("paper trading mode (no real money).")
 
-        interval = self.config.interval_seconds
+        # The loop cadence is DECOUPLED from the bar timeframe: we re-check every
+        # `engine_interval_seconds` (default 60s) so stop-loss / take-profit are
+        # enforced against the LATEST price continuously -- not once a day.
+        interval = max(5, self.config.engine_interval_seconds)
+        log.info("checking every ~%s (independent of the %s bar timeframe).",
+                 _fmt_dur(interval), self.config.interval)
         next_run = time.monotonic()
         while not self._stop:
             if not self.dry_run and self.risk.kill_switch_active():
@@ -221,8 +226,8 @@ class TradingEngine:
                 log.exception("error during trading step")
 
             next_run += interval
-            log.info("idle until next cycle (~%s) -- engine is running; Ctrl-C to stop.",
-                     _fmt_dur(interval))
+            log.info("next check in ~%s -- engine running, watching %d tickers & live stops; "
+                     "Ctrl-C to stop.", _fmt_dur(interval), len(self.config.tickers))
             while not self._stop and time.monotonic() < next_run:
                 if not self.dry_run and self.risk.kill_switch_active():
                     self._handle_kill_switch()

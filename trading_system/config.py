@@ -230,6 +230,12 @@ class Config:
         default_factory=lambda: _int("DASHBOARD_REFRESH_SECONDS", 30)
     )
     log_level: str = field(default_factory=lambda: _str("LOG_LEVEL", "INFO"))
+    # How often the auto-trade engine wakes to re-check signals and (critically)
+    # enforce stop-loss / take-profit against the LATEST price -- independent of
+    # the bar timeframe. Default 60s so it runs continuously, not once a day.
+    engine_interval_seconds: int = field(
+        default_factory=lambda: _int("ENGINE_INTERVAL_SECONDS", 60)
+    )
 
     # ---------------------------------------------------------------------- #
     # Derived helpers
