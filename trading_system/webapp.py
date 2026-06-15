@@ -30,7 +30,7 @@ from dataclasses import asdict
 from datetime import datetime, timezone
 from typing import Dict, List, Optional
 
-from config import CONFIG
+from config import CONFIG, apply_day_trade_preset
 from scanner import Scanner, TickerSignal
 
 log = logging.getLogger("webapp")
@@ -256,9 +256,7 @@ def create_app(config=CONFIG):
                 "aggressive_mode": config.aggressive_mode,
                 "engine_interval_seconds": config.engine_interval_seconds,
             }
-            config.interval = "1h"
-            config.aggressive_mode = True
-            config.engine_interval_seconds = 3  # fast, but safe on broker rate limits
+            apply_day_trade_preset(config)
             daytrade["on"] = True
             _flush_scanner_caches()
         elif not on and daytrade["on"]:

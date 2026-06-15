@@ -85,7 +85,17 @@ def cmd_testorder(args) -> int:
     return 0
 
 
-def cmd_run(_args) -> int:
+def _maybe_day_trade(args) -> None:
+    """Apply the fast-paced Day-trade preset if --day-trade was passed."""
+    if getattr(args, "day_trade", False):
+        from config import apply_day_trade_preset
+        apply_day_trade_preset(CONFIG)
+        print(f"⚡ Day-trade preset ON: 1h bars + aggressive entries + "
+              f"~{CONFIG.engine_interval_seconds}s engine loop (more trades, higher risk).")
+
+
+def cmd_run(args) -> int:
+    _maybe_day_trade(args)
     problems = [p for p in CONFIG.validate() if "TRADING_MODE=live" not in p]
     if problems:
         print("Refusing to start -- fix configuration first:")
@@ -101,6 +111,7 @@ def cmd_run(_args) -> int:
 def cmd_autotrade(args) -> int:
     """Auto-trade what the dashboard shows. --dry-run previews with no broker/keys."""
     from engine import TradingEngine
+    _maybe_day_trade(args)
     if getattr(args, "dry_run", False):
         TradingEngine(CONFIG, dry_run=True).preview()
         return 0
@@ -261,7 +272,11 @@ def build_parser() -> argparse.ArgumentParser:
     at = sub.add_parser("autotrade", help="auto-trade the dashboard's signals (paper by default)")
     at.add_argument("--dry-run", action="store_true",
                     help="preview what it WOULD do — no orders, no broker/keys needed")
-    sub.add_parser("run", help="alias for `autotrade` (live loop, needs a broker)")
+    at.add_argument("--day-trade", action="store_true", dest="day_trade",
+                    help="fast-paced preset: 1h bars + aggressive entries + ~3s engine loop")
+    rn = sub.add_parser("run", help="alias for `autotrade` (live loop, needs a broker)")
+    rn.add_argument("--day-trade", action="store_true", dest="day_trade",
+                    help="fast-paced preset: 1h bars + aggressive entries + ~3s engine loop")
     sub.add_parser("dashboard", help="launch the broker monitoring dashboard")
     sub.add_parser("signals", help="print the latest raw signal/votes for each ticker")
     sub.add_parser("report", help="print a performance report from the trade log")

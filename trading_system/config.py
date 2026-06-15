@@ -112,6 +112,18 @@ INTERVAL_MAP = {
     "1d": {"yf": "1d", "alpaca": "1Day", "seconds": 86400},
 }
 
+# The "Day-trade mode" preset -- the three levers that create fast-paced
+# behaviour. Shared by the web toggle and the CLI `--day-trade` flag so they
+# stay identical. 3s loop is fast but stays within broker rate limits.
+DAY_TRADE_PRESET = {"interval": "1h", "aggressive_mode": True, "engine_interval_seconds": 3}
+
+
+def apply_day_trade_preset(config) -> None:
+    """Switch a config to 1h bars + aggressive entries + a fast engine loop."""
+    config.interval = DAY_TRADE_PRESET["interval"]
+    config.aggressive_mode = DAY_TRADE_PRESET["aggressive_mode"]
+    config.engine_interval_seconds = DAY_TRADE_PRESET["engine_interval_seconds"]
+
 
 @dataclass
 class Config:
