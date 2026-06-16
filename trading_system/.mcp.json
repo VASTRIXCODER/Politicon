@@ -1,0 +1,33 @@
+{
+  "mcpServers": {
+    "tradingview": {
+      "command": "uvx",
+      "args": [
+        "--from",
+        "git+https://github.com/atilaahmettaner/tradingview-mcp.git",
+        "tradingview-mcp"
+      ],
+      "env": {}
+    },
+    "polymarket": {
+      "command": "uvx",
+      "args": [
+        "--from",
+        "git+https://github.com/berlinbra/polymarket-mcp.git",
+        "polymarket-mcp"
+      ],
+      "env": {
+        "KEY": "",
+        "FUNDER": ""
+      }
+    },
+    "dexscreener": {
+      "command": "npx",
+      "args": [
+        "-y",
+        "github:openSVM/dexscreener-mcp-server"
+      ],
+      "env": {}
+    }
+  }
+}

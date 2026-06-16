@@ -158,6 +158,19 @@ clearly-labeled **[Phase 4]** experiment — documented, not silently bolted on.
 | **2** | Timeframe selector (1m/1h/1d, live); SSE push (instant refresh on scan); Mission-Control equity sparkline; sector donut; drawdown/underwater + win/loss charts | **Implemented** |
 | **3** | **Centralised Options**: a dedicated Options view (ideas from BUY signals as ATM calls + any-ticker chain lookup), a per-ticker options ticket + flow panel on the detail page (`/api/options/<sym>`, `/api/options/idea/<sym>`, `/api/options/ideas`); optional server-side `tradingview-screener` live movers (`/api/movers`, graceful fallback) | **Implemented** |
 | **4** | Experimental next-bar ML predictor (pure-NumPy logistic regression) on the detail page — separate, opt-in (`PREDICT_ENABLED`), clearly labelled, with an honest holdout accuracy; never feeds the strategy | **Implemented** |
+| **5** | **Frontier feeds**: two specialised background engines + dashboard views — **Crypto** (DexScreener public API: live DEX pairs ranked by momentum + buy/sell pressure) and **Polymarket** (Gamma API: most-active prediction markets, implied probabilities, biggest movers). App-native (calls the public APIs directly; the MCP servers are wired in `.mcp.json` for the agent/co-pilot layer). Analysis only — no on-chain / Polygon order execution | **Implemented** |
+
+### Frontier feeds — architecture note
+The DexScreener and Polymarket **MCP servers are agent-side** (added to
+`.mcp.json` for the co-pilot), exactly like the TradingView MCP — the Flask app
+can't call them at request time. So the in-app **engines call the same public
+HTTP APIs directly**: `dexscreener.py` → `api.dexscreener.com`, `polymarket.py`
+→ `gamma-api.polymarket.com`, through the shared resilient `apiclient.get_json`
+(returns `(data, error)`, never raises). Each engine (`live_engines.py`) owns a
+background scan thread with the same status/version/snapshot contract as the
+equity `ScannerService`. Both are **read-only**: they rank live opportunities;
+placing DEX swaps or Polymarket orders needs a funded wallet and is a deliberate,
+higher-risk follow-up, intentionally not wired.
 
 ---
 

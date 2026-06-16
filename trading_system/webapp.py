@@ -257,6 +257,18 @@ def create_app(config=CONFIG):
     controller = EngineController(config, db)
     broker_holder: Dict = {"broker": None, "error": None, "tried": False}
 
+    # Specialised frontier engines (separate scan loops; read-only/analysis).
+    crypto_engine = polymarket_engine = None
+    if config.crypto_enabled:
+        from live_engines import CryptoEngine
+        crypto_engine = CryptoEngine(tokens=config.crypto_tokens or None,
+                                     interval=config.crypto_interval_seconds)
+        crypto_engine.start()
+    if config.polymarket_enabled:
+        from live_engines import PolymarketEngine
+        polymarket_engine = PolymarketEngine(interval=config.polymarket_interval_seconds)
+        polymarket_engine.start()
+
     def display_broker():
         if not broker_holder["tried"]:
             broker_holder["tried"] = True
@@ -463,6 +475,38 @@ def create_app(config=CONFIG):
         direction = "losers" if request.args.get("dir") == "losers" else "gainers"
         return jsonify(live_movers(direction))
 
+    # ----- frontier feeds: crypto (DexScreener) + Polymarket ----------------- #
+    @app.route("/api/crypto")
+    def api_crypto():
+        if not crypto_engine:
+            return jsonify({"status": "disabled", "items": [],
+                            "error": "crypto engine off (set CRYPTO_ENABLED=true)"})
+        return jsonify(crypto_engine.snapshot())
+
+    @app.route("/api/crypto/search")
+    def api_crypto_search():
+        import dexscreener
+        q = (request.args.get("q") or "").strip()
+        if not q:
+            return jsonify({"items": [], "error": "empty query"})
+        items, err = dexscreener.search_top(q)
+        return jsonify({"items": items, "error": err})
+
+    @app.route("/api/polymarket")
+    def api_polymarket():
+        if not polymarket_engine:
+            return jsonify({"status": "disabled", "items": [], "movers": [],
+                            "error": "polymarket engine off (set POLYMARKET_ENABLED=true)"})
+        return jsonify(polymarket_engine.snapshot())
+
+    @app.route("/api/polymarket/market")
+    def api_polymarket_market():
+        import polymarket as pm
+        slug = (request.args.get("slug") or "").strip()
+        if not slug:
+            return jsonify({"error": "empty slug"})
+        return jsonify(pm.market_detail(slug))
+
     @app.route("/api/predict/<sym>")
     def api_predict(sym):
         if not config.predict_enabled:
@@ -657,6 +701,8 @@ def create_app(config=CONFIG):
         resp.delete_cookie("dev_bypass")
         return resp
 
+    app.crypto_engine = crypto_engine
+    app.polymarket_engine = polymarket_engine
     app.scanner_service = service
     app.engine_controller = controller
     return app
@@ -1050,8 +1096,8 @@ _SHELL_JS = r"""
 (function(){
   var app=document.getElementById('app');
   if(!app)return;
-  var VIEWS=['dashboard','markets','signals','options','engine','risk','performance','backtest','logs','trades'];
-  var TITLES={dashboard:'Mission Control',markets:'Markets',signals:'Signals',options:'Options',engine:'Engine',risk:'Risk',performance:'Performance',backtest:'Backtesting',logs:'Activity Log',trades:'Trades'};
+  var VIEWS=['dashboard','markets','crypto','polymarket','signals','options','engine','risk','performance','backtest','logs','trades'];
+  var TITLES={dashboard:'Mission Control',markets:'Markets',crypto:'Crypto',polymarket:'Polymarket',signals:'Signals',options:'Options',engine:'Engine',risk:'Risk',performance:'Performance',backtest:'Backtesting',logs:'Activity Log',trades:'Trades'};
   var marketsReady=false;
 
   function setCrumb(v){var c=document.getElementById('crumb');if(c)c.innerHTML='Workspace <span class="sep">/</span> <b>'+(TITLES[v]||v)+'</b>';}
@@ -1175,6 +1221,12 @@ _MAIN_PAGE = """<!doctype html><html lang="en"><head>
     <div class="navitem" data-view="markets" role="button" tabindex="0">
       <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M3 16l5-5 4 3 8-8"/><path d="M16 6h5v5"/></svg>
       <span class="navlabel">Markets</span></div>
+    <div class="navitem" data-view="crypto" role="button" tabindex="0">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="9"/><path d="M9.5 8.5h4a2 2 0 0 1 0 4h-4h4a2 2 0 0 1 0 4h-4M11 7v10"/></svg>
+      <span class="navlabel">Crypto</span></div>
+    <div class="navitem" data-view="polymarket" role="button" tabindex="0">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M3 12a9 9 0 1 0 18 0a9 9 0 1 0-18 0"/><path d="M8 12l3 3 5-6"/></svg>
+      <span class="navlabel">Polymarket</span></div>
     <div class="navitem" data-view="signals" role="button" tabindex="0">
       <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M2 12h4l3 7 5-15 3 8h5"/></svg>
       <span class="navlabel">Signals</span></div>
@@ -1252,6 +1304,32 @@ _MAIN_PAGE = """<!doctype html><html lang="en"><head>
         <div class="subhead">Market-wide technical rating (S&amp;P 500 proxy)</div>
         <div class="tvwrap tv-mid" id="tv-gauge"><div class="tradingview-widget-container"><div class="tradingview-widget-container__widget"></div></div></div>
         <div class="tvnote">Charts &amp; data © TradingView. Loads live in your browser and needs internet access.</div>
+      </section>
+
+      <section id="sec-crypto" class="section" data-views="crypto" style="display:none">
+        <div class="sectionhead"><div class="eyebrow">Crypto engine</div><div class="title">On-chain opportunities — DexScreener</div>
+          <div class="desc">A dedicated crypto engine scanning live DEX pairs (price, liquidity, 24h volume, buy/sell pressure) and ranking momentum opportunities. Separate from the equity strategy. <b>Analysis only — no on-chain orders are placed.</b></div></div>
+        <div class="statusrow"><span class="meta" id="cryptostatus"><span class="dot scanning"></span>loading…</span></div>
+        <div class="subhead">Ranked opportunities</div>
+        <div class="cards" id="cryptocards"><div class="skel skel-card"></div><div class="skel skel-card"></div></div>
+        <div class="subhead">Look up any token / pair</div>
+        <div class="controls">
+          <input class="search" id="cryptoq" placeholder="Token, symbol or address (e.g. WIF)" aria-label="Crypto search" style="max-width:280px">
+          <button class="btn" id="cryptogo">Search</button>
+        </div>
+        <div id="cryptolookup"></div>
+        <div class="tvnote">Data © DexScreener public API · loads live and needs internet access.</div>
+      </section>
+
+      <section id="sec-polymarket" class="section" data-views="polymarket" style="display:none">
+        <div class="sectionhead"><div class="eyebrow">Polymarket engine</div><div class="title">Prediction-market opportunities</div>
+          <div class="desc">A dedicated engine scanning Polymarket's most active markets — implied probabilities, 24h moves and the biggest movers. <b>Analysis only — placing orders needs a funded Polygon wallet and is not wired here.</b></div></div>
+        <div class="statusrow"><span class="meta" id="pmstatus"><span class="dot scanning"></span>loading…</span></div>
+        <div class="subhead">Biggest movers (24h)</div>
+        <div class="cards" id="pmmovers"><div class="skel skel-card"></div></div>
+        <div class="subhead">Most active markets</div>
+        <div class="tablewrap"><table><thead><tr><th>Market</th><th>Leading</th><th class="num">Prob</th><th class="num">24h</th><th class="num">Volume</th><th>Ends</th></tr></thead><tbody id="pmbody"></tbody></table></div>
+        <div class="tvnote">Data © Polymarket Gamma API · loads live and needs internet access.</div>
       </section>
 
       <section id="sec-engine" class="section" data-views="dashboard engine">
@@ -1565,7 +1643,14 @@ function cpPush(who,text){CP_MSGS.push({who,text});const box=document.getElement
 async function cpSend(){const inp=document.getElementById('cpInput');const q=(inp.value||'').trim();if(!q)return;inp.value='';inp.style.height='auto';cpPush('me',q);cpPush('ai','…');try{const d=await (await fetch('/api/ai/ask',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({question:q})})).json();CP_MSGS.pop();cpPush('ai',d.answer||'No response.');}catch(e){CP_MSGS.pop();cpPush('ai','Network error — try again.');}}
 
 // ===== view hook + wiring =====
-window.onOsView=function(v){if(LOG_AUTO){clearInterval(LOG_AUTO);LOG_AUTO=null;}if(v==='performance')loadPerformance();else if(v==='dashboard')loadMiniEquity();else if(v==='options')loadOptionsView();else if(v==='logs'){loadLogs();LOG_AUTO=setInterval(loadLogs,5000);}};
+// ===== Crypto engine (DexScreener) =====
+function cryptoRow(x){var c=cls(x.recommendation);return '<div class="card"><div style="display:flex;align-items:center;gap:9px;margin-bottom:4px"><span class="chip '+c+'">'+(x.recommendation||'')+'</span> <b>'+x.symbol+'</b> <span class="meta">'+x.chain+' · '+x.dex+'</span></div><div class="summary">'+statCardHTML('Price',usd(x.price_usd))+statCardHTML('24h',(x.change_h24>=0?'+':'')+(x.change_h24||0).toFixed(1)+'%',x.change_h24>=0?'green':'red')+statCardHTML('Liquidity',money(x.liquidity))+statCardHTML('24h volume',money(x.volume24))+statCardHTML('Conviction',x.conviction+'/100','blue')+'</div><div class="subline" style="margin-top:6px">'+(x.reason||'')+(x.url?' · <a href="'+x.url+'" target="_blank" rel="noopener">DexScreener →</a>':'')+'</div></div>';}
+async function loadCrypto(){var go=document.getElementById('cryptogo');if(go&&!go._wired){go._wired=true;go.addEventListener('click',cryptoSearch);document.getElementById('cryptoq').addEventListener('keydown',function(e){if(e.key==='Enter')cryptoSearch();});}var st=document.getElementById('cryptostatus'),box=document.getElementById('cryptocards');try{const d=await (await fetch('/api/crypto')).json();st.innerHTML='<span class="dot '+(d.status==='ok'?'ok':(d.status==='error'?'error':'scanning'))+'"></span>'+(d.error?('crypto: '+d.error):('scanned '+(d.scanned||0)+' · '+((d.items||[]).length)+' ranked'))+(d.updated?(' · '+d.updated):'');var items=d.items||[];box.innerHTML=items.length?items.map(cryptoRow).join(''):'<div class="card"><div class="subline">No crypto opportunities yet'+(d.error?'':' — the engine scans every ~45s')+'.</div></div>';}catch(e){st.innerHTML='<span class="dot error"></span>fetch error';}}
+async function cryptoSearch(){var q=document.getElementById('cryptoq').value,box=document.getElementById('cryptolookup');if(!(q||'').trim())return;box.innerHTML='<div class="skel skel-card"></div>';try{const d=await (await fetch('/api/crypto/search?q='+encodeURIComponent(q))).json();if(d.error){box.innerHTML='<div class="note muted">'+d.error+'</div>';return;}var its=(d.items||[]).slice(0,12);box.innerHTML=its.length?'<div class="tablewrap"><table><thead><tr><th>Pair</th><th>Chain / DEX</th><th class="num">Price</th><th class="num">24h</th><th class="num">Liquidity</th><th class="num">24h vol</th></tr></thead><tbody>'+its.map(function(x){return '<tr><td><b>'+x.symbol+'</b></td><td class="muted">'+x.chain+' · '+x.dex+'</td><td class="num">'+usd(x.price_usd)+'</td><td class="num '+(x.change_h24>=0?'green':'red')+'">'+(x.change_h24>=0?'+':'')+(x.change_h24||0).toFixed(1)+'%</td><td class="num">'+money(x.liquidity)+'</td><td class="num">'+money(x.volume24)+'</td></tr>';}).join('')+'</tbody></table></div>':'<div class="note muted">No pairs found.</div>';}catch(e){box.innerHTML='<div class="note muted">Search failed (needs internet).</div>';}}
+// ===== Polymarket engine =====
+function pmMoverCard(x){var up=x.change24>=0;return '<div class="card"><div style="margin-bottom:4px"><span class="badge '+(up?'green':'red')+'">'+(up?'+':'')+(x.change24*100).toFixed(0)+' pts</span> <b>'+x.top_outcome+' '+(x.top_prob*100).toFixed(0)+'%</b></div><div class="subline">'+x.question+' · '+money(x.volume)+' vol'+(x.url?' · <a href="'+x.url+'" target="_blank" rel="noopener">open →</a>':'')+'</div></div>';}
+async function loadPolymarket(){var st=document.getElementById('pmstatus'),mv=document.getElementById('pmmovers'),tb=document.getElementById('pmbody');try{const d=await (await fetch('/api/polymarket')).json();st.innerHTML='<span class="dot '+(d.status==='ok'?'ok':(d.status==='error'?'error':'scanning'))+'"></span>'+(d.error?('polymarket: '+d.error):((d.count||0)+' markets'))+(d.updated?(' · '+d.updated):'');var movers=d.movers||[];mv.innerHTML=movers.length?movers.map(pmMoverCard).join(''):'<div class="card"><div class="subline">No big movers right now.</div></div>';var items=d.items||[];tb.innerHTML=items.length?items.map(function(x){var up=x.change24>=0;return '<tr><td><a href="'+x.url+'" target="_blank" rel="noopener">'+x.question+'</a></td><td>'+x.top_outcome+'</td><td class="num">'+(x.top_prob*100).toFixed(0)+'%</td><td class="num '+(up?'green':'red')+'">'+(up?'+':'')+(x.change24*100).toFixed(0)+'</td><td class="num">'+money(x.volume)+'</td><td class="muted">'+x.end_date+'</td></tr>';}).join(''):'<tr><td colspan="6" class="muted">No markets'+(d.error?' (offline)':'')+'.</td></tr>';}catch(e){st.innerHTML='<span class="dot error"></span>fetch error';}}
+window.onOsView=function(v){if(LOG_AUTO){clearInterval(LOG_AUTO);LOG_AUTO=null;}if(v==='performance')loadPerformance();else if(v==='dashboard')loadMiniEquity();else if(v==='options')loadOptionsView();else if(v==='crypto')loadCrypto();else if(v==='polymarket')loadPolymarket();else if(v==='logs'){loadLogs();LOG_AUTO=setInterval(loadLogs,5000);}};
 function setTimeframe(iv){fetch('/api/config',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({interval:iv})}).then(function(){document.querySelectorAll('#tfsel .btn').forEach(function(b){b.classList.toggle('active',b.dataset.iv===iv);});tickSignals();}).catch(function(){});}
 document.querySelectorAll('#tfsel .btn').forEach(function(b){b.addEventListener('click',function(){setTimeframe(b.dataset.iv);});});
 // SSE: refresh the instant a scan lands (falls back to polling if unsupported)

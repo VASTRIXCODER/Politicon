@@ -288,6 +288,15 @@ class Config:
     # --- experimental ML next-bar predictor (opt-in; NOT part of the strategy) --- #
     predict_enabled: bool = field(default_factory=lambda: _bool("PREDICT_ENABLED", True))
 
+    # --- live frontier feeds: crypto (DexScreener) + prediction markets (Polymarket) --- #
+    # Separate, specialised engines. Read-only/analysis by default (no on-chain
+    # orders). Each runs its own background scan loop when enabled.
+    crypto_enabled: bool = field(default_factory=lambda: _bool("CRYPTO_ENABLED", True))
+    crypto_tokens: List[str] = field(default_factory=lambda: _list("CRYPTO_TOKENS", []))
+    crypto_interval_seconds: int = field(default_factory=lambda: _int("CRYPTO_INTERVAL_SECONDS", 45))
+    polymarket_enabled: bool = field(default_factory=lambda: _bool("POLYMARKET_ENABLED", True))
+    polymarket_interval_seconds: int = field(default_factory=lambda: _int("POLYMARKET_INTERVAL_SECONDS", 60))
+
     # --- auth (Supabase, single-tenant gate; OFF by default) --------------- #
     auth_enabled: bool = field(default_factory=lambda: _bool("AUTH_ENABLED", False))
     supabase_url: str = field(default_factory=lambda: _str("SUPABASE_URL", ""))

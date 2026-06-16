@@ -380,6 +380,34 @@ It is intentionally conservative — order placement and pricing are wired up, b
 position reconstruction from wallet balances and order cancellation are left as
 clearly-marked `TODO`s. Test on tiny sizes before relying on it.
 
+## Crypto & Polymarket engines (frontier feeds)
+
+Two **specialised, read-only engines** run alongside the equity scanner, each
+with its own background scan loop and dashboard view:
+
+- **Crypto** (`dexscreener.py`) — scans live on-chain DEX pairs via the public
+  [DexScreener API](https://docs.dexscreener.com/api/reference) and ranks
+  momentum opportunities (recency-weighted price change + buy/sell pressure,
+  gated by liquidity). Includes a token/pair look-up box.
+- **Polymarket** (`polymarket.py`) — scans the most active prediction markets via
+  the [Gamma API](https://gamma-api.polymarket.com), showing implied
+  probabilities, 24h moves and the biggest movers.
+
+Both call the public HTTP APIs directly (the matching **MCP servers in
+`.mcp.json` are for the agent/co-pilot layer** — the app can't call MCPs at
+runtime, same as TradingView). They are **analysis only**: they surface live
+opportunities but place **no on-chain swaps or Polymarket orders** (that needs a
+funded wallet and is a deliberate follow-up). Toggle/tune via `.env`:
+
+```env
+CRYPTO_ENABLED=true        # CRYPTO_TOKENS=SOL,ETH,WIF   CRYPTO_INTERVAL_SECONDS=45
+POLYMARKET_ENABLED=true    # POLYMARKET_INTERVAL_SECONDS=60
+```
+
+> Like the rest of the dashboard's live data, these need outbound internet to the
+> respective APIs; with no network they show a clear "offline" state rather than
+> erroring.
+
 ## Known limitations
 
 - **Live warmup** primes the signal state from *recent* history only; for state
