@@ -222,6 +222,14 @@ class Config:
     # Smallest position the equity-based cap will plan for (don't open positions
     # too tiny to matter / cover fees).
     min_position_usd: float = field(default_factory=lambda: _float("MIN_POSITION_USD", 500.0))
+    # Position ROTATION: when the book is full, swap the weakest current holding
+    # for a materially stronger fresh signal, so capital always chases the best
+    # names instead of sitting in stale positions. A candidate must beat the
+    # weakest holding's current conviction by ROTATION_EDGE points to trigger it;
+    # at most MAX_ROTATIONS_PER_CYCLE swaps happen per cycle (limits churn/fees).
+    rotate_positions: bool = field(default_factory=lambda: _bool("ROTATE_POSITIONS", True))
+    rotation_edge: float = field(default_factory=lambda: _float("ROTATION_EDGE", 15.0))
+    max_rotations_per_cycle: int = field(default_factory=lambda: _int("MAX_ROTATIONS_PER_CYCLE", 2))
     max_daily_loss_pct: float = field(default_factory=lambda: _float("MAX_DAILY_LOSS_PCT", 3.0))
 
     # When the daily-loss limit is hit, also flatten everything? (default: keep

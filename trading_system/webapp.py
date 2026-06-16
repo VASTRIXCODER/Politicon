@@ -365,6 +365,7 @@ def create_app(config=CONFIG):
         _reg = market_regime(service._signals)
         out["engine"]["regime"] = _reg
         out["engine"]["dynamic_positions"] = config.dynamic_positions
+        out["engine"]["rotate_positions"] = config.rotate_positions
         out["engine"]["max_open_fixed"] = config.max_open_positions
         broker = display_broker()
         if broker is None:

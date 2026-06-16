@@ -270,6 +270,7 @@ class TradingEngine:
 
         self.risk.roll_day(account.equity)
         open_trades = {t["ticker"]: t for t in self.db.get_open_trades()}
+        prior_holdings = set(open_trades)  # positions held coming INTO this cycle
 
         halt_new_entries = False
         if not self.dry_run and self.risk.daily_loss_breached(account.equity):
@@ -314,11 +315,13 @@ class TradingEngine:
         # the book chases the best fresh signals and diversifies as slots free up.
         entry_candidates.sort(key=lambda c: c["conviction"], reverse=True)
         suppressed = 0
+        leftover: list = []
         for i, cand in enumerate(entry_candidates):
             can_open, why = self.risk.can_open_new(
                 len(open_trades), equity=account.equity, regime_score=fresh_score)
             if not can_open:
-                suppressed = len(entry_candidates) - i
+                leftover = entry_candidates[i:]
+                suppressed = len(leftover)
                 break
             if self.briefer is not None and not self.dry_run:
                 g = self.briefer.gate(cand["sig"].as_dict())
@@ -331,6 +334,14 @@ class TradingEngine:
             log.info("position cap %d reached -- opened %d top-ranked buy(s) this cycle, "
                      "%d not opened (lower MAX_POSITION_PCT to hold more names).",
                      self._effective_cap, opened, suppressed)
+
+        # Phase 3: ROTATION -- book is full but stronger signals are waiting, so swap
+        # the weakest holding for a materially stronger candidate (chase the best names).
+        if leftover and self.config.rotate_positions and not halt_new_entries:
+            rotated = self._rotate(account, open_trades, positions, leftover,
+                                   cycle_sigs, prior_holdings)
+            opened += rotated
+            closed += rotated
 
         holding = len(self.db.get_open_trades())
         # At fast cadences (e.g. every 1s) logging every cycle floods the feed, so
@@ -469,6 +480,59 @@ class TradingEngine:
         open_trades[ticker] = self.db.get_open_trade(ticker)
         log.info("%s opened trade #%d @ %.2f (stop %.2f / target %.2f)",
                  ticker, trade_id, fill, stop, target)
+
+    def _rotate(self, account, open_trades, positions, leftover, cycle_sigs,
+                prior_holdings) -> int:
+        """Swap the weakest *prior* holding for a materially stronger candidate.
+
+        Only positions held coming into this cycle are eligible (never churn one
+        opened this same cycle). A candidate must beat the weakest holding's
+        current conviction by ``ROTATION_EDGE`` to trigger a swap; at most
+        ``MAX_ROTATIONS_PER_CYCLE`` swaps happen. Each swap = one close + one open.
+        Returns the number of swaps performed.
+        """
+        edge = max(0.0, float(self.config.rotation_edge))
+        max_rot = max(0, int(self.config.max_rotations_per_cycle))
+        if max_rot == 0 or not leftover:
+            return 0
+        sigmap = {s.ticker: s for s in cycle_sigs}
+
+        def held_conv(t) -> float:
+            s = sigmap.get(t)
+            return float(getattr(s, "conviction", 0.0) or 0.0) if (s and not s.error) else 0.0
+
+        cands = sorted(leftover, key=lambda c: c["conviction"], reverse=True)
+        rotations = ci = 0
+        while rotations < max_rot and ci < len(cands):
+            eligible = [t for t in open_trades if t in prior_holdings]
+            if not eligible:
+                break
+            weakest = min(eligible, key=held_conv)
+            cand = cands[ci]
+            if cand["conviction"] - held_conv(weakest) < edge:
+                break  # the best remaining candidate isn't decisively stronger -> stop
+            # AI risk-gate the incoming name FIRST so a swap is atomic (1 close + 1 open).
+            if self.briefer is not None and not self.dry_run:
+                g = self.briefer.gate(cand["sig"].as_dict())
+                if not g.get("proceed", True):
+                    ci += 1
+                    continue
+            otr = open_trades.get(weakest)
+            price = self._latest_price(weakest, (otr or {}).get("entry_price", 0.0))
+            if not otr or price <= 0:
+                ci += 1
+                continue
+            wconv = held_conv(weakest)
+            self._close(weakest, otr, price, "rotation")
+            open_trades.pop(weakest, None)
+            positions.pop(weakest, None)
+            prior_holdings.discard(weakest)
+            self._open(cand["ticker"], account, cand["price"], open_trades, cand["sig"])
+            log.info("rotation: %s (conv %.0f) -> %s (conv %.0f)",
+                     weakest, wconv, cand["ticker"], cand["conviction"])
+            rotations += 1
+            ci += 1
+        return rotations
 
     def _close(self, ticker, open_trade, ref_price, reason) -> None:
         if self.dry_run:
