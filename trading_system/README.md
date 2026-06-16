@@ -21,6 +21,7 @@ logging, performance reporting, and a monitoring dashboard.
 - [Project layout](#project-layout)
 - [Quick start](#quick-start)
 - [Configuration](#configuration)
+- [Authentication (Supabase login gate)](#authentication-optional-supabase-login-gate)
 - [Usage](#usage)
 - [Risk management](#risk-management)
 - [Safety features](#safety-features)
@@ -144,6 +145,14 @@ pip install -r requirements.txt
 cp .env.example .env            # then edit it
 ```
 
+Prefer `make`? The common tasks are wrapped as targets (run `make` to list them):
+
+```bash
+make setup     # full setup: venv + deps + .env + connectivity check
+make env       # just create .env from .env.example, then paste your keys
+make web       # launch the browser dashboard
+```
+
 ## Configuration
 
 All settings live in `config.py` and are overridable via environment variables
@@ -173,6 +182,59 @@ All settings live in `config.py` and are overridable via environment variables
 | `AI_BRIEFING` | `false` | enable the optional Claude AI briefing layer |
 | `ANTHROPIC_API_KEY` | — | required only when `AI_BRIEFING=true` |
 | `ANTHROPIC_MODEL` | `claude-haiku-4-5` | model for AI briefings |
+| `AUTH_ENABLED` | `false` | turn on the optional Supabase login gate (needs the 3 vars below) |
+| `SUPABASE_URL` | — | your Supabase project URL |
+| `SUPABASE_ANON_KEY` | — | Supabase public anon key (safe to expose to the browser) |
+| `SUPABASE_JWT_SECRET` | — | Supabase JWT secret (server-only; verifies logins) |
+| `AUTH_ALLOWED_EMAILS` | — | optional comma-separated allow-list of emails |
+| `AUTH_COOKIE_SECURE` | `false` | mark the session cookie `Secure` (set `true` when serving over HTTPS) |
+
+See [Authentication (optional Supabase login gate)](#authentication-optional-supabase-login-gate)
+below for the full walkthrough.
+
+## Authentication (optional Supabase login gate)
+
+By default the web UI is **open** — bound to `127.0.0.1` it's only reachable
+from your own machine. If you want to put the whole dashboard behind a login
+(e.g. before exposing it on a network), switch on the built-in **single-tenant
+Supabase gate**. It needs no extra Python packages: the server verifies
+Supabase's JWT using only the standard library.
+
+**1. Create a Supabase project** at <https://supabase.com> and add at least one
+user (Authentication → Users → *Add user*, or enable email sign-ups).
+
+**2. Copy three values from your Supabase dashboard into `.env`:**
+
+| `.env` field | Where to find it in Supabase |
+|---|---|
+| `SUPABASE_URL` | Project Settings → API → **Project URL** |
+| `SUPABASE_ANON_KEY` | Project Settings → API → **Project API keys → `anon` `public`** |
+| `SUPABASE_JWT_SECRET` | Project Settings → API → **JWT Settings → JWT Secret** |
+
+**3. Turn the gate on** in `.env` (all four lines):
+
+```env
+AUTH_ENABLED=true
+SUPABASE_URL=https://YOUR-PROJECT.supabase.co
+SUPABASE_ANON_KEY=eyJhbGciOi...        # the public anon key
+SUPABASE_JWT_SECRET=your-jwt-secret    # stays server-side, never sent to the browser
+```
+
+Optional hardening:
+
+```env
+AUTH_ALLOWED_EMAILS=you@example.com,teammate@example.com   # empty = anyone who can sign in
+AUTH_COOKIE_SECURE=true                                    # set when serving over HTTPS
+```
+
+**4. Restart the web app** (`python main.py web`). You'll land on a `/login`
+page; sign in with your Supabase email/password and the dashboard unlocks. Sign
+out from the command palette (**Account → Sign out**).
+
+The gate stays completely inert unless `AUTH_ENABLED=true` **and** all three
+Supabase values are set — leaving them blank keeps the app open exactly as
+before. Only the public anon key ever reaches the browser; the JWT secret is
+used server-side to verify each login token's signature and expiry.
 
 ## Usage
 
