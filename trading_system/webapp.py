@@ -532,6 +532,23 @@ def create_app(config=CONFIG):
 
 def run(config=CONFIG) -> None:
     app = create_app(config)
+    # Make the auth state obvious at startup. A half-configured gate (enabled but
+    # missing a Supabase value) silently leaves the dashboard OPEN -- shout about it.
+    if config.auth_active:
+        log.info("auth: Supabase login gate is ACTIVE -- the dashboard requires sign-in.")
+    elif config.auth_enabled:
+        missing = [name for name, val in (
+            ("SUPABASE_URL", config.supabase_url),
+            ("SUPABASE_ANON_KEY", config.supabase_anon_key),
+            ("SUPABASE_JWT_SECRET", config.supabase_jwt_secret),
+        ) if not val]
+        log.warning(
+            "auth: AUTH_ENABLED=true but the login gate is OFF because these are "
+            "unset in .env: %s. The dashboard is OPEN to anyone who can reach it.",
+            ", ".join(missing),
+        )
+    else:
+        log.info("auth: login gate off (AUTH_ENABLED is not true) -- dashboard is open.")
     log.info("starting web control center at http://%s:%d (Ctrl-C to stop)",
              config.web_host, config.web_port)
     app.run(host=config.web_host, port=config.web_port, threaded=True)
