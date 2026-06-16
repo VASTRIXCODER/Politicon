@@ -779,7 +779,35 @@ _SHELL_CSS = """
     .navtoggle{display:grid}
     .content{padding:18px 14px 80px}
   }
-  @media (prefers-reduced-motion: reduce){ .section.vin{animation:none} .sidebar,.palette,.scrim{transition:none} }
+  /* ===== activity-log console ===== */
+  .logconsole{background:#070910;border:1px solid var(--hairline);border-radius:var(--r-lg);padding:6px 0;max-height:64vh;overflow:auto;font:12px/1.5 ui-monospace,"SF Mono",Menlo,Consolas,monospace;box-shadow:var(--sh-1)}
+  .logline{display:flex;gap:12px;padding:5px 16px;border-bottom:1px solid rgba(255,255,255,.03)}
+  .logline:hover{background:rgba(255,255,255,.025)}
+  .logts{color:var(--muted);flex:none;width:144px}
+  .loglv{flex:none;width:62px;font-weight:700;font-size:10.5px;letter-spacing:.04em}
+  .logmsg{color:var(--fg-2);white-space:pre-wrap;word-break:break-word}
+  .amber{color:var(--warn)}
+  /* ===== AI co-pilot ===== */
+  .copilot-fab{position:fixed;right:22px;bottom:22px;z-index:90;display:inline-flex;align-items:center;gap:9px;padding:12px 17px;border-radius:999px;border:1px solid rgba(108,140,255,.45);background:linear-gradient(120deg,var(--accent),#7b6cff);color:#fff;font-weight:650;font-size:13.5px;cursor:pointer;box-shadow:0 12px 30px -10px var(--accent);transition:var(--fast)}
+  .copilot-fab svg{width:19px;height:19px} .copilot-fab:hover{transform:translateY(-2px);box-shadow:0 18px 42px -12px var(--accent)}
+  .copilot-fab.hide{opacity:0;pointer-events:none;transform:scale(.9)}
+  .copilot{position:fixed;right:22px;bottom:22px;z-index:95;width:min(420px,94vw);height:min(620px,82vh);display:flex;flex-direction:column;
+    background:rgba(16,20,28,.97);background:color-mix(in srgb,var(--surface-2) 97%,transparent);border:1px solid var(--hairline-2);border-radius:18px;
+    box-shadow:var(--sh-3);overflow:hidden;opacity:0;pointer-events:none;transform:translateY(16px) scale(.98);transition:opacity .22s var(--ease),transform .22s var(--ease)}
+  .copilot.open{opacity:1;pointer-events:auto;transform:none}
+  .cp-head{display:flex;align-items:center;gap:10px;padding:13px 14px;border-bottom:1px solid var(--hairline)}
+  .cp-title{font-weight:700;letter-spacing:-.01em} .cp-status{font-size:11.5px;color:var(--muted);display:flex;align-items:center;gap:5px}
+  .cp-head .iconbtn{margin-left:auto;width:30px;height:30px}
+  .cp-msgs{flex:1;overflow:auto;padding:14px;display:flex;flex-direction:column;gap:12px}
+  .cp-msg{display:flex;gap:9px;max-width:100%} .cp-msg.me{flex-direction:row-reverse}
+  .cp-av{width:24px;height:24px;border-radius:7px;flex:none;display:grid;place-items:center;background:var(--accent-soft);color:var(--accent-2);font-size:13px}
+  .cp-bubble{padding:10px 13px;border-radius:13px;font-size:13px;line-height:1.55;background:var(--surface-3);color:var(--fg);max-width:84%;word-break:break-word}
+  .cp-msg.me .cp-bubble{background:var(--accent);color:#0a0f1f}
+  .cp-input{display:flex;gap:9px;padding:12px;border-top:1px solid var(--hairline);align-items:flex-end}
+  .cp-input textarea{flex:1;resize:none;background:var(--bg);border:1px solid var(--hairline-2);color:var(--fg);border-radius:11px;padding:10px 12px;font:13px/1.45 -apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif;outline:none;max-height:120px}
+  .cp-input textarea:focus{border-color:var(--accent);box-shadow:0 0 0 3px var(--accent-soft)} .cp-input .bigbtn{padding:10px 16px}
+  @media(max-width:560px){.copilot{right:8px;left:8px;width:auto;bottom:8px}.copilot-fab{right:14px;bottom:14px}}
+  @media (prefers-reduced-motion: reduce){ .section.vin{animation:none} .sidebar,.palette,.scrim,.copilot{transition:none} }
 """
 
 # --------------------------------------------------------------------------- #
@@ -789,8 +817,8 @@ _SHELL_JS = r"""
 (function(){
   var app=document.getElementById('app');
   if(!app)return;
-  var VIEWS=['dashboard','markets','signals','engine','risk','trades'];
-  var TITLES={dashboard:'Mission Control',markets:'Markets',signals:'Signals',engine:'Engine',risk:'Risk',trades:'Activity'};
+  var VIEWS=['dashboard','markets','signals','engine','risk','performance','backtest','logs','trades'];
+  var TITLES={dashboard:'Mission Control',markets:'Markets',signals:'Signals',engine:'Engine',risk:'Risk',performance:'Performance',backtest:'Backtesting',logs:'Activity Log',trades:'Trades'};
   var marketsReady=false;
 
   function setCrumb(v){var c=document.getElementById('crumb');if(c)c.innerHTML='Workspace <span class="sep">/</span> <b>'+(TITLES[v]||v)+'</b>';}
@@ -805,6 +833,7 @@ _SHELL_JS = r"""
     document.querySelectorAll('.navitem[data-view]').forEach(function(n){n.classList.toggle('active',n.getAttribute('data-view')===v);});
     setCrumb(v);
     if(v==='markets')initMarkets();
+    if(window.onOsView){try{window.onOsView(v);}catch(e){}}
     var main=document.querySelector('.main');if(main)main.scrollTop=0;
     app.classList.remove('navopen');
     if(!skipHash){try{history.replaceState(null,'','#'+v);}catch(e){}}
@@ -851,6 +880,7 @@ _SHELL_JS = r"""
     a.push({g:'Mode',t:'Toggle AI risk-gate',ic:'✦',run:function(){if(window.toggleGate)toggleGate();}});
     a.push({g:'Sizing',t:'Fixed % sizing',ic:'%',run:function(){if(window.setSizeMode)setSizeMode('fixed');}});
     a.push({g:'Sizing',t:'ATR-adaptive sizing',ic:'≈',run:function(){if(window.setSizeMode)setSizeMode('atr');}});
+    a.push({g:'AI',t:'Ask the AI co-pilot',ic:'✦',run:function(){if(window.openCopilot)openCopilot();}});
     var sg=(window.LAST&&LAST.signals)||[];
     sg.slice(0,50).forEach(function(x){a.push({g:'Tickers',t:x.ticker+'  ·  '+(x.recommendation||''),ic:'▫',meta:x.sector||'',run:function(){location.href='/ticker/'+x.ticker;}});});
     return a;
@@ -892,7 +922,8 @@ _SHELL_JS = r"""
 # --------------------------------------------------------------------------- #
 _MAIN_PAGE = """<!doctype html><html lang="en"><head>
 <meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
-<title>HP Analytics — Control Center</title><style>""" + _CSS + _SHELL_CSS + """</style></head><body class="osapp">
+<title>HP Analytics — Control Center</title><style>""" + _CSS + _SHELL_CSS + """</style>
+<script src="https://cdn.jsdelivr.net/npm/chart.js@4"></script></head><body class="osapp">
 <div class="app" id="app" data-view="dashboard">
   <aside class="sidebar" id="sidebar">
     <div class="sb-brand">
@@ -918,7 +949,17 @@ _MAIN_PAGE = """<!doctype html><html lang="en"><head>
       <span class="navlabel">Risk</span></div>
     <div class="navitem" data-view="trades" role="button" tabindex="0">
       <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M6 3h12v18l-3-2-3 2-3-2-3 2z"/><path d="M9 8h6M9 12h5"/></svg>
-      <span class="navlabel">Activity</span></div>
+      <span class="navlabel">Trades</span></div>
+    <div class="navgroup-title">Analyze</div>
+    <div class="navitem" data-view="performance" role="button" tabindex="0">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M4 19V5M4 19h16M8 16l3-4 3 2 4-7"/></svg>
+      <span class="navlabel">Performance</span></div>
+    <div class="navitem" data-view="backtest" role="button" tabindex="0">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M3 3v18h18"/><path d="M7 14l3-3 3 3 5-6"/><circle cx="7" cy="14" r="0.6"/></svg>
+      <span class="navlabel">Backtesting</span></div>
+    <div class="navitem" data-view="logs" role="button" tabindex="0">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M5 4h14M5 9h14M5 14h9M5 19h9"/></svg>
+      <span class="navlabel">Activity Log</span></div>
     <div class="sb-foot">
       <div class="sbf-row"><span class="dot scanning" id="sbdot"></span><span class="sbf-text" id="sbstatus">connecting…</span></div>
       <div class="navitem" id="collapseBtn" role="button" tabindex="0">
@@ -1036,6 +1077,48 @@ _MAIN_PAGE = """<!doctype html><html lang="en"><head>
           <th class="num">PnL $</th><th class="num">PnL %</th><th>Reason</th></tr></thead><tbody id="todaybody"></tbody></table></div>
       </section>
 
+      <section id="sec-performance" class="section" data-views="performance" style="display:none">
+        <div class="sectionhead"><div class="eyebrow">Performance</div><div class="title">Realised performance</div>
+          <div class="desc">Built from your own closed trades — win rate, P&amp;L, drawdown and the equity curve over time.</div></div>
+        <div class="summary" id="perfcards">
+          <div class="skel skel-stat"></div><div class="skel skel-stat"></div><div class="skel skel-stat"></div>
+          <div class="skel skel-stat"></div><div class="skel skel-stat"></div><div class="skel skel-stat"></div>
+        </div>
+        <div class="subhead">Equity curve (realised P&amp;L)</div>
+        <div class="chartbox"><canvas id="perfChart"></canvas></div>
+        <div class="subhead">Closed trades</div>
+        <div class="tablewrap"><table><thead><tr><th>Ticker</th><th class="num">Entry</th><th class="num">Exit</th>
+          <th class="num">Qty</th><th class="num">PnL $</th><th class="num">PnL %</th><th>Closed</th><th>Reason</th></tr></thead>
+          <tbody id="perfbody"></tbody></table></div>
+      </section>
+
+      <section id="sec-backtest" class="section" data-views="backtest" style="display:none">
+        <div class="sectionhead"><div class="eyebrow">Backtesting</div><div class="title">Test a strategy on history</div>
+          <div class="desc">Replays the strategy over historical data for any ticker, using your current lookback, stop and target settings.</div></div>
+        <div class="account">
+          <div class="field"><span>Ticker</span><input id="btTicker" type="text" value="AAPL" style="width:120px;text-transform:uppercase"></div>
+          <div class="field"><span>Equation</span><span><button class="btn active" id="btEq1" onclick="btSetEq(1)">Eq 1</button>
+            <button class="btn" id="btEq2" onclick="btSetEq(2)">Eq 2</button></span></div>
+          <div class="field"><span>Years</span><input id="btYears" type="number" min="0.5" max="15" step="0.5" value="3" style="width:90px"></div>
+          <div class="field"><span>&nbsp;</span><button class="bigbtn start" id="btRun" onclick="runBacktest()">▶ Run backtest</button></div>
+        </div>
+        <div id="btresult" style="margin-top:16px"></div>
+      </section>
+
+      <section id="sec-logs" class="section" data-views="logs" style="display:none">
+        <div class="sectionhead"><div class="eyebrow">Activity Log</div><div class="title">Engine activity history</div>
+          <div class="desc">Every line the engine has logged — entries, exits, cycle summaries, warnings — persisted across restarts.</div></div>
+        <div class="controls">
+          <input class="search" id="logSearch" placeholder="Filter messages…" oninput="logFilter()" aria-label="Filter log">
+          <span class="fchip active" data-lv="ALL" onclick="logLevel(this)">All</span>
+          <span class="fchip" data-lv="INFO" onclick="logLevel(this)">Info</span>
+          <span class="fchip" data-lv="WARNING" onclick="logLevel(this)">Warnings</span>
+          <span class="fchip" data-lv="ERROR" onclick="logLevel(this)">Errors</span>
+          <button class="btn" onclick="loadLogs()">↻ Refresh</button>
+        </div>
+        <div class="logconsole" id="logbox"><div class="muted">Loading activity history…</div></div>
+      </section>
+
       <div class="foot" id="foot"></div>
     </main>
   </div>
@@ -1044,6 +1127,16 @@ _MAIN_PAGE = """<!doctype html><html lang="en"><head>
 <div class="palette" id="palette" role="dialog" aria-modal="true" aria-label="Command palette">
   <input id="palinput" placeholder="Search tickers, jump to a page, or run a command…" aria-label="Command palette search">
   <div class="palres" id="palres"></div>
+</div>
+<button class="copilot-fab" id="copilotFab" aria-label="Open AI co-pilot">
+  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3l1.8 4.2L18 9l-4.2 1.8L12 15l-1.8-4.2L6 9l4.2-1.8z"/><path d="M18 14l.9 2.1L21 17l-2.1.9L18 20l-.9-2.1L15 17l2.1-.9z"/></svg>
+  <span class="cf-label">Ask AI</span></button>
+<div class="copilot" id="copilot" aria-label="AI co-pilot" role="dialog">
+  <div class="cp-head"><span class="cp-title">✦ AI Co-pilot</span><span class="cp-status" id="cpStatus"></span>
+    <button class="iconbtn" id="cpClose" aria-label="Close co-pilot">✕</button></div>
+  <div class="cp-msgs" id="cpMsgs"></div>
+  <div class="cp-input"><textarea id="cpInput" rows="1" placeholder="Ask about your signals, risk, or a ticker…" aria-label="Ask the AI co-pilot"></textarea>
+    <button class="bigbtn start" id="cpSend">Send</button></div>
 </div>
 <script>""" + _SHELL_JS + """</script>
 <script>
@@ -1138,6 +1231,49 @@ function renderSignals(){if(!LAST)return;const s=getSettings();const buys=LAST.s
 
 async function tickSignals(){try{LAST=await (await fetch('/api/signals')).json();const dot=LAST.status==='ok'?'ok':(LAST.status==='error'?'error':'scanning');document.getElementById('sigstatus').innerHTML=`<span class="dot ${dot}"></span>signals ${LAST.status==='scanning'?'scanning '+LAST.config.universe+'…':LAST.status}`;const c=LAST.config;document.getElementById('cfg').textContent=`eq${c.equation_set} · ${c.interval} · ${c.universe} stocks`+(LAST.ai_enabled?' · AI on':'');document.getElementById('updated').textContent=LAST.updated?'updated '+LAST.updated:'';SIZEMODE=LAST.config.atr_adaptive?'atr':'fixed';updateModeUI();renderSignals();}catch(e){document.getElementById('sigstatus').innerHTML='<span class="dot error"></span>fetch error';}}
 async function tickAccount(){try{ACC=await (await fetch('/api/account')).json();renderAccount();}catch(e){}}
+// ===== charts (Chart.js) =====
+const CHARTS={};
+function lineChart(id,labels,values,color,fill){if(typeof Chart==='undefined')return;const ax={grid:{color:'rgba(255,255,255,.06)'},border:{color:'rgba(255,255,255,.08)'},ticks:{color:'#828b9b',maxTicksLimit:8}};if(CHARTS[id])CHARTS[id].destroy();CHARTS[id]=new Chart(document.getElementById(id),{type:'line',data:{labels:labels,datasets:[{data:values,borderColor:color,borderWidth:1.8,pointRadius:0,tension:.12,fill:!!fill,backgroundColor:fill||'transparent'}]},options:{responsive:true,maintainAspectRatio:false,plugins:{legend:{display:false}},scales:{x:ax,y:ax}}});}
+function statCardHTML(k,v,c){return `<div class="stat"><div class="k">${k}</div><div class="v ${c||''}">${v}</div></div>`;}
+
+// ===== Performance =====
+async function loadPerformance(){try{const d=await (await fetch('/api/performance')).json();const r=d.report||{};const pf=(r.profit_factor==null)?'—':(r.profit_factor>99?'∞':r.profit_factor.toFixed(2));
+  document.getElementById('perfcards').innerHTML=[['Closed trades',r.trades||0,''],['Win rate',r.trades?Math.round(r.win_rate*100)+'%':'—','blue'],['Total P&L',money(r.total_pnl),(r.total_pnl||0)>=0?'green':'red'],['Total return',((r.total_return_pct||0)>=0?'+':'')+(r.total_return_pct||0).toFixed(1)+'%',(r.total_return_pct||0)>=0?'green':'red'],['Max drawdown',(r.largest_drawdown_pct||0).toFixed(1)+'%','red'],['Profit factor',pf,'']].map((c,i)=>`<div class="stat" style="animation-delay:${i*40}ms"><div class="k">${c[0]}</div><div class="v ${c[2]}">${c[1]}</div></div>`).join('');
+  const eqs=d.equity||[];lineChart('perfChart',eqs.map(p=>(p.time||'').slice(0,10)),eqs.map(p=>p.equity),'#6c8cff','rgba(108,140,255,.10)');
+  document.getElementById('perfbody').innerHTML=(d.closed&&d.closed.length)?d.closed.map(t=>{const c=(t.pnl_dollars||0)>=0?'green':'red';return `<tr><td><b>${t.ticker}</b></td><td class="num">${usd(t.entry_price)}</td><td class="num">${usd(t.exit_price)}</td><td class="num">${t.qty||0}</td><td class="num ${c}">${money(t.pnl_dollars)}</td><td class="num ${c}">${(t.pnl_pct||0).toFixed(2)}%</td><td class="muted">${(t.exit_time||'').replace('T',' ').slice(0,16)}</td><td class="muted">${t.exit_reason||''}</td></tr>`;}).join(''):'<tr><td colspan="8" class="muted">No closed trades yet — they appear here once the engine completes round trips.</td></tr>';}catch(e){}}
+
+// ===== Backtesting =====
+let BT_EQ=1;
+function btSetEq(n){BT_EQ=n;document.getElementById('btEq1').classList.toggle('active',n===1);document.getElementById('btEq2').classList.toggle('active',n===2);}
+async function runBacktest(){const t=(document.getElementById('btTicker').value||'').trim().toUpperCase();const y=document.getElementById('btYears').value||3;const box=document.getElementById('btresult');if(!t){box.innerHTML='<div class="note warn">Enter a ticker symbol.</div>';return;}
+  const btn=document.getElementById('btRun');btn.disabled=true;btn.textContent='Running…';box.innerHTML='<div class="summary"><div class="skel skel-stat"></div><div class="skel skel-stat"></div><div class="skel skel-stat"></div><div class="skel skel-stat"></div></div>';
+  try{const d=await (await fetch(`/api/backtest?ticker=${encodeURIComponent(t)}&eq=${BT_EQ}&years=${y}`)).json();
+    if(!d.ok){box.innerHTML=`<div class="note warn">${(d.error||'Backtest failed.')}</div>`;return;}
+    const r=d.report||{};const pf=(r.profit_factor>99?'∞':(r.profit_factor||0).toFixed(2));
+    box.innerHTML=`<div class="summary">${statCardHTML('Win rate',Math.round(r.win_rate*100)+'%','blue')}${statCardHTML('Total return',((r.total_return_pct||0)>=0?'+':'')+(r.total_return_pct||0).toFixed(0)+'%',(r.total_return_pct||0)>=0?'green':'red')}${statCardHTML('Trades',r.trades)}${statCardHTML('Max drawdown',(r.largest_drawdown_pct||0).toFixed(1)+'%','red')}${statCardHTML('Sharpe',(r.sharpe||0).toFixed(2))}${statCardHTML('Profit factor',pf)}${statCardHTML('Avg win',money(r.avg_win),'green')}${statCardHTML('Avg loss',money(r.avg_loss),'red')}</div><div class="subhead">Equity curve — ${d.ticker} · eq${d.equation_set} · ${d.interval} · ${d.years}y</div><div class="chartbox"><canvas id="btChart"></canvas></div>`;
+    lineChart('btChart',d.equity.labels,d.equity.values,'#4cc38a','rgba(76,195,138,.10)');
+  }catch(e){box.innerHTML='<div class="note warn">Backtest error: '+e+'</div>';}finally{btn.disabled=false;btn.textContent='▶ Run backtest';}}
+
+// ===== Activity log =====
+let LOG_LV='ALL',LOG_T=null,LOG_AUTO=null;
+function logLevel(el){LOG_LV=el.dataset.lv;document.querySelectorAll('#sec-logs .fchip').forEach(c=>c.classList.toggle('active',c===el));loadLogs();}
+function logFilter(){clearTimeout(LOG_T);LOG_T=setTimeout(loadLogs,250);}
+async function loadLogs(){const q=(document.getElementById('logSearch').value||'').trim();try{const d=await (await fetch(`/api/engine/log?limit=800&level=${LOG_LV}&q=${encodeURIComponent(q)}`)).json();const rows=d.rows||[];
+  document.getElementById('logbox').innerHTML=rows.length?rows.map(r=>{const lv=r.level||'INFO';const cl=(lv==='ERROR'||lv==='CRITICAL')?'red':(lv==='WARNING'?'amber':'muted');const ts=(r.ts||'').replace('T',' ').slice(0,19);return `<div class="logline"><span class="logts">${ts}</span><span class="loglv ${cl}">${lv}</span><span class="logmsg">${(r.message||'').replace(/</g,'&lt;')}</span></div>`;}).join(''):'<div class="muted" style="padding:14px 16px">No log entries yet. Start the engine and its activity will accumulate here.</div>';}catch(e){document.getElementById('logbox').innerHTML='<div class="red" style="padding:14px 16px">Could not load the log.</div>';}}
+
+// ===== AI co-pilot =====
+let CP_MSGS=[],CP_READY=false;
+function openCopilot(){document.getElementById('copilot').classList.add('open');document.getElementById('copilotFab').classList.add('hide');if(!CP_READY)cpInit();setTimeout(()=>document.getElementById('cpInput').focus(),60);}
+function closeCopilot(){document.getElementById('copilot').classList.remove('open');document.getElementById('copilotFab').classList.remove('hide');}
+window.openCopilot=openCopilot;
+async function cpInit(){CP_READY=true;try{const s=await (await fetch('/api/ai/status')).json();document.getElementById('cpStatus').innerHTML=s.enabled?'<span class="dot ok"></span>online':'<span class="dot off"></span>add key';if(!CP_MSGS.length)cpPush('ai',s.enabled?"Hi — I'm your co-pilot. Ask me about a signal, your risk settings, or what to do next.":"I'm off right now. Add ANTHROPIC_API_KEY to .env and restart to switch me on.");}catch(e){}}
+function cpPush(who,text){CP_MSGS.push({who,text});const box=document.getElementById('cpMsgs');box.innerHTML=CP_MSGS.map(m=>`<div class="cp-msg ${m.who}">${m.who==='ai'?'<span class="cp-av">✦</span>':''}<div class="cp-bubble">${(m.text||'').replace(/</g,'&lt;').replace(/\\n/g,'<br>')}</div></div>`).join('');box.scrollTop=box.scrollHeight;}
+async function cpSend(){const inp=document.getElementById('cpInput');const q=(inp.value||'').trim();if(!q)return;inp.value='';inp.style.height='auto';cpPush('me',q);cpPush('ai','…');try{const d=await (await fetch('/api/ai/ask',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({question:q})})).json();CP_MSGS.pop();cpPush('ai',d.answer||'No response.');}catch(e){CP_MSGS.pop();cpPush('ai','Network error — try again.');}}
+
+// ===== view hook + wiring =====
+window.onOsView=function(v){if(LOG_AUTO){clearInterval(LOG_AUTO);LOG_AUTO=null;}if(v==='performance')loadPerformance();else if(v==='logs'){loadLogs();LOG_AUTO=setInterval(loadLogs,5000);}};
+(function(){const fab=document.getElementById('copilotFab');if(fab)fab.addEventListener('click',openCopilot);const x=document.getElementById('cpClose');if(x)x.addEventListener('click',closeCopilot);const s=document.getElementById('cpSend');if(s)s.addEventListener('click',cpSend);const i=document.getElementById('cpInput');if(i){i.addEventListener('keydown',e=>{if(e.key==='Enter'&&!e.shiftKey){e.preventDefault();cpSend();}});i.addEventListener('input',()=>{i.style.height='auto';i.style.height=Math.min(120,i.scrollHeight)+'px';});}})();
+
 initInputs(); tickSignals(); tickAccount(); setInterval(tickSignals,REFRESH); setInterval(tickAccount,Math.min(REFRESH,15000));
 </script></body></html>"""
 
