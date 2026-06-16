@@ -285,6 +285,9 @@ class Config:
         default_factory=lambda: _str("ANTHROPIC_MODEL", "claude-haiku-4-5")
     )
 
+    # --- experimental ML next-bar predictor (opt-in; NOT part of the strategy) --- #
+    predict_enabled: bool = field(default_factory=lambda: _bool("PREDICT_ENABLED", True))
+
     # --- auth (Supabase, single-tenant gate; OFF by default) --------------- #
     auth_enabled: bool = field(default_factory=lambda: _bool("AUTH_ENABLED", False))
     supabase_url: str = field(default_factory=lambda: _str("SUPABASE_URL", ""))

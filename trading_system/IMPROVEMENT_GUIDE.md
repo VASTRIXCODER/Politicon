@@ -150,7 +150,7 @@ clearly-labeled **[Phase 4]** experiment — documented, not silently bolted on.
 | **1** | Universe expansion + watchlists (drift-free); `(ticker,interval)` cache + interval-aware TTL; real bar-time freshness + data-age badge; TradingView Technical-Analysis gauge (detail + markets) + screener widget | **Implemented with this guide** |
 | **2** | Timeframe selector (1m/1h/1d, live); SSE push (instant refresh on scan); Mission-Control equity sparkline; sector donut; drawdown/underwater + win/loss charts | **Implemented** |
 | **3** | Options-flow panel on the detail page (yfinance chain: call/put volume, put/call ratio, most-active strikes); optional server-side `tradingview-screener` live movers (`/api/movers`, graceful fallback) | **Implemented** |
-| **4** | Opt-in ML "prediction" model as a separate, clearly-labeled experimental signal | Planned |
+| **4** | Experimental next-bar ML predictor (pure-NumPy logistic regression) on the detail page — separate, opt-in (`PREDICT_ENABLED`), clearly labelled, with an honest holdout accuracy; never feeds the strategy | **Implemented** |
 
 ---
 

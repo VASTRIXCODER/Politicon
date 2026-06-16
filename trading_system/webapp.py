@@ -441,6 +441,17 @@ def create_app(config=CONFIG):
         direction = "losers" if request.args.get("dir") == "losers" else "gainers"
         return jsonify(live_movers(direction))
 
+    @app.route("/api/predict/<sym>")
+    def api_predict(sym):
+        if not config.predict_enabled:
+            return jsonify({"error": "prediction disabled (set PREDICT_ENABLED=true)"})
+        from predict import predict_next_up
+        try:
+            df = service.scanner._fetch(sym.upper())
+        except Exception as exc:
+            return jsonify({"error": f"data fetch failed: {exc}"})
+        return jsonify(predict_next_up(df))
+
     @app.route("/api/engine/log")
     def api_engine_log():
         limit = min(int(request.args.get("limit", 600) or 600), 5000)
@@ -1686,6 +1697,11 @@ _DETAIL_PAGE = """<!doctype html><html lang="en"><head>
     <div id="optbox"><div class="skel skel-card"></div></div>
   </section>
   <section class="section">
+    <div class="sectionhead"><div class="eyebrow">Prediction · experimental</div><div class="title">__TICKER__ · next-bar direction model</div>
+      <div class="desc">A small experimental ML model (logistic regression on this ticker's own history) estimating the chance the next bar closes higher. <b>Not part of the HP Analytics strategy</b> and easily overfit — context only, not advice.</div></div>
+    <div id="predbox"><div class="skel skel-card"></div></div>
+  </section>
+  <section class="section">
     <div class="sectionhead"><div class="eyebrow">Price &amp; signals</div><div class="title">__TICKER__ price with buy / sell markers</div></div>
     <div class="chartbox"><canvas id="priceChart"></canvas></div>
   </section>
@@ -1715,7 +1731,8 @@ async function loadOptions(){const box=document.getElementById('optbox');try{con
   const pcr=d.put_call_ratio==null?'—':d.put_call_ratio;const bcls=/bull/.test(d.bias||'')?'green':(/bear/.test(d.bias||'')?'red':'muted');
   box.innerHTML='<div class="card"><div class="summary">'+statCard('Expiry',d.expiry)+statCard('Call volume',(d.call_volume||0).toLocaleString(),'green')+statCard('Put volume',(d.put_volume||0).toLocaleString(),'red')+statCard('Put / Call',pcr,bcls)+'</div><div style="margin:8px 0"><span class="badge '+bcls+'">'+(d.bias||'')+'</span></div><div class="subhead">Most active calls</div><div class="tablewrap">'+tbl(d.calls)+'</div><div class="subhead">Most active puts</div><div class="tablewrap">'+tbl(d.puts)+'</div></div>';
 }catch(e){box.innerHTML='<div class="note muted">Options data unavailable (needs internet).</div>';}}
+async function loadPredict(){const box=document.getElementById('predbox');if(!box)return;try{const d=await (await fetch('/api/predict/'+TICKER)).json();if(d.error){box.innerHTML='<div class="note muted">Prediction: '+d.error+'</div>';return;}const up=d.prob_up>=0.5;box.innerHTML='<div class="card"><div class="summary">'+statCard('P(next bar up)',(d.prob_up*100).toFixed(1)+'%',up?'green':'red')+statCard('Direction',(d.direction||'').toUpperCase(),up?'green':'red')+statCard('Confidence',d.confidence+'%')+statCard('Holdout accuracy',(d.holdout_accuracy*100).toFixed(0)+'%','blue')+'</div><div class="note warn" style="margin-top:8px">⚠️ Experimental — logistic regression on '+d.n_train+' bars; base rate up '+(d.base_rate_up*100).toFixed(0)+'%. A score near 50% / accuracy near the base rate is expected. Not part of the strategy; not advice.</div></div>';}catch(e){box.innerHTML='<div class="note muted">Prediction unavailable.</div>';}}
 function drawCharts(d){if(typeof Chart==='undefined'){document.getElementById('foot').textContent='(charts need internet to load chart library)';return;}const ax={grid:{color:'rgba(255,255,255,.06)'},border:{color:'rgba(255,255,255,.08)'},ticks:{color:'#737d8e',maxTicksLimit:8}};if(priceChart)priceChart.destroy();priceChart=new Chart(document.getElementById('priceChart'),{type:'line',data:{labels:d.chart.labels,datasets:[{label:'Price',data:d.chart.price,borderColor:'#6c8cff',borderWidth:1.8,pointRadius:0,tension:.12},{label:'Buy',data:d.chart.buys,borderColor:'#4cc38a',backgroundColor:'#4cc38a',showLine:false,pointRadius:6,pointStyle:'triangle'},{label:'Sell',data:d.chart.sells,borderColor:'#e5635f',backgroundColor:'#e5635f',showLine:false,pointRadius:6,pointStyle:'triangle',rotation:180}]},options:{responsive:true,maintainAspectRatio:false,plugins:{legend:{labels:{color:'#aeb6c4',usePointStyle:true,boxWidth:7}}},scales:{x:ax,y:ax}}});if(equityChart)equityChart.destroy();equityChart=new Chart(document.getElementById('equityChart'),{type:'line',data:{labels:d.equity.labels,datasets:[{label:'Equity ($)',data:d.equity.values,borderColor:'#4cc38a',borderWidth:1.8,pointRadius:0,fill:true,backgroundColor:'rgba(76,195,138,.10)',tension:.12}]},options:{responsive:true,maintainAspectRatio:false,plugins:{legend:{labels:{color:'#aeb6c4',usePointStyle:true,boxWidth:7}}},scales:{x:ax,y:ax}}});}
 async function load(){document.getElementById('head').textContent='loading…';const d=await (await fetch(`/api/ticker/${TICKER}?eq=${EQ}`)).json();if(d.error){document.getElementById('head').innerHTML=`<span class="red">${d.error}</span>`;return;}document.getElementById('head').innerHTML=`<span class="chip ${cls(d.recommendation)}">${d.recommendation}</span> · ${d.sector} · ${usd(d.price)} · conv ${d.conviction.toFixed(0)}/100`;SIZEMODE=d.atr_adaptive?'atr':'fixed';const s=getSettings();const _x={ticker:d.ticker,recommendation:d.recommendation,price:d.price,atr:d.atr,atr_stop:d.atr_stop,atr_target:d.atr_target,eq1:{edge_win_rate:(d.stats?d.stats.win_rate:0.5)}};const e=econ(_x,s);document.getElementById('planbox').innerHTML=`<div class="card">${orderTicket(d,e,s,'bar')}</div>`;const st=d.stats;document.getElementById('stats').innerHTML=statCard('Win rate',(st.win_rate*100).toFixed(0)+'%','blue')+statCard('Total return',(st.return_pct>=0?'+':'')+st.return_pct.toFixed(0)+'%',st.return_pct>=0?'green':'red')+statCard('Trades',st.trades)+statCard('Avg win',money(st.avg_win),'green')+statCard('Avg loss',money(st.avg_loss),'red')+statCard('Max drawdown',st.max_dd_pct.toFixed(1)+'%','red')+statCard('Sharpe',st.sharpe.toFixed(2))+statCard('Profit factor',st.profit_factor.toFixed(2));document.getElementById('hist').innerHTML=(d.history||[]).map(h=>`<tr><td>${h.date}</td><td><span class="chip ${h.action}">${h.action}</span></td><td class="num">${usd(h.price)}</td></tr>`).join('')||'<tr><td colspan="3" class="muted">no signals in range</td></tr>';document.getElementById('foot').textContent=`as of ${d.asof} · equation set ${d.equation_set} · ${st.trades} historical trades`;drawCharts(d);}
-fetch('/api/account').then(r=>r.json()).then(a=>{if(a&&a.account)CAPITAL=a.account.equity;}).catch(()=>{}).finally(()=>{load();loadOptions();setInterval(load,__REFRESH__*1000);});
+fetch('/api/account').then(r=>r.json()).then(a=>{if(a&&a.account)CAPITAL=a.account.equity;}).catch(()=>{}).finally(()=>{load();loadOptions();loadPredict();setInterval(load,__REFRESH__*1000);});
 </script></body></html>"""
