@@ -148,7 +148,7 @@ clearly-labeled **[Phase 4]** experiment — documented, not silently bolted on.
 | Phase | Scope | Status |
 |---|---|---|
 | **1** | Universe expansion + watchlists (drift-free); `(ticker,interval)` cache + interval-aware TTL; real bar-time freshness + data-age badge; TradingView Technical-Analysis gauge (detail + markets) + screener widget | **Implemented with this guide** |
-| **2** | Intraday default + timeframe selector; SSE push; Mission-Control equity sparkline; sector donut; drawdown/underwater + distribution charts | Planned |
+| **2** | Timeframe selector (1m/1h/1d, live); SSE push (instant refresh on scan); Mission-Control equity sparkline; sector donut; drawdown/underwater + win/loss charts | **Implemented** |
 | **3** | Optional server-side `tradingview-screener` live movers; co-pilot market-scan actions via MCP; options-flow panel on detail | Planned |
 | **4** | Opt-in ML "prediction" model as a separate, clearly-labeled experimental signal | Planned |
 

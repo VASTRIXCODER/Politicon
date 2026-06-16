@@ -31,7 +31,7 @@ from dataclasses import asdict
 from datetime import datetime, timezone
 from typing import Dict, List, Optional
 
-from config import CONFIG, apply_day_trade_preset
+from config import CONFIG, INTERVAL_MAP, apply_day_trade_preset
 from scanner import Scanner, TickerSignal
 
 log = logging.getLogger("webapp")
@@ -60,6 +60,10 @@ class ScannerService:
         self.config = config
         self.scanner = Scanner(config, briefer=briefer)
         self._lock = threading.Lock()
+        # Condition shares the lock so we can bump version + notify SSE listeners
+        # atomically from inside the scan loop.
+        self._cv = threading.Condition(self._lock)
+        self._version = 0
         self._signals: List[TickerSignal] = []
         self._status = "starting"
         self._updated: Optional[str] = None
@@ -87,19 +91,34 @@ class ScannerService:
                     self._status = "ok"
                     self._error = None
                     self._updated = time.strftime("%Y-%m-%d %H:%M:%SZ", time.gmtime())
+                    self._version += 1
+                    self._cv.notify_all()  # wake SSE listeners the instant a scan lands
             except Exception as exc:  # pragma: no cover
                 log.exception("scan loop error")
                 with self._lock:
                     self._status = "error"
                     self._error = str(exc)
+                    self._version += 1
+                    self._cv.notify_all()
             self._stop.wait(max(5, self.config.web_refresh_seconds))
+
+    def version(self) -> int:
+        with self._lock:
+            return self._version
+
+    def wait_for_update(self, last_version: int, timeout: float) -> int:
+        """Block until the scan version moves past ``last_version`` (or timeout)."""
+        with self._cv:
+            if self._version == last_version:
+                self._cv.wait(timeout)
+            return self._version
 
     def snapshot(self) -> Dict:
         with self._lock:
             signals = list(self._signals)
             status, updated, error = self._status, self._updated, self._error
         return {
-            "status": status, "updated": updated, "error": error,
+            "status": status, "updated": updated, "error": error, "version": self._version,
             "ai_enabled": bool(self.scanner.briefer and self.scanner.briefer.enabled),
             "config": {"equation_set": self.config.equation_set, "lookback": self.config.lookback_length,
                        "interval": self.config.interval, "universe": len(self.config.tickers),
@@ -376,10 +395,40 @@ def create_app(config=CONFIG):
             config.ai_gate = bool(body["ai_gate"])
         if "day_trade" in body:
             _set_day_trade(bool(body["day_trade"]))
+        if "interval" in body:
+            iv = str(body["interval"]).strip()
+            if iv in INTERVAL_MAP and iv != config.interval:
+                config.interval = iv
+                _flush_scanner_caches()  # force a refetch at the new bar size
         return jsonify({"ok": True, "atr_adaptive": config.atr_adaptive,
                         "aggressive_mode": config.aggressive_mode, "ai_gate": config.ai_gate,
                         "day_trade": daytrade["on"], "interval": config.interval,
                         "engine_interval_seconds": config.engine_interval_seconds})
+
+    @app.route("/api/stream")
+    def api_stream():
+        # Server-Sent Events: pushes a "tick" the instant a scan completes so the
+        # browser refetches immediately instead of waiting for its poll interval.
+        once = request.args.get("once")
+
+        def gen():
+            yield "retry: 5000\n\n"
+            last = service.wait_for_update(-1, 0)   # current version, no wait
+            yield f"event: tick\ndata: {last}\n\n"
+            if once:
+                return
+            while True:
+                v = service.wait_for_update(last, 20)
+                if v != last:
+                    last = v
+                    yield f"event: tick\ndata: {v}\n\n"
+                else:
+                    yield ": keepalive\n\n"          # heartbeat to hold the connection
+
+        resp = Response(gen(), mimetype="text/event-stream")
+        resp.headers["Cache-Control"] = "no-cache"
+        resp.headers["X-Accel-Buffering"] = "no"    # don't let proxies buffer SSE
+        return resp
 
     @app.route("/api/engine/log")
     def api_engine_log():
@@ -1074,6 +1123,9 @@ _MAIN_PAGE = """<!doctype html><html lang="en"><head>
       <div class="crumb" id="crumb">Workspace <span class="sep">/</span> <b>Mission Control</b></div>
       <span class="meta" id="sigstatus"><span class="dot scanning"></span>loading…</span>
       <span class="pill" id="cfg"></span>
+      <span class="tfsel" id="tfsel" title="Signal timeframe (bar size)" style="display:inline-flex;gap:4px">
+        <button class="btn" data-iv="1m">1m</button><button class="btn" data-iv="1h">1h</button><button class="btn active" data-iv="1d">1d</button>
+      </span>
       <button class="cmdk" id="cmdkBtn" aria-label="Open command palette">⌕ Search &amp; commands <span class="kbd">⌘K</span></button>
       <span class="meta" id="updated"></span>
     </header>
@@ -1089,6 +1141,8 @@ _MAIN_PAGE = """<!doctype html><html lang="en"><head>
           <div class="skel skel-stat"></div><div class="skel skel-stat"></div><div class="skel skel-stat"></div>
           <div class="skel skel-stat"></div><div class="skel skel-stat"></div><div class="skel skel-stat"></div>
         </div>
+        <div class="subhead">Account equity over time</div>
+        <div class="chartbox" style="height:150px"><canvas id="miniEquity"></canvas></div>
         <div class="subhead">Open positions</div>
         <div id="posbox"><div class="note muted">No open positions yet — they appear here once the engine fills an order.</div></div>
       </section>
@@ -1155,6 +1209,7 @@ _MAIN_PAGE = """<!doctype html><html lang="en"><head>
         </div>
         <div class="subhead">Diversification — buys by sector</div>
         <div class="secbar" id="sectors"></div>
+        <div class="chartbox" style="height:210px;max-width:540px;margin-top:10px"><canvas id="sectorDonut"></canvas></div>
         <div class="subhead">Top buys — your exact order tickets</div>
         <div class="cards" id="topbuys"><div class="skel skel-card"></div><div class="skel skel-card"></div></div>
         <div class="subhead">All tickers</div>
@@ -1190,6 +1245,10 @@ _MAIN_PAGE = """<!doctype html><html lang="en"><head>
         </div>
         <div class="subhead">Equity curve (realised P&amp;L)</div>
         <div class="chartbox"><canvas id="perfChart"></canvas></div>
+        <div class="subhead">Drawdown (underwater — % below peak equity)</div>
+        <div class="chartbox" style="height:170px"><canvas id="ddChart"></canvas></div>
+        <div class="subhead">Win / loss split</div>
+        <div class="chartbox" style="height:210px;max-width:420px"><canvas id="wlDonut"></canvas></div>
         <div class="subhead">Closed trades</div>
         <div class="tablewrap"><table><thead><tr><th>Ticker</th><th class="num">Entry</th><th class="num">Exit</th>
           <th class="num">Qty</th><th class="num">PnL $</th><th class="num">PnL %</th><th>Closed</th><th>Reason</th></tr></thead>
@@ -1331,19 +1390,25 @@ function metric(x,k,s){const e=econ(x,s);switch(k){case 'rank':return recRank[x.
 function card(x,s){const e=econ(x,s);const strong=x.recommendation==='STRONG BUY'?' strong':'';const agree=x.agree?'<span class="agree">✓ both agree</span>':'';const brief=x.ai_brief?`<div class="brief">${briefHTML(x.ai_brief)}</div>`:'';return `<div class="card${strong}"><div class="top"><div><a class="tk" href="/ticker/${x.ticker}">${x.ticker}</a> <span class="meta">${x.sector}</span></div><span><span class="chip ${cls(x.recommendation)}">${x.recommendation}</span>${agree}</span></div><div class="subline">${usd(x.price)} · conv ${x.conviction.toFixed(0)}/100 · edge ${pct(edgeWin(x))} win ${sparkline(x.spark)}</div><div class="bar"><span data-w="${x.conviction}"></span></div><div class="badges">${contextBadges(x)}</div>${orderTicket(x,e,s,LAST.config.interval)}${brief}</div>`;}
 function row(x,s){if(x.error)return `<tr><td><a href="/ticker/${x.ticker}">${x.ticker}</a></td><td colspan="9" class="red">${x.error}</td></tr>`;const e=econ(x,s);return `<tr style="cursor:pointer" onclick="location.href='/ticker/${x.ticker}'"><td><a href="/ticker/${x.ticker}"><b>${x.ticker}</b></a> <span class="chip ${cls(x.recommendation)}">${x.recommendation}</span><div class="meta">${x.sector}</div></td><td><span class="badge ${x.trend==='Uptrend'?'green':'red'}">${x.trend||'—'}</span></td><td class="num">${x.conviction.toFixed(0)}</td><td class="num">${usd(x.price)}</td><td class="num ${(x.change_pct||0)>=0?'green':'red'}">${(x.change_pct||0)>=0?'+':''}${(x.change_pct||0).toFixed(1)}%</td><td class="num ${rsiCls(x.rsi)}">${Math.round(x.rsi)}</td><td class="num">${e.shares}</td><td class="num ${e.ev>=0?'green':'red'}">${money(e.ev)}</td><td class="num">${pct(edgeWin(x))} <span class="muted">(${x.eq1?x.eq1.edge_trades:0}t)</span></td><td>${sparkline(x.spark)}</td></tr>`;}
 function visible(s){let arr=LAST.signals.slice();if(SEARCH)arr=arr.filter(x=>x.ticker.toLowerCase().includes(SEARCH)||(x.sector||'').toLowerCase().includes(SEARCH));if(FILTER==='buys')arr=arr.filter(x=>x.is_buy);else if(FILTER==='strong')arr=arr.filter(x=>x.recommendation==='STRONG BUY');else if(FILTER==='hold')arr=arr.filter(x=>x.recommendation==='HOLD');else if(FILTER==='sell')arr=arr.filter(x=>(x.recommendation||'').includes('SELL'));arr.sort((a,b)=>{const va=metric(a,SORTK,s),vb=metric(b,SORTK,s);return va<vb?SORTD:va>vb?-SORTD:0;});return arr;}
-function renderSignals(){if(!LAST)return;const s=getSettings();const buys=LAST.signals.filter(x=>x.is_buy&&!x.error);let tc=0,tr=0,tw=0,te=0;buys.forEach(x=>{const e=econ(x,s);tc+=e.cost;tr+=e.risk;tw+=e.reward;te+=e.ev;});const dep=CAPITAL?(tc/CAPITAL*100):0;document.getElementById('summary').innerHTML=[['Account equity',money(CAPITAL),''],['Buy signals',buys.length,'blue'],['Capital to deploy',money(tc)+' ('+dep.toFixed(0)+'%)',''],['Total risk (stops)',money(tr),'red'],['Profit at targets',money(tw),'green'],['Expected value',money(te),te>=0?'green':'red']].map((c,i)=>`<div class="stat" style="animation-delay:${i*40}ms"><div class="k">${c[0]}</div><div class="v ${c[2]}">${c[1]}</div></div>`).join('');const bySec={};buys.forEach(x=>bySec[x.sector]=(bySec[x.sector]||0)+1);const secs=Object.keys(bySec).sort();document.getElementById('sectors').innerHTML=secs.length?secs.map((k,i)=>`<div class="secchip" style="animation-delay:${i*40}ms">${k} <b>${bySec[k]}</b></div>`).join(''):'<span class="hint">No buy signals right now.</span>';document.getElementById('topbuys').innerHTML=buys.length?buys.map((x,i)=>card(x,s).replace('<div class="card','<div style="animation-delay:'+(i*50)+'ms" class="card')).join(''):'<div class="card"><div class="subline">No fresh buy signals right now. The scanner re-checks automatically.</div></div>';document.getElementById('allbody').innerHTML=visible(s).map(x=>row(x,s)).join('');requestAnimationFrame(()=>document.querySelectorAll('.bar>span').forEach(b=>b.style.width=b.dataset.w+'%'));document.getElementById('foot').textContent=`${LAST.signals.length} tickers monitored · refreshing every ${REFRESH/1000}s · click any ticker for full detail · build __BUILD__`;}
+function renderSignals(){if(!LAST)return;const s=getSettings();const buys=LAST.signals.filter(x=>x.is_buy&&!x.error);let tc=0,tr=0,tw=0,te=0;buys.forEach(x=>{const e=econ(x,s);tc+=e.cost;tr+=e.risk;tw+=e.reward;te+=e.ev;});const dep=CAPITAL?(tc/CAPITAL*100):0;document.getElementById('summary').innerHTML=[['Account equity',money(CAPITAL),''],['Buy signals',buys.length,'blue'],['Capital to deploy',money(tc)+' ('+dep.toFixed(0)+'%)',''],['Total risk (stops)',money(tr),'red'],['Profit at targets',money(tw),'green'],['Expected value',money(te),te>=0?'green':'red']].map((c,i)=>`<div class="stat" style="animation-delay:${i*40}ms"><div class="k">${c[0]}</div><div class="v ${c[2]}">${c[1]}</div></div>`).join('');const bySec={};buys.forEach(x=>bySec[x.sector]=(bySec[x.sector]||0)+1);const secs=Object.keys(bySec).sort();document.getElementById('sectors').innerHTML=secs.length?secs.map((k,i)=>`<div class="secchip" style="animation-delay:${i*40}ms">${k} <b>${bySec[k]}</b></div>`).join(''):'<span class="hint">No buy signals right now.</span>';drawSectorDonut(bySec);document.getElementById('topbuys').innerHTML=buys.length?buys.map((x,i)=>card(x,s).replace('<div class="card','<div style="animation-delay:'+(i*50)+'ms" class="card')).join(''):'<div class="card"><div class="subline">No fresh buy signals right now. The scanner re-checks automatically.</div></div>';document.getElementById('allbody').innerHTML=visible(s).map(x=>row(x,s)).join('');requestAnimationFrame(()=>document.querySelectorAll('.bar>span').forEach(b=>b.style.width=b.dataset.w+'%'));document.getElementById('foot').textContent=`${LAST.signals.length} tickers monitored · refreshing every ${REFRESH/1000}s · click any ticker for full detail · build __BUILD__`;}
 
-async function tickSignals(){try{LAST=await (await fetch('/api/signals')).json();const dot=LAST.status==='ok'?'ok':(LAST.status==='error'?'error':'scanning');document.getElementById('sigstatus').innerHTML=`<span class="dot ${dot}"></span>signals ${LAST.status==='scanning'?'scanning '+LAST.config.universe+'…':LAST.status}`;const c=LAST.config;document.getElementById('cfg').textContent=`eq${c.equation_set} · ${c.interval} · ${c.universe} stocks`+(LAST.ai_enabled?' · AI on':'');(function(){var sg=(LAST.signals||[]).filter(function(x){return x.bar_time;});var fr='',stale=false;if(sg.length){sg.forEach(function(x){if(x.bar_time>fr)fr=x.bar_time;});stale=sg.filter(function(x){return x.stale;}).length>sg.length/2;}var fb=fr?(/00:00:00Z$/.test(fr)?fr.slice(0,10):fr.slice(0,16)):'';var pill=fb?('<span class="badge '+(stale?'red':'green')+'">'+(stale?'stale':'live')+'</span> data '+fb+(LAST.updated?' · ':'')):'';document.getElementById('updated').innerHTML=pill+(LAST.updated?'scanned '+LAST.updated:'');})();SIZEMODE=LAST.config.atr_adaptive?'atr':'fixed';updateModeUI();renderSignals();}catch(e){document.getElementById('sigstatus').innerHTML='<span class="dot error"></span>fetch error';}}
+async function tickSignals(){try{LAST=await (await fetch('/api/signals')).json();const dot=LAST.status==='ok'?'ok':(LAST.status==='error'?'error':'scanning');document.getElementById('sigstatus').innerHTML=`<span class="dot ${dot}"></span>signals ${LAST.status==='scanning'?'scanning '+LAST.config.universe+'…':LAST.status}`;const c=LAST.config;document.getElementById('cfg').textContent=`eq${c.equation_set} · ${c.interval} · ${c.universe} stocks`+(LAST.ai_enabled?' · AI on':'');try{document.querySelectorAll('#tfsel .btn').forEach(function(b){b.classList.toggle('active',b.dataset.iv===c.interval);});}catch(e){}(function(){var sg=(LAST.signals||[]).filter(function(x){return x.bar_time;});var fr='',stale=false;if(sg.length){sg.forEach(function(x){if(x.bar_time>fr)fr=x.bar_time;});stale=sg.filter(function(x){return x.stale;}).length>sg.length/2;}var fb=fr?(/00:00:00Z$/.test(fr)?fr.slice(0,10):fr.slice(0,16)):'';var pill=fb?('<span class="badge '+(stale?'red':'green')+'">'+(stale?'stale':'live')+'</span> data '+fb+(LAST.updated?' · ':'')):'';document.getElementById('updated').innerHTML=pill+(LAST.updated?'scanned '+LAST.updated:'');})();SIZEMODE=LAST.config.atr_adaptive?'atr':'fixed';updateModeUI();renderSignals();}catch(e){document.getElementById('sigstatus').innerHTML='<span class="dot error"></span>fetch error';}}
 async function tickAccount(){try{ACC=await (await fetch('/api/account')).json();renderAccount();}catch(e){}}
 // ===== charts (Chart.js) =====
 const CHARTS={};
 function lineChart(id,labels,values,color,fill){if(typeof Chart==='undefined')return;const ax={grid:{color:'rgba(255,255,255,.06)'},border:{color:'rgba(255,255,255,.08)'},ticks:{color:'#828b9b',maxTicksLimit:8}};if(CHARTS[id])CHARTS[id].destroy();CHARTS[id]=new Chart(document.getElementById(id),{type:'line',data:{labels:labels,datasets:[{data:values,borderColor:color,borderWidth:1.8,pointRadius:0,tension:.12,fill:!!fill,backgroundColor:fill||'transparent'}]},options:{responsive:true,maintainAspectRatio:false,plugins:{legend:{display:false}},scales:{x:ax,y:ax}}});}
 function statCardHTML(k,v,c){return `<div class="stat"><div class="k">${k}</div><div class="v ${c||''}">${v}</div></div>`;}
+var SECCOLORS=['#6c8cff','#4cc38a','#e0a337','#e5635f','#9db0ff','#67d6c3','#b38bf5','#f0883e','#56b6c2','#d19a66','#98c379','#e06c75','#61afef'];
+function donutChart(id,labels,values,colors){if(typeof Chart==='undefined')return;const el=document.getElementById(id);if(!el)return;if(CHARTS[id])CHARTS[id].destroy();CHARTS[id]=new Chart(el,{type:'doughnut',data:{labels:labels,datasets:[{data:values,backgroundColor:colors,borderColor:'rgba(0,0,0,0)',borderWidth:0}]},options:{responsive:true,maintainAspectRatio:false,cutout:'62%',plugins:{legend:{position:'right',labels:{color:'#aeb6c4',usePointStyle:true,boxWidth:8,font:{size:11}}}}}});}
+function drawSectorDonut(bySec){const el=document.getElementById('sectorDonut');if(!el)return;const ks=Object.keys(bySec);if(!ks.length){if(CHARTS['sectorDonut']){CHARTS['sectorDonut'].destroy();delete CHARTS['sectorDonut'];}return;}donutChart('sectorDonut',ks,ks.map(k=>bySec[k]),ks.map((_,i)=>SECCOLORS[i%SECCOLORS.length]));}
+function drawDrawdown(eq){if(!eq||!eq.length)return;let peak=-1e18;const dd=eq.map(p=>{peak=Math.max(peak,p.equity);return peak>0?((p.equity-peak)/peak*100):0;});lineChart('ddChart',eq.map(p=>(p.time||'').slice(0,10)),dd,'#e5635f','rgba(229,99,95,.12)');}
+async function loadMiniEquity(){try{const d=await (await fetch('/api/performance')).json();const eq=d.equity||[];if(!eq.length)return;lineChart('miniEquity',eq.map(p=>(p.time||'').slice(0,10)),eq.map(p=>p.equity),'#6c8cff','rgba(108,140,255,.10)');}catch(e){}}
 
 // ===== Performance =====
 async function loadPerformance(){try{const d=await (await fetch('/api/performance')).json();const r=d.report||{};const pf=(r.profit_factor==null)?'—':(r.profit_factor>99?'∞':r.profit_factor.toFixed(2));
   document.getElementById('perfcards').innerHTML=[['Closed trades',r.trades||0,''],['Win rate',r.trades?Math.round(r.win_rate*100)+'%':'—','blue'],['Total P&L',money(r.total_pnl),(r.total_pnl||0)>=0?'green':'red'],['Total return',((r.total_return_pct||0)>=0?'+':'')+(r.total_return_pct||0).toFixed(1)+'%',(r.total_return_pct||0)>=0?'green':'red'],['Max drawdown',(r.largest_drawdown_pct||0).toFixed(1)+'%','red'],['Profit factor',pf,'']].map((c,i)=>`<div class="stat" style="animation-delay:${i*40}ms"><div class="k">${c[0]}</div><div class="v ${c[2]}">${c[1]}</div></div>`).join('');
   const eqs=d.equity||[];lineChart('perfChart',eqs.map(p=>(p.time||'').slice(0,10)),eqs.map(p=>p.equity),'#6c8cff','rgba(108,140,255,.10)');
+  drawDrawdown(eqs);const cl=d.closed||[];const wins=cl.filter(t=>(t.pnl_dollars||0)>0).length,losses=cl.length-wins;if(cl.length)donutChart('wlDonut',['Wins','Losses'],[wins,losses],['#4cc38a','#e5635f']);
   document.getElementById('perfbody').innerHTML=(d.closed&&d.closed.length)?d.closed.map(t=>{const c=(t.pnl_dollars||0)>=0?'green':'red';return `<tr><td><b>${t.ticker}</b></td><td class="num">${usd(t.entry_price)}</td><td class="num">${usd(t.exit_price)}</td><td class="num">${t.qty||0}</td><td class="num ${c}">${money(t.pnl_dollars)}</td><td class="num ${c}">${(t.pnl_pct||0).toFixed(2)}%</td><td class="muted">${(t.exit_time||'').replace('T',' ').slice(0,16)}</td><td class="muted">${t.exit_reason||''}</td></tr>`;}).join(''):'<tr><td colspan="8" class="muted">No closed trades yet — they appear here once the engine completes round trips.</td></tr>';}catch(e){}}
 
 // ===== Backtesting =====
@@ -1375,10 +1440,14 @@ function cpPush(who,text){CP_MSGS.push({who,text});const box=document.getElement
 async function cpSend(){const inp=document.getElementById('cpInput');const q=(inp.value||'').trim();if(!q)return;inp.value='';inp.style.height='auto';cpPush('me',q);cpPush('ai','…');try{const d=await (await fetch('/api/ai/ask',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({question:q})})).json();CP_MSGS.pop();cpPush('ai',d.answer||'No response.');}catch(e){CP_MSGS.pop();cpPush('ai','Network error — try again.');}}
 
 // ===== view hook + wiring =====
-window.onOsView=function(v){if(LOG_AUTO){clearInterval(LOG_AUTO);LOG_AUTO=null;}if(v==='performance')loadPerformance();else if(v==='logs'){loadLogs();LOG_AUTO=setInterval(loadLogs,5000);}};
+window.onOsView=function(v){if(LOG_AUTO){clearInterval(LOG_AUTO);LOG_AUTO=null;}if(v==='performance')loadPerformance();else if(v==='dashboard')loadMiniEquity();else if(v==='logs'){loadLogs();LOG_AUTO=setInterval(loadLogs,5000);}};
+function setTimeframe(iv){fetch('/api/config',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({interval:iv})}).then(function(){document.querySelectorAll('#tfsel .btn').forEach(function(b){b.classList.toggle('active',b.dataset.iv===iv);});tickSignals();}).catch(function(){});}
+document.querySelectorAll('#tfsel .btn').forEach(function(b){b.addEventListener('click',function(){setTimeframe(b.dataset.iv);});});
+// SSE: refresh the instant a scan lands (falls back to polling if unsupported)
+try{var _es=new EventSource('/api/stream');_es.addEventListener('tick',function(){tickSignals();tickAccount();});}catch(e){}
 (function(){const fab=document.getElementById('copilotFab');if(fab)fab.addEventListener('click',openCopilot);const x=document.getElementById('cpClose');if(x)x.addEventListener('click',closeCopilot);const s=document.getElementById('cpSend');if(s)s.addEventListener('click',cpSend);const i=document.getElementById('cpInput');if(i){i.addEventListener('keydown',e=>{if(e.key==='Enter'&&!e.shiftKey){e.preventDefault();cpSend();}});i.addEventListener('input',()=>{i.style.height='auto';i.style.height=Math.min(120,i.scrollHeight)+'px';});}})();
 
-initInputs(); tickSignals(); tickAccount(); setInterval(tickSignals,REFRESH); setInterval(tickAccount,Math.min(REFRESH,15000));
+initInputs(); tickSignals(); tickAccount(); loadMiniEquity(); setInterval(tickSignals,REFRESH); setInterval(tickAccount,Math.min(REFRESH,15000));
 </script></body></html>"""
 
 
