@@ -594,130 +594,345 @@ function orderTicket(sig,e,s,interval){const t=sig.ticker,rec=sig.recommendation
 """
 
 # --------------------------------------------------------------------------- #
+# App-shell stylesheet (sidebar · topbar · command palette · TradingView)
+# --------------------------------------------------------------------------- #
+_SHELL_CSS = """
+  /* ===== operating-system shell ===== */
+  :root{--sb:252px;--sb-collapsed:68px;--topbar-h:58px}
+  .osapp{height:100vh;overflow:hidden}
+  .app{display:grid;grid-template-columns:auto 1fr;min-height:100vh}
+  .sidebar{width:var(--sb);height:100vh;position:sticky;top:0;align-self:start;display:flex;flex-direction:column;gap:3px;
+    padding:14px 12px;background:rgba(13,16,22,.74);background:color-mix(in srgb,var(--surface) 88%,transparent);
+    -webkit-backdrop-filter:blur(18px);backdrop-filter:blur(18px);border-right:1px solid var(--hairline);
+    transition:width .3s var(--ease);overflow-x:hidden;overflow-y:auto;z-index:40}
+  .app.collapsed .sidebar{width:var(--sb-collapsed)}
+  .sb-brand{display:flex;align-items:center;gap:11px;padding:6px 8px 16px;font-weight:700;letter-spacing:-.01em;white-space:nowrap}
+  .sb-brand .logo{width:32px;height:32px;border-radius:10px;display:grid;place-items:center;background:var(--brand-grad);font-size:17px;flex:none;box-shadow:0 8px 20px -8px var(--accent)}
+  .sb-brand .brandtext{font-size:14px;line-height:1.1}
+  .sb-brand .brandtext .g{background:var(--brand-grad);-webkit-background-clip:text;background-clip:text;color:transparent}
+  .sb-brand .brandtext small{display:block;color:var(--muted);font-size:10.5px;font-weight:600;letter-spacing:.05em;margin-top:2px}
+  .navgroup-title{font-size:10px;text-transform:uppercase;letter-spacing:.12em;color:var(--muted);font-weight:700;padding:13px 12px 6px}
+  .navitem{display:flex;align-items:center;gap:12px;padding:9px 11px;border-radius:10px;color:var(--fg-2);font-size:13.5px;font-weight:550;cursor:pointer;white-space:nowrap;transition:var(--fast);border:1px solid transparent;position:relative;user-select:none}
+  .navitem svg{width:18px;height:18px;flex:none;transition:transform var(--fast)}
+  .navitem:hover{background:var(--surface-2);color:var(--fg)} .navitem:hover svg{transform:scale(1.12)}
+  .navitem.active{background:var(--accent-soft);color:var(--fg);border-color:rgba(108,140,255,.30)}
+  .navitem.active svg{color:var(--accent-2)}
+  .navitem.active::before{content:"";position:absolute;left:-12px;top:50%;transform:translateY(-50%);width:3px;height:18px;border-radius:0 3px 3px 0;background:var(--accent)}
+  .navitem .navlabel{flex:1}
+  .app.collapsed .navlabel,.app.collapsed .navgroup-title,.app.collapsed .brandtext,.app.collapsed .sbf-text{display:none}
+  .app.collapsed .navitem{justify-content:center;padding:10px} .app.collapsed .sb-brand{justify-content:center;padding:6px 0 16px}
+  .sb-foot{margin-top:auto;border-top:1px solid var(--hairline);padding-top:10px;display:flex;flex-direction:column;gap:3px}
+  .sbf-row{display:flex;align-items:center;gap:9px;padding:7px 11px;font-size:11.5px;color:var(--muted)}
+  .kbd{display:inline-flex;align-items:center;justify-content:center;min-width:18px;padding:2px 6px;border-radius:6px;border:1px solid var(--hairline-2);background:var(--surface-2);font:600 10.5px/1 ui-monospace,Menlo,monospace;color:var(--fg-2)}
+  /* main column */
+  .main{min-width:0;height:100vh;overflow-y:auto}
+  .topbar{position:sticky;top:0;z-index:30;min-height:var(--topbar-h);display:flex;align-items:center;gap:13px;padding:0 22px;
+    background:rgba(10,12,16,.7);background:color-mix(in srgb,var(--bg) 72%,transparent);
+    -webkit-backdrop-filter:saturate(150%) blur(16px);backdrop-filter:saturate(150%) blur(16px);border-bottom:1px solid var(--hairline)}
+  .iconbtn{width:34px;height:34px;border-radius:9px;border:1px solid var(--hairline);background:var(--surface-2);color:var(--fg-2);display:grid;place-items:center;cursor:pointer;transition:var(--fast);flex:none}
+  .iconbtn:hover{background:var(--surface-3);color:var(--fg)} .iconbtn svg{width:18px;height:18px}
+  .crumb{display:flex;align-items:center;gap:9px;font-size:13px;color:var(--muted);min-width:0;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+  .crumb b{color:var(--fg);font-weight:650} .crumb .sep{opacity:.45}
+  .cmdk{margin-left:auto;display:inline-flex;align-items:center;gap:9px;padding:7px 12px;border-radius:10px;border:1px solid var(--hairline-2);background:var(--surface-2);color:var(--muted);font-size:12.5px;cursor:pointer;transition:var(--fast)}
+  .cmdk:hover{border-color:var(--accent);color:var(--fg)}
+  .content{padding:24px 26px 90px;max-width:1280px;width:100%;margin:0 auto}
+  @keyframes viewIn{from{opacity:0;transform:translateY(10px)}to{opacity:1;transform:none}}
+  .section.vin{animation:viewIn .42s var(--ease) both}
+  /* command palette */
+  .scrim{position:fixed;inset:0;z-index:100;background:rgba(4,6,10,.55);-webkit-backdrop-filter:blur(6px);backdrop-filter:blur(6px);opacity:0;pointer-events:none;transition:opacity .2s var(--ease)}
+  .scrim.open{opacity:1;pointer-events:auto}
+  .palette{position:fixed;left:50%;top:13vh;transform:translate(-50%,-8px) scale(.98);z-index:101;width:min(640px,92vw);
+    background:rgba(16,20,28,.97);background:color-mix(in srgb,var(--surface-2) 97%,transparent);border:1px solid var(--hairline-2);
+    border-radius:16px;box-shadow:var(--sh-3);overflow:hidden;opacity:0;pointer-events:none;transition:opacity .2s var(--ease),transform .22s var(--ease)}
+  .palette.open{opacity:1;pointer-events:auto;transform:translate(-50%,0) scale(1)}
+  .palette input{width:100%;border:0;background:transparent;color:var(--fg);font-size:16px;padding:18px 20px;outline:none;border-bottom:1px solid var(--hairline)}
+  .palette input::placeholder{color:var(--muted)}
+  .palres{max-height:52vh;overflow:auto;padding:8px}
+  .pgroup{font-size:10px;text-transform:uppercase;letter-spacing:.1em;color:var(--muted);font-weight:700;padding:11px 12px 5px}
+  .pitem{display:flex;align-items:center;gap:12px;padding:10px 12px;border-radius:10px;cursor:pointer;font-size:13.5px;color:var(--fg-2)}
+  .pitem .pi-ic{width:20px;text-align:center;color:var(--muted);flex:none}
+  .pitem .pi-meta{margin-left:auto;color:var(--muted);font-size:11.5px}
+  .pitem.sel,.pitem:hover{background:var(--accent-soft);color:var(--fg)} .pitem.sel .pi-ic{color:var(--accent-2)}
+  /* tradingview */
+  .tvwrap{background:var(--surface);border:1px solid var(--hairline);border-radius:var(--r-lg);padding:8px;box-shadow:var(--sh-1);overflow:hidden}
+  .tv-tall{height:520px} .tv-mid{height:420px} .tv-tape{height:50px;padding:0}
+  .tvwrap .tradingview-widget-container,.tvwrap .tradingview-widget-container__widget{height:100%;width:100%}
+  .tvnote{font-size:11.5px;color:var(--muted);margin-top:9px}
+  .navtoggle{display:none}
+  @media(max-width:900px){
+    .app{grid-template-columns:1fr}
+    .sidebar{position:fixed;left:0;top:0;transform:translateX(-100%);transition:transform .3s var(--ease);box-shadow:var(--sh-3)}
+    .app.navopen .sidebar{transform:none}
+    .navtoggle{display:grid}
+    .content{padding:18px 14px 80px}
+  }
+  @media (prefers-reduced-motion: reduce){ .section.vin{animation:none} .sidebar,.palette,.scrim{transition:none} }
+"""
+
+# --------------------------------------------------------------------------- #
+# App-shell behaviour (view routing · command palette · TradingView · status)
+# --------------------------------------------------------------------------- #
+_SHELL_JS = r"""
+(function(){
+  var app=document.getElementById('app');
+  if(!app)return;
+  var VIEWS=['dashboard','markets','signals','engine','risk','trades'];
+  var TITLES={dashboard:'Mission Control',markets:'Markets',signals:'Signals',engine:'Engine',risk:'Risk',trades:'Activity'};
+  var marketsReady=false;
+
+  function setCrumb(v){var c=document.getElementById('crumb');if(c)c.innerHTML='Workspace <span class="sep">/</span> <b>'+(TITLES[v]||v)+'</b>';}
+  function applyView(v,skipHash){
+    if(VIEWS.indexOf(v)<0)v='dashboard';
+    app.setAttribute('data-view',v);
+    document.querySelectorAll('.content .section').forEach(function(s){
+      var views=(s.getAttribute('data-views')||'').split(/\s+/);
+      if(views.indexOf(v)>=0){s.style.display='';s.classList.remove('vin');void s.offsetWidth;s.classList.add('vin');}
+      else s.style.display='none';
+    });
+    document.querySelectorAll('.navitem[data-view]').forEach(function(n){n.classList.toggle('active',n.getAttribute('data-view')===v);});
+    setCrumb(v);
+    if(v==='markets')initMarkets();
+    var main=document.querySelector('.main');if(main)main.scrollTop=0;
+    app.classList.remove('navopen');
+    if(!skipHash){try{history.replaceState(null,'','#'+v);}catch(e){}}
+  }
+  window.osView=applyView;
+  document.querySelectorAll('.navitem[data-view]').forEach(function(n){n.addEventListener('click',function(){applyView(n.getAttribute('data-view'));});});
+
+  var col=document.getElementById('collapseBtn');
+  if(col)col.addEventListener('click',function(){app.classList.toggle('collapsed');try{localStorage.setItem('sbCollapsed',app.classList.contains('collapsed')?'1':'0');}catch(e){}});
+  try{if(localStorage.getItem('sbCollapsed')==='1')app.classList.add('collapsed');}catch(e){}
+  var ham=document.getElementById('navToggle');if(ham)ham.addEventListener('click',function(){app.classList.toggle('navopen');});
+
+  // mirror the live signal status into the sidebar footer (no extra polling)
+  var ss=document.getElementById('sigstatus');
+  function mirror(){try{var d=ss.querySelector('.dot'),sd=document.getElementById('sbdot');if(d&&sd)sd.className=d.className;var st=document.getElementById('sbstatus');if(st)st.textContent=ss.textContent.trim();}catch(e){}}
+  if(ss){new MutationObserver(mirror).observe(ss,{childList:true,subtree:true,characterData:true});mirror();}
+
+  // TradingView market widgets (free embeds, loaded lazily on first visit)
+  function tvScript(parent,src,cfg){var s=document.createElement('script');s.src=src;s.async=true;s.type='text/javascript';s.innerHTML=JSON.stringify(cfg);parent.appendChild(s);}
+  function initMarkets(){
+    if(marketsReady)return;marketsReady=true;
+    try{
+      var tape=document.querySelector('#tv-tape .tradingview-widget-container__widget');
+      if(tape)tvScript(tape.parentElement,'https://s3.tradingview.com/external-embedding/embed-widget-ticker-tape.js',{symbols:[{description:'S&P 500',proName:'FOREXCOM:SPXUSD'},{description:'Nasdaq 100',proName:'FOREXCOM:NSXUSD'},{description:'AAPL',proName:'NASDAQ:AAPL'},{description:'NVDA',proName:'NASDAQ:NVDA'},{description:'TSLA',proName:'NASDAQ:TSLA'},{description:'BTC',proName:'BITSTAMP:BTCUSD'}],showSymbolLogo:true,colorTheme:'dark',isTransparent:true,displayMode:'adaptive',locale:'en'});
+      var heat=document.querySelector('#tv-heatmap .tradingview-widget-container__widget');
+      if(heat)tvScript(heat.parentElement,'https://s3.tradingview.com/external-embedding/embed-widget-stock-heatmap.js',{dataSource:'SPX500',blockSize:'market_cap_basic',blockColor:'change',grouping:'sector',locale:'en',colorTheme:'dark',hasTopBar:false,isDataSetEnabled:false,isZoomEnabled:true,hasSymbolTooltip:true,isMonoSize:false,width:'100%',height:'100%'});
+      var ov=document.querySelector('#tv-overview .tradingview-widget-container__widget');
+      if(ov)tvScript(ov.parentElement,'https://s3.tradingview.com/external-embedding/embed-widget-market-overview.js',{colorTheme:'dark',dateRange:'1D',showChart:true,locale:'en',isTransparent:true,showSymbolLogo:true,width:'100%',height:'100%',tabs:[{title:'Indices',symbols:[{s:'FOREXCOM:SPXUSD',d:'S&P 500'},{s:'FOREXCOM:NSXUSD',d:'Nasdaq 100'},{s:'FOREXCOM:DJI',d:'Dow 30'}]},{title:'Tech',symbols:[{s:'NASDAQ:AAPL'},{s:'NASDAQ:MSFT'},{s:'NASDAQ:NVDA'},{s:'NASDAQ:AMZN'}]}]});
+    }catch(e){}
+  }
+
+  // command palette (Cmd/Ctrl-K): navigate, run actions, jump to a ticker
+  var scrim=document.getElementById('scrim'),pal=document.getElementById('palette'),pin=document.getElementById('palinput'),pres=document.getElementById('palres');
+  var sel=0,items=[];
+  function actions(){
+    var a=[];
+    VIEWS.forEach(function(v){a.push({g:'Navigate',t:'Go to '+(TITLES[v]||v),ic:'→',run:function(){applyView(v);}});});
+    a.push({g:'Engine',t:'Preview (dry run)',ic:'◉',run:function(){applyView('engine');if(window.previewEngine)previewEngine();}});
+    a.push({g:'Engine',t:'Start auto-trading',ic:'▶',run:function(){if(window.startEngine)startEngine();}});
+    a.push({g:'Engine',t:'Stop engine',ic:'■',run:function(){if(window.stopEngine)stopEngine();}});
+    a.push({g:'Mode',t:'Conservative mode',ic:'○',run:function(){if(window.setAggressive)setAggressive(false);}});
+    a.push({g:'Mode',t:'Aggressive mode',ic:'◉',run:function(){if(window.setAggressive)setAggressive(true);}});
+    a.push({g:'Mode',t:'Toggle Day-trade mode',ic:'⚡',run:function(){if(window.toggleDayTrade)toggleDayTrade();}});
+    a.push({g:'Mode',t:'Toggle AI risk-gate',ic:'✦',run:function(){if(window.toggleGate)toggleGate();}});
+    a.push({g:'Sizing',t:'Fixed % sizing',ic:'%',run:function(){if(window.setSizeMode)setSizeMode('fixed');}});
+    a.push({g:'Sizing',t:'ATR-adaptive sizing',ic:'≈',run:function(){if(window.setSizeMode)setSizeMode('atr');}});
+    var sg=(window.LAST&&LAST.signals)||[];
+    sg.slice(0,50).forEach(function(x){a.push({g:'Tickers',t:x.ticker+'  ·  '+(x.recommendation||''),ic:'▫',meta:x.sector||'',run:function(){location.href='/ticker/'+x.ticker;}});});
+    return a;
+  }
+  function renderPal(){
+    var q=(pin.value||'').trim().toLowerCase();
+    items=actions().filter(function(it){return !q||it.t.toLowerCase().indexOf(q)>=0||(it.g||'').toLowerCase().indexOf(q)>=0;});
+    if(sel>=items.length)sel=0;
+    var html='',lastg=null;
+    items.forEach(function(it,i){if(it.g!==lastg){html+='<div class="pgroup">'+it.g+'</div>';lastg=it.g;}
+      html+='<div class="pitem'+(i===sel?' sel':'')+'" data-i="'+i+'"><span class="pi-ic">'+it.ic+'</span><span>'+it.t.replace(/</g,'&lt;')+'</span>'+(it.meta?'<span class="pi-meta">'+it.meta+'</span>':'')+'</div>';});
+    pres.innerHTML=html||'<div class="pgroup">No matches</div>';
+    var s=pres.querySelector('.pitem.sel');if(s)s.scrollIntoView({block:'nearest'});
+    pres.querySelectorAll('.pitem').forEach(function(el){el.addEventListener('click',function(){run(+el.dataset.i);});});
+  }
+  function openPal(){scrim.classList.add('open');pal.classList.add('open');pin.value='';sel=0;renderPal();setTimeout(function(){pin.focus();},30);}
+  function closePal(){scrim.classList.remove('open');pal.classList.remove('open');}
+  function run(i){var it=items[i];if(!it)return;closePal();setTimeout(function(){try{it.run();}catch(e){}},10);}
+  if(pin)pin.addEventListener('input',function(){sel=0;renderPal();});
+  document.addEventListener('keydown',function(e){
+    var k=(e.key||'').toLowerCase();
+    if((e.metaKey||e.ctrlKey)&&k==='k'){e.preventDefault();pal.classList.contains('open')?closePal():openPal();return;}
+    if(!pal||!pal.classList.contains('open'))return;
+    if(e.key==='Escape')closePal();
+    else if(e.key==='ArrowDown'){e.preventDefault();sel=Math.min(items.length-1,sel+1);renderPal();}
+    else if(e.key==='ArrowUp'){e.preventDefault();sel=Math.max(0,sel-1);renderPal();}
+    else if(e.key==='Enter'){e.preventDefault();run(sel);}
+  });
+  if(scrim)scrim.addEventListener('click',closePal);
+  var cmdkBtn=document.getElementById('cmdkBtn');if(cmdkBtn)cmdkBtn.addEventListener('click',openPal);
+
+  var initv=(location.hash||'').replace('#','');
+  applyView(VIEWS.indexOf(initv)>=0?initv:'dashboard',true);
+})();
+"""
+
+# --------------------------------------------------------------------------- #
 # Main page (the control center)
 # --------------------------------------------------------------------------- #
 _MAIN_PAGE = """<!doctype html><html lang="en"><head>
 <meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
-<title>HP Analytics — Control Center</title><style>""" + _CSS + """</style></head><body>
-<header>
-  <h1 class="brand">🦙 HP Analytics <span class="g">Control Center</span></h1>
-  <div class="statusrow">
-    <span class="meta" id="sigstatus"><span class="dot scanning"></span>loading…</span>
-    <span class="pill" id="cfg"></span>
+<title>HP Analytics — Control Center</title><style>""" + _CSS + _SHELL_CSS + """</style></head><body class="osapp">
+<div class="app" id="app" data-view="dashboard">
+  <aside class="sidebar" id="sidebar">
+    <div class="sb-brand">
+      <span class="logo">🦙</span>
+      <span class="brandtext"><span class="g">HP Analytics</span><small>TRADING OS</small></span>
+    </div>
+    <div class="navgroup-title">Workspace</div>
+    <div class="navitem active" data-view="dashboard" role="button" tabindex="0">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linejoin="round"><rect x="3" y="3" width="7" height="7" rx="1.5"/><rect x="14" y="3" width="7" height="5" rx="1.5"/><rect x="14" y="11" width="7" height="10" rx="1.5"/><rect x="3" y="13" width="7" height="8" rx="1.5"/></svg>
+      <span class="navlabel">Mission Control</span></div>
+    <div class="navitem" data-view="markets" role="button" tabindex="0">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M3 16l5-5 4 3 8-8"/><path d="M16 6h5v5"/></svg>
+      <span class="navlabel">Markets</span></div>
+    <div class="navitem" data-view="signals" role="button" tabindex="0">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M2 12h4l3 7 5-15 3 8h5"/></svg>
+      <span class="navlabel">Signals</span></div>
+    <div class="navgroup-title">Trading</div>
+    <div class="navitem" data-view="engine" role="button" tabindex="0">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linejoin="round"><path d="M13 2L4 13h7l-1 9 10-12h-7z"/></svg>
+      <span class="navlabel">Engine</span></div>
+    <div class="navitem" data-view="risk" role="button" tabindex="0">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linejoin="round"><path d="M12 3l8 3v6c0 4.5-3.3 7.8-8 9-4.7-1.2-8-4.5-8-9V6z"/></svg>
+      <span class="navlabel">Risk</span></div>
+    <div class="navitem" data-view="trades" role="button" tabindex="0">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M6 3h12v18l-3-2-3 2-3-2-3 2z"/><path d="M9 8h6M9 12h5"/></svg>
+      <span class="navlabel">Activity</span></div>
+    <div class="sb-foot">
+      <div class="sbf-row"><span class="dot scanning" id="sbdot"></span><span class="sbf-text" id="sbstatus">connecting…</span></div>
+      <div class="navitem" id="collapseBtn" role="button" tabindex="0">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M13 17l-5-5 5-5"/><path d="M19 17l-5-5 5-5"/></svg>
+        <span class="navlabel">Collapse</span></div>
+    </div>
+  </aside>
+  <div class="main">
+    <header class="topbar">
+      <button class="iconbtn navtoggle" id="navToggle" aria-label="Open menu">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"><path d="M4 7h16M4 12h16M4 17h16"/></svg></button>
+      <div class="crumb" id="crumb">Workspace <span class="sep">/</span> <b>Mission Control</b></div>
+      <span class="meta" id="sigstatus"><span class="dot scanning"></span>loading…</span>
+      <span class="pill" id="cfg"></span>
+      <button class="cmdk" id="cmdkBtn" aria-label="Open command palette">⌕ Search &amp; commands <span class="kbd">⌘K</span></button>
+      <span class="meta" id="updated"></span>
+    </header>
+    <main class="content">
+      <div class="disclaimer">⚠️ Educational only — not financial advice. The automation is <b>paper by default</b>
+        and runs only when you press Start. Live trading needs <code>TRADING_MODE=live</code> set deliberately and asks for confirmation.
+        No strategy guarantees profit.</div>
+
+      <section id="sec-overview" class="section" data-views="dashboard">
+        <div class="sectionhead"><div class="eyebrow">Overview</div><div class="title">Your account at a glance</div>
+          <div class="desc">Live balances, today's P&amp;L and open exposure — read the bot's health in a single look.</div></div>
+        <div class="summary" id="acctcards">
+          <div class="skel skel-stat"></div><div class="skel skel-stat"></div><div class="skel skel-stat"></div>
+          <div class="skel skel-stat"></div><div class="skel skel-stat"></div><div class="skel skel-stat"></div>
+        </div>
+        <div class="subhead">Open positions</div>
+        <div id="posbox"><div class="note muted">No open positions yet — they appear here once the engine fills an order.</div></div>
+      </section>
+
+      <section id="sec-markets" class="section" data-views="markets" style="display:none">
+        <div class="sectionhead"><div class="eyebrow">Markets</div><div class="title">Live market intelligence</div>
+          <div class="desc">Real-time prices, sector heatmap and index overview — powered by TradingView, rendered in your browser.</div></div>
+        <div class="tvwrap tv-tape" id="tv-tape"><div class="tradingview-widget-container"><div class="tradingview-widget-container__widget"></div></div></div>
+        <div class="subhead">S&amp;P 500 heatmap — size by market cap, color by daily change</div>
+        <div class="tvwrap tv-tall" id="tv-heatmap"><div class="tradingview-widget-container"><div class="tradingview-widget-container__widget"></div></div></div>
+        <div class="subhead">Index &amp; sector overview</div>
+        <div class="tvwrap tv-mid" id="tv-overview"><div class="tradingview-widget-container"><div class="tradingview-widget-container__widget"></div></div></div>
+        <div class="tvnote">Charts &amp; data © TradingView. Loads live in your browser and needs internet access.</div>
+      </section>
+
+      <section id="sec-engine" class="section" data-views="dashboard engine">
+        <div class="sectionhead"><div class="eyebrow">Engine</div><div class="title">Auto-trading control</div>
+          <div class="desc">Preview exactly what it would do, then start it. Paper by default — it only trades while it is running.</div></div>
+        <div class="ctrl">
+          <button class="bigbtn ghost" id="btnPreview" onclick="previewEngine()">👁 Preview (dry run)</button>
+          <button class="bigbtn start" id="btnStart" onclick="startEngine()">▶ Start</button>
+          <button class="bigbtn stop" id="btnStop" onclick="stopEngine()" disabled>■ Stop</button>
+          <span class="estatus" id="estatus"></span>
+        </div>
+        <div class="ctrl" style="margin-top:12px">
+          <span class="meta">Trading mode:</span>
+          <button class="btn" id="aggOff" onclick="setAggressive(false)">🛡 Conservative</button>
+          <button class="btn" id="aggOn" onclick="setAggressive(true)">🔥 Aggressive</button>
+          <button class="btn" id="dayBtn" onclick="toggleDayTrade()">⚡ Day-trade mode: off</button>
+          <button class="btn" id="gateBtn" onclick="toggleGate()">🤖 AI risk-gate: off</button>
+          <span class="meta" id="aggwarn"></span>
+        </div>
+        <div id="previewbox"></div>
+        <div class="subhead">Engine activity</div>
+        <div class="actfeed" id="actfeed"><div class="muted">Engine idle. Press Preview to see what it would do, or Start to run it.</div></div>
+      </section>
+
+      <section id="sec-risk" class="section" data-views="risk" style="display:none">
+        <div class="sectionhead"><div class="eyebrow">Risk</div><div class="title">Position &amp; risk preferences</div>
+          <div class="desc">Applied to both the signals below and the live engine. Choose fixed-percent or volatility-aware (ATR) sizing.</div></div>
+        <div class="account">
+          <div class="field"><span>Sizing mode</span>
+            <span><button class="btn" id="mFixed" onclick="setSizeMode('fixed')">Fixed %</button>
+            <button class="btn" id="mAtr" onclick="setSizeMode('atr')">📈 ATR-adaptive</button></span></div>
+          <div class="field"><span>Max % / position</span><input id="maxPct" type="number" min="1" max="100" step="1"></div>
+          <div class="field"><span>Stop-loss %</span><input id="stopPct" type="number" min="0.5" step="0.5"></div>
+          <div class="field"><span>Take-profit %</span><input id="targetPct" type="number" min="0.5" step="0.5"></div>
+          <div class="hint" id="caphint">Sizing off your account balance.</div>
+        </div>
+        <div class="hint" id="modehint" style="margin-top:11px"></div>
+      </section>
+
+      <section id="sec-signals" class="section" data-views="signals" style="display:none">
+        <div class="sectionhead"><div class="eyebrow">Signals</div><div class="title">Live opportunities</div>
+          <div class="desc">Ranked across the universe. The projection assumes you take every buy; each card is a ready-to-place order ticket.</div></div>
+        <div class="subhead">Portfolio — if you take every buy below</div>
+        <div class="summary" id="summary">
+          <div class="skel skel-stat"></div><div class="skel skel-stat"></div><div class="skel skel-stat"></div>
+          <div class="skel skel-stat"></div><div class="skel skel-stat"></div><div class="skel skel-stat"></div>
+        </div>
+        <div class="subhead">Diversification — buys by sector</div>
+        <div class="secbar" id="sectors"></div>
+        <div class="subhead">Top buys — your exact order tickets</div>
+        <div class="cards" id="topbuys"><div class="skel skel-card"></div><div class="skel skel-card"></div></div>
+        <div class="subhead">All tickers</div>
+        <div class="controls">
+          <input class="search" id="search" placeholder="Search ticker or sector…" aria-label="Search tickers">
+          <span class="fchip active" data-f="all" onclick="setFilter(this)">All</span>
+          <span class="fchip" data-f="strong" onclick="setFilter(this)">Strong buy</span>
+          <span class="fchip" data-f="buys" onclick="setFilter(this)">Buys</span>
+          <span class="fchip" data-f="hold" onclick="setFilter(this)">Hold</span>
+          <span class="fchip" data-f="sell" onclick="setFilter(this)">Sell</span>
+        </div>
+        <div class="tablewrap"><table><thead><tr>
+          <th onclick="setSort('rank')">Ticker</th><th>Trend</th><th class="num" onclick="setSort('conviction')">Conv</th>
+          <th class="num" onclick="setSort('price')">Price</th><th class="num" onclick="setSort('change')">20-bar</th>
+          <th class="num" onclick="setSort('rsi')">RSI</th><th class="num" onclick="setSort('shares')">Shares</th>
+          <th class="num" onclick="setSort('ev')">Exp.value</th><th class="num" onclick="setSort('win')">Win rate</th><th></th>
+        </tr></thead><tbody id="allbody"></tbody></table></div>
+      </section>
+
+      <section id="sec-trades" class="section" data-views="dashboard trades">
+        <div class="sectionhead"><div class="eyebrow">Trades</div><div class="title">Today's closed trades</div>
+          <div class="desc">Every position the engine has opened and closed since midnight UTC, with realised P&amp;L.</div></div>
+        <div class="tablewrap"><table><thead><tr><th>Ticker</th><th class="num">Entry</th><th class="num">Exit</th>
+          <th class="num">PnL $</th><th class="num">PnL %</th><th>Reason</th></tr></thead><tbody id="todaybody"></tbody></table></div>
+      </section>
+
+      <div class="foot" id="foot"></div>
+    </main>
   </div>
-  <span class="meta" style="margin-left:auto" id="updated"></span>
-</header>
-<nav class="subnav" aria-label="Sections">
-  <a href="#sec-overview" class="active">Overview</a>
-  <a href="#sec-engine">Engine</a>
-  <a href="#sec-risk">Risk</a>
-  <a href="#sec-signals">Signals</a>
-  <a href="#sec-trades">Trades</a>
-</nav>
-<div class="wrap">
-  <div class="disclaimer">⚠️ Educational only — not financial advice. The automation is <b>paper by default</b>
-    and runs only when you press Start. Live trading needs <code>TRADING_MODE=live</code> set deliberately and asks for confirmation.
-    No strategy guarantees profit.</div>
-
-  <section id="sec-overview" class="section">
-    <div class="sectionhead"><div class="eyebrow">Overview</div><div class="title">Your account at a glance</div>
-      <div class="desc">Live balances, today's P&amp;L and open exposure — read the bot's health in a single look.</div></div>
-    <div class="summary" id="acctcards">
-      <div class="skel skel-stat"></div><div class="skel skel-stat"></div><div class="skel skel-stat"></div>
-      <div class="skel skel-stat"></div><div class="skel skel-stat"></div><div class="skel skel-stat"></div>
-    </div>
-    <div class="subhead">Open positions</div>
-    <div id="posbox"><div class="note muted">No open positions yet — they appear here once the engine fills an order.</div></div>
-  </section>
-
-  <section id="sec-engine" class="section">
-    <div class="sectionhead"><div class="eyebrow">Engine</div><div class="title">Auto-trading control</div>
-      <div class="desc">Preview exactly what it would do, then start it. Paper by default — it only trades while it is running.</div></div>
-    <div class="ctrl">
-      <button class="bigbtn ghost" id="btnPreview" onclick="previewEngine()">👁 Preview (dry run)</button>
-      <button class="bigbtn start" id="btnStart" onclick="startEngine()">▶ Start</button>
-      <button class="bigbtn stop" id="btnStop" onclick="stopEngine()" disabled>■ Stop</button>
-      <span class="estatus" id="estatus"></span>
-    </div>
-    <div class="ctrl" style="margin-top:12px">
-      <span class="meta">Trading mode:</span>
-      <button class="btn" id="aggOff" onclick="setAggressive(false)">🛡 Conservative</button>
-      <button class="btn" id="aggOn" onclick="setAggressive(true)">🔥 Aggressive</button>
-      <button class="btn" id="dayBtn" onclick="toggleDayTrade()">⚡ Day-trade mode: off</button>
-      <button class="btn" id="gateBtn" onclick="toggleGate()">🤖 AI risk-gate: off</button>
-      <span class="meta" id="aggwarn"></span>
-    </div>
-    <div id="previewbox"></div>
-    <div class="subhead">Engine activity</div>
-    <div class="actfeed" id="actfeed"><div class="muted">Engine idle. Press Preview to see what it would do, or Start to run it.</div></div>
-  </section>
-
-  <section id="sec-risk" class="section">
-    <div class="sectionhead"><div class="eyebrow">Risk</div><div class="title">Position &amp; risk preferences</div>
-      <div class="desc">Applied to both the signals below and the live engine. Choose fixed-percent or volatility-aware (ATR) sizing.</div></div>
-    <div class="account">
-      <div class="field"><span>Sizing mode</span>
-        <span><button class="btn" id="mFixed" onclick="setSizeMode('fixed')">Fixed %</button>
-        <button class="btn" id="mAtr" onclick="setSizeMode('atr')">📈 ATR-adaptive</button></span></div>
-      <div class="field"><span>Max % / position</span><input id="maxPct" type="number" min="1" max="100" step="1"></div>
-      <div class="field"><span>Stop-loss %</span><input id="stopPct" type="number" min="0.5" step="0.5"></div>
-      <div class="field"><span>Take-profit %</span><input id="targetPct" type="number" min="0.5" step="0.5"></div>
-      <div class="hint" id="caphint">Sizing off your account balance.</div>
-    </div>
-    <div class="hint" id="modehint" style="margin-top:11px"></div>
-  </section>
-
-  <section id="sec-signals" class="section">
-    <div class="sectionhead"><div class="eyebrow">Signals</div><div class="title">Live opportunities</div>
-      <div class="desc">Ranked across the universe. The projection assumes you take every buy; each card is a ready-to-place order ticket.</div></div>
-    <div class="subhead">Portfolio — if you take every buy below</div>
-    <div class="summary" id="summary">
-      <div class="skel skel-stat"></div><div class="skel skel-stat"></div><div class="skel skel-stat"></div>
-      <div class="skel skel-stat"></div><div class="skel skel-stat"></div><div class="skel skel-stat"></div>
-    </div>
-    <div class="subhead">Diversification — buys by sector</div>
-    <div class="secbar" id="sectors"></div>
-    <div class="subhead">Top buys — your exact order tickets</div>
-    <div class="cards" id="topbuys"><div class="skel skel-card"></div><div class="skel skel-card"></div></div>
-    <div class="subhead">All tickers</div>
-    <div class="controls">
-      <input class="search" id="search" placeholder="Search ticker or sector…" aria-label="Search tickers">
-      <span class="fchip active" data-f="all" onclick="setFilter(this)">All</span>
-      <span class="fchip" data-f="strong" onclick="setFilter(this)">Strong buy</span>
-      <span class="fchip" data-f="buys" onclick="setFilter(this)">Buys</span>
-      <span class="fchip" data-f="hold" onclick="setFilter(this)">Hold</span>
-      <span class="fchip" data-f="sell" onclick="setFilter(this)">Sell</span>
-    </div>
-    <div class="tablewrap"><table><thead><tr>
-      <th onclick="setSort('rank')">Ticker</th><th>Trend</th><th class="num" onclick="setSort('conviction')">Conv</th>
-      <th class="num" onclick="setSort('price')">Price</th><th class="num" onclick="setSort('change')">20-bar</th>
-      <th class="num" onclick="setSort('rsi')">RSI</th><th class="num" onclick="setSort('shares')">Shares</th>
-      <th class="num" onclick="setSort('ev')">Exp.value</th><th class="num" onclick="setSort('win')">Win rate</th><th></th>
-    </tr></thead><tbody id="allbody"></tbody></table></div>
-  </section>
-
-  <section id="sec-trades" class="section">
-    <div class="sectionhead"><div class="eyebrow">Trades</div><div class="title">Today's closed trades</div>
-      <div class="desc">Every position the engine has opened and closed since midnight UTC, with realised P&amp;L.</div></div>
-    <div class="tablewrap"><table><thead><tr><th>Ticker</th><th class="num">Entry</th><th class="num">Exit</th>
-      <th class="num">PnL $</th><th class="num">PnL %</th><th>Reason</th></tr></thead><tbody id="todaybody"></tbody></table></div>
-  </section>
-
-  <div class="foot" id="foot"></div>
 </div>
-<script>
-(function(){
-  // section scrollspy — highlights the current nav item (presentation only)
-  try{
-    var links=[].slice.call(document.querySelectorAll('.subnav a'));
-    var map={}; links.forEach(function(a){map[a.getAttribute('href').slice(1)]=a;});
-    var obs=new IntersectionObserver(function(es){
-      es.forEach(function(en){ if(en.isIntersecting){ links.forEach(function(l){l.classList.remove('active');}); var a=map[en.target.id]; if(a)a.classList.add('active'); }});
-    },{rootMargin:'-45% 0px -50% 0px',threshold:0});
-    document.querySelectorAll('.section').forEach(function(s){obs.observe(s);});
-  }catch(e){}
-})();
-</script>
+<div class="scrim" id="scrim"></div>
+<div class="palette" id="palette" role="dialog" aria-modal="true" aria-label="Command palette">
+  <input id="palinput" placeholder="Search tickers, jump to a page, or run a command…" aria-label="Command palette search">
+  <div class="palres" id="palres"></div>
+</div>
+<script>""" + _SHELL_JS + """</script>
 <script>
 const REFRESH = __REFRESH__ * 1000;
 """ + _SHARED_JS + """
@@ -819,7 +1034,7 @@ initInputs(); tickSignals(); tickAccount(); setInterval(tickSignals,REFRESH); se
 # --------------------------------------------------------------------------- #
 _DETAIL_PAGE = """<!doctype html><html lang="en"><head>
 <meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
-<title>__TICKER__ — detail</title><style>""" + _CSS + """</style>
+<title>__TICKER__ — detail</title><style>""" + _CSS + _SHELL_CSS + """</style>
 <script src="https://cdn.jsdelivr.net/npm/chart.js@4"></script></head><body>
 <header>
   <h1 class="brand">🦙 <span class="g">__TICKER__</span></h1>
@@ -835,6 +1050,19 @@ _DETAIL_PAGE = """<!doctype html><html lang="en"><head>
   <section class="section">
     <div class="sectionhead"><div class="eyebrow">Order ticket</div><div class="title">How to place this trade</div></div>
     <div id="planbox"><div class="skel skel-card"></div></div>
+  </section>
+  <section class="section">
+    <div class="sectionhead"><div class="eyebrow">Live chart</div><div class="title">__TICKER__ · TradingView</div>
+      <div class="desc">Live, interactive price action. The strategy's own buy/sell markers and backtest are below.</div></div>
+    <div class="tvwrap tv-tall">
+      <div class="tradingview-widget-container" style="height:100%;width:100%">
+        <div class="tradingview-widget-container__widget" style="height:100%;width:100%"></div>
+        <script type="text/javascript" src="https://s3.tradingview.com/external-embedding/embed-widget-advanced-chart.js" async>
+        {"autosize":true,"symbol":"__TICKER__","interval":"D","timezone":"Etc/UTC","theme":"dark","style":"1","locale":"en","hide_top_toolbar":false,"hide_legend":false,"allow_symbol_change":false,"save_image":false,"backgroundColor":"rgba(14,17,23,1)","gridColor":"rgba(255,255,255,0.06)","calendar":false}
+        </script>
+      </div>
+    </div>
+    <div class="tvnote">Live chart © TradingView · loads in your browser and needs internet access.</div>
   </section>
   <section class="section">
     <div class="sectionhead"><div class="eyebrow">Price &amp; signals</div><div class="title">__TICKER__ price with buy / sell markers</div></div>
