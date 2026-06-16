@@ -550,8 +550,17 @@ def create_app(config=CONFIG):
 
     # ----- optional Supabase auth gate (single-tenant; off unless configured) ---
     def _is_local() -> bool:
-        """True when the request originates from the loopback interface."""
-        return (request.remote_addr or "") in ("127.0.0.1", "::1", "localhost")
+        """True when the request originates from the loopback interface.
+
+        Handles IPv4-mapped IPv6 (``::ffff:127.0.0.1``) and the whole 127/8
+        block, which some browsers / Python 3.14 use for localhost — otherwise
+        dev-mode would be wrongly rejected with a 403.
+        """
+        addr = (request.remote_addr or "").strip().lower()
+        if addr.startswith("::ffff:"):
+            addr = addr[7:]
+        return (addr in ("127.0.0.1", "::1", "localhost", "")
+                or addr.startswith("127."))
 
     @app.before_request
     def _auth_gate():
@@ -594,8 +603,10 @@ def create_app(config=CONFIG):
             return jsonify({"ok": False,
                             "error": "Dev mode is only available on localhost."}), 403
         resp = jsonify({"ok": True})
-        resp.set_cookie("dev_bypass", "1", max_age=86400, httponly=True, samesite="Lax",
-                        secure=bool(config.auth_cookie_secure or request.is_secure))
+        # Dev-mode is localhost-only; do NOT mark the cookie Secure or it won't be
+        # sent back over http://127.0.0.1 (which would loop you back to /login).
+        resp.set_cookie("dev_bypass", "1", max_age=86400, httponly=True,
+                        samesite="Lax", secure=request.is_secure)
         return resp
 
     @app.route("/api/auth/session", methods=["POST"])
