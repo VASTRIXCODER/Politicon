@@ -385,13 +385,19 @@ clearly-marked `TODO`s. Test on tiny sizes before relying on it.
 Two **specialised, read-only engines** run alongside the equity scanner, each
 with its own background scan loop and dashboard view:
 
-- **Crypto** (`dexscreener.py`) — scans live on-chain DEX pairs via the public
-  [DexScreener API](https://docs.dexscreener.com/api/reference) and ranks
-  momentum opportunities (recency-weighted price change + buy/sell pressure,
-  gated by liquidity). Includes a token/pair look-up box.
-- **Polymarket** (`polymarket.py`) — scans the most active prediction markets via
-  the [Gamma API](https://gamma-api.polymarket.com), showing implied
-  probabilities, 24h moves and the biggest movers.
+- **Crypto** — data client `dexscreener.py` + algorithm `crypto_scanner.py` (a
+  ~70-token **categorised** universe — L1/L2/DeFi/Memecoins/AI/Gaming/Infra — and
+  a transparent 4-factor signal: momentum, buy/sell pressure, turnover,
+  liquidity). The view filters by category and renders the selected pair's
+  **DexScreener chart inline** (no new tab). Includes a token/pair look-up box.
+- **Polymarket** — data client `polymarket.py` + algorithm
+  `polymarket_scanner.py` (categorises each market, classifies it
+  toss-up/leaning/consensus/mover, and groups the biggest movers + what's
+  closing soon, with implied-probability bars).
+
+Each engine mirrors the equity stack's **data-client → scanner** split and runs
+its own background scan thread — fully separate from the (untouched) equity
+trading engine.
 
 Both call the public HTTP APIs directly (the matching **MCP servers in
 `.mcp.json` are for the agent/co-pilot layer** — the app can't call MCPs at

@@ -105,8 +105,8 @@ class CryptoEngine(FeedEngine):
         self.tokens = tokens or None
 
     def _scan(self) -> Dict:
-        import dexscreener
-        return dexscreener.crypto_scan(tokens=self.tokens)
+        import crypto_scanner
+        return crypto_scanner.crypto_scan(tokens=self.tokens)
 
 
 class PolymarketEngine(FeedEngine):
@@ -117,5 +117,5 @@ class PolymarketEngine(FeedEngine):
         self.limit = int(limit)
 
     def _scan(self) -> Dict:
-        import polymarket
-        return polymarket.market_scan(limit=self.limit)
+        import polymarket_scanner
+        return polymarket_scanner.market_scan(limit=self.limit)

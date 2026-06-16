@@ -2,18 +2,15 @@
 polymarket.py
 =============
 
-Prediction-market data + signal layer powered by **Polymarket's** public
-**Gamma API** (https://gamma-api.polymarket.com) — the same data the Polymarket
-MCP server wraps. No API key required for read-only market data.
+**Data client** for Polymarket's public **Gamma API**
+(https://gamma-api.polymarket.com) — the same data the Polymarket MCP wraps. No
+API key for read-only market data. This module ONLY fetches + normalises
+markets; the prediction-market *algorithm* (categorisation, scoring, grouping)
+lives in ``polymarket_scanner.py`` — mirroring the equity ``data.py`` /
+``scanner.py`` split.
 
-The running app can't call the MCP (agent-side only), so it queries the public
-Gamma API directly. Best-effort: every function returns plain dicts and never
-raises, so the Polymarket engine + web layer degrade gracefully offline.
-
-This surfaces *opportunities*, not trades: the most active markets, the implied
-probability of each, 24h moves, and a coarse classification (toss-up / leaning /
-consensus / big mover). Placing real orders needs a funded Polygon wallet and is
-intentionally NOT wired here.
+Best-effort: returns plain data, never raises, so the engine + web degrade
+gracefully offline.
 """
 
 from __future__ import annotations
@@ -47,28 +44,17 @@ def _as_list(value) -> List:
     return []
 
 
-def _signal(top_prob: float, change24: float) -> str:
-    if abs(change24) >= 0.08:
-        return "BIG MOVER"
-    if top_prob >= 0.90:
-        return "CONSENSUS"
-    if top_prob >= 0.60:
-        return "LEANING"
-    return "TOSS-UP"
-
-
-def _norm_market(m: dict) -> Optional[Dict]:
+def norm_market(m: dict) -> Optional[Dict]:
+    """Normalise one raw Gamma market; ``None`` if it has no usable prices."""
     outcomes = [str(o) for o in _as_list(m.get("outcomes"))]
     prices = [_f(p) for p in _as_list(m.get("outcomePrices"))]
     if not outcomes or not prices or len(prices) != len(outcomes):
         return None
     top_i = max(range(len(prices)), key=lambda i: prices[i])
-    top_prob = prices[top_i]
-    change24 = _f(m.get("oneDayPriceChange"))
-    volume = _f(m.get("volumeNum")) or _f(m.get("volume"))
-    vol24 = _f(m.get("volume24hr")) or _f(m.get("volume24hrClob"))
-    liquidity = _f(m.get("liquidityNum")) or _f(m.get("liquidity"))
     slug = m.get("slug") or ""
+    tags = m.get("tags") or []
+    if isinstance(tags, list):
+        tags = [str(t.get("label") if isinstance(t, dict) else t) for t in tags]
     return {
         "question": m.get("question") or m.get("title") or "?",
         "slug": slug,
@@ -76,18 +62,19 @@ def _norm_market(m: dict) -> Optional[Dict]:
         "outcomes": outcomes,
         "prices": [round(p, 4) for p in prices],
         "top_outcome": outcomes[top_i],
-        "top_prob": round(top_prob, 4),
-        "volume": round(volume, 2),
-        "volume24": round(vol24, 2),
-        "liquidity": round(liquidity, 2),
-        "change24": round(change24, 4),
+        "top_prob": round(prices[top_i], 4),
+        "volume": round(_f(m.get("volumeNum")) or _f(m.get("volume")), 2),
+        "volume24": round(_f(m.get("volume24hr")) or _f(m.get("volume24hrClob")), 2),
+        "liquidity": round(_f(m.get("liquidityNum")) or _f(m.get("liquidity")), 2),
+        "change24": round(_f(m.get("oneDayPriceChange")), 4),
         "end_date": (m.get("endDate") or "")[:10],
-        "signal": _signal(top_prob, change24),
+        "category": (m.get("category") or (tags[0] if tags else "") or ""),
+        "tags": tags[:5],
     }
 
 
-def list_markets(limit: int = 40, active: bool = True) -> Dict:
-    """Most-active open markets, normalised and ranked by total volume."""
+def list_markets_raw(limit: int = 60, active: bool = True) -> tuple:
+    """Raw Gamma markets (un-normalised), most-active first."""
     params = {
         "closed": "false",
         "active": "true" if active else "false",
@@ -98,22 +85,19 @@ def list_markets(limit: int = 40, active: bool = True) -> Dict:
     }
     data, err = get_json(f"{BASE}/markets", params=params)
     if err:
-        return {"items": [], "error": err}
+        return [], err
     rows = data if isinstance(data, list) else (data or {}).get("data") or []
-    items = [n for n in (_norm_market(m) for m in rows if isinstance(m, dict)) if n]
+    return [m for m in rows if isinstance(m, dict)], None
+
+
+def list_markets(limit: int = 60, active: bool = True) -> Dict:
+    """Normalised, volume-ranked open markets."""
+    raw, err = list_markets_raw(limit=limit, active=active)
+    if err:
+        return {"items": [], "error": err}
+    items = [n for n in (norm_market(m) for m in raw) if n]
     items.sort(key=lambda x: x["volume"], reverse=True)
     return {"items": items[:limit], "count": len(items)}
-
-
-def market_scan(limit: int = 40) -> Dict:
-    """Scan open markets and split out the biggest movers for quick reads."""
-    res = list_markets(limit=limit)
-    if res.get("error"):
-        return {"items": [], "movers": [], "error": res["error"]}
-    items = res["items"]
-    movers = sorted([x for x in items if x["signal"] == "BIG MOVER"],
-                    key=lambda x: abs(x["change24"]), reverse=True)[:8]
-    return {"items": items, "movers": movers, "count": len(items)}
 
 
 def market_detail(slug: str) -> Dict:
@@ -123,7 +107,7 @@ def market_detail(slug: str) -> Dict:
         return {"error": err}
     rows = data if isinstance(data, list) else (data or {}).get("data") or []
     for m in rows:
-        n = _norm_market(m) if isinstance(m, dict) else None
+        n = norm_market(m) if isinstance(m, dict) else None
         if n:
             return n
     return {"error": f"no market for slug '{slug}'"}
