@@ -2,8 +2,8 @@
 
 This is the working design doc the agent generated for itself before making
 changes. It captures the architecture reality, the concrete gaps found in the
-codebase, and a phased plan. **Phase 1 is implemented in the same change set
-that introduced this file**; later phases are scoped for follow-up.
+codebase, and a phased plan. **All four phases (1–4) are now implemented** — see
+the roadmap table in §4 for the per-phase breakdown.
 
 ---
 
