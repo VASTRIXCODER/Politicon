@@ -132,6 +132,12 @@ class TickerSignal:
     ai_brief: Optional[str] = None
     error: Optional[str] = None
     asof: str = ""
+    # Data freshness: timestamp of the LAST PRICE BAR (not the scan time), its
+    # age in seconds, and whether that age exceeds ~2 bar intervals (stale, e.g.
+    # market closed / weekend). Lets the UI show "price as of <bar time>".
+    bar_time: str = ""
+    bar_age_seconds: float = 0.0
+    stale: bool = False
 
     @property
     def rank(self) -> tuple:
@@ -165,6 +171,8 @@ class TickerSignal:
             "vol_note": self.vol_note, "change_pct": self.change_pct, "spark": self.spark,
             "atr": self.atr, "atr_stop": self.atr_stop, "atr_target": self.atr_target,
             "ai_brief": self.ai_brief, "error": self.error, "asof": self.asof,
+            "bar_time": self.bar_time, "bar_age_seconds": self.bar_age_seconds,
+            "stale": self.stale,
         }
         drive = self.eq1 or self.eq2
         if drive:
@@ -178,8 +186,10 @@ class Scanner:
     def __init__(self, config, briefer=None):
         self.config = config
         self.briefer = briefer
-        self._df_cache: Dict[str, tuple[float, object]] = {}
-        self._df_ttl = 300  # seconds
+        # Keyed by (ticker, interval) so a timeframe switch can't serve
+        # wrong-interval bars; TTL is interval-aware (short for intraday).
+        self._df_cache: Dict[tuple, tuple[float, object]] = {}
+        self._df_ttl = 300  # seconds (daily default; see _fetch for intraday)
 
     # ------------------------------------------------------------------ #
     def scan(self, brief_top: int = 3) -> List[TickerSignal]:
@@ -214,8 +224,10 @@ class Scanner:
         sector = self.config.sector_for(ticker)
         df = self._fetch(ticker)
         if len(df) < self.config.lookback_length + 2:
+            bar_time, bar_age, stale = self._freshness(df)
             return TickerSignal(
                 ticker=ticker, sector=sector, asof=_now_iso(),
+                bar_time=bar_time, bar_age_seconds=bar_age, stale=stale,
                 error=f"only {len(df)} bars (need > {self.config.lookback_length})",
             )
 
@@ -263,6 +275,7 @@ class Scanner:
         sig.atr = round(_atr(df, self.config.atr_period), 2)
         sig.atr_stop = round(price - sig.atr * self.config.atr_stop_mult, 2)
         sig.atr_target = round(price + sig.atr * self.config.atr_target_mult, 2)
+        sig.bar_time, sig.bar_age_seconds, sig.stale = self._freshness(df)
         sig.plan = self._build_plan(sig)
         return sig
 
@@ -453,10 +466,13 @@ class Scanner:
 
     # ------------------------------------------------------------------ #
     def _fetch(self, ticker):
-        cached = self._df_cache.get(ticker)
-        if cached and (time.time() - cached[0]) < self._df_ttl:
-            return cached[1]
         yf_interval = self.config.yf_interval
+        key = (ticker, yf_interval)
+        # Intraday bars go stale fast; daily bars barely move within a session.
+        ttl = {"1m": 20, "60m": 60}.get(yf_interval, self._df_ttl)
+        cached = self._df_cache.get(key)
+        if cached and (time.time() - cached[0]) < ttl:
+            return cached[1]
         now = datetime.now(timezone.utc)
         if yf_interval == "1m":
             start = now - timedelta(days=7)
@@ -465,8 +481,21 @@ class Scanner:
         else:
             start = now - timedelta(days=int(self.config.edge_years * 365) + 30)
         df = fetch_history_yf(ticker, yf_interval, start.strftime("%Y-%m-%d"))
-        self._df_cache[ticker] = (time.time(), df)
+        self._df_cache[key] = (time.time(), df)
         return df
+
+    def _freshness(self, df):
+        """Return (iso_bar_time, age_seconds, stale) for the last bar.
+
+        ``stale`` means the newest bar is more than ~2 intervals old (e.g. the
+        market is closed / it's the weekend), so the UI can flag it.
+        """
+        dt = _bar_time(df)
+        if dt is None:
+            return "", 0.0, False
+        age = (datetime.now(timezone.utc) - dt).total_seconds()
+        threshold = self.config.interval_seconds * 2
+        return dt.strftime("%Y-%m-%d %H:%M:%SZ"), round(max(0.0, age), 1), age > threshold
 
     @staticmethod
     def _context(df) -> Dict:
@@ -502,3 +531,21 @@ class Scanner:
 
 def _now_iso() -> str:
     return datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M:%SZ")
+
+
+def _bar_time(df):
+    """Best-effort UTC datetime of the last price bar, or None on any problem."""
+    try:
+        ts = df.index[-1]
+    except Exception:
+        return None
+    try:
+        dt = ts.to_pydatetime()
+    except Exception:
+        dt = ts
+    if getattr(dt, "tzinfo", None) is None:
+        try:
+            dt = dt.replace(tzinfo=timezone.utc)
+        except Exception:
+            return None
+    return dt

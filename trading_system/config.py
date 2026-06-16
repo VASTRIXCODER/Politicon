@@ -32,41 +32,92 @@ except Exception:  # python-dotenv not installed yet -- env vars still work
 BASE_DIR = Path(__file__).resolve().parent
 
 
-# A diverse default universe across sectors (used when TICKERS isn't set in .env).
-DEFAULT_TICKERS = [
-    # Technology
-    "AAPL", "MSFT", "NVDA", "AMD", "CRM", "ADBE", "ORCL", "INTC", "CSCO", "QCOM", "AVGO", "TXN",
-    # Communication
-    "GOOGL", "META", "NFLX", "DIS", "T", "VZ",
-    # Consumer Discretionary
-    "AMZN", "HD", "MCD", "NKE", "SBUX", "TSLA", "LOW",
-    # Consumer Staples
-    "WMT", "COST", "KO", "PG", "PEP",
-    # Financials
-    "JPM", "BAC", "V", "MA", "GS", "WFC", "MS", "C",
-    # Healthcare
-    "UNH", "JNJ", "LLY", "ABBV", "PFE", "MRK", "TMO",
-    # Energy
-    "XOM", "CVX", "COP",
-    # Industrials
-    "CAT", "BA", "GE", "HON", "UPS",
-    # Index ETFs
-    "SPY", "QQQ", "IWM", "DIA",
+# --------------------------------------------------------------------------- #
+# Universe
+# --------------------------------------------------------------------------- #
+# `_SECTOR_GROUPS` is the SINGLE SOURCE OF TRUTH for the equity universe and each
+# symbol's sector. `DEFAULT_TICKERS` and `SECTORS` are DERIVED from it just below
+# so the two can never drift apart.
+_SECTOR_GROUPS = {
+    "Semiconductors": ["NVDA", "AMD", "AVGO", "QCOM", "INTC", "TXN", "MU", "ADI",
+                       "AMAT", "LRCX", "KLAC", "MRVL", "NXPI", "ON", "TSM", "ASML", "ARM", "SMCI"],
+    "Technology": ["AAPL", "MSFT", "CSCO", "IBM", "DELL", "HPQ", "ANET", "WDC", "STX"],
+    "Software": ["CRM", "ADBE", "ORCL", "NOW", "INTU", "SNOW", "PLTR", "PANW",
+                 "CRWD", "ZS", "DDOG", "NET", "MDB", "TEAM", "WDAY", "SHOP"],
+    "Communication": ["GOOGL", "META", "NFLX", "DIS", "CMCSA", "T", "VZ", "TMUS", "WBD", "SPOT"],
+    "Consumer Disc.": ["AMZN", "TSLA", "HD", "LOW", "MCD", "NKE", "SBUX", "BKNG",
+                       "CMG", "MAR", "GM", "F", "ABNB", "UBER"],
+    "Consumer Staples": ["WMT", "COST", "KO", "PEP", "PG", "PM", "MO", "MDLZ", "CL", "TGT"],
+    "Financials": ["JPM", "BAC", "WFC", "C", "GS", "MS", "V", "MA", "AXP",
+                   "BLK", "SCHW", "SPGI", "PYPL", "COF"],
+    "Healthcare": ["UNH", "JNJ", "LLY", "ABBV", "MRK", "PFE", "TMO", "ABT", "DHR",
+                   "AMGN", "BMY", "GILD", "ISRG", "VRTX", "CVS"],
+    "Energy": ["XOM", "CVX", "COP", "SLB", "EOG", "MPC", "PSX", "OXY"],
+    "Industrials": ["CAT", "BA", "GE", "HON", "UPS", "RTX", "LMT", "DE", "UNP", "MMM"],
+    "Materials": ["LIN", "FCX", "NEM", "NUE", "DOW"],
+    "Real Estate": ["PLD", "AMT", "EQIX", "SPG", "O"],
+    "Utilities": ["NEE", "DUK", "SO", "D"],
+}
+
+# Broad, sector and thematic ETFs (a separate pack so they can be toggled).
+_ETF_GROUP = [
+    "SPY", "QQQ", "IWM", "DIA", "VTI",                # broad market
+    "XLK", "XLF", "XLE", "XLV", "XLY", "XLI", "XLP",  # sector SPDRs
+    "SMH", "SOXX", "ARKK",                            # thematic
 ]
 
-_SECTOR_GROUPS = {
-    "Technology": ["AAPL", "MSFT", "NVDA", "AMD", "CRM", "ADBE", "ORCL", "INTC", "CSCO", "QCOM", "AVGO", "TXN"],
-    "Communication": ["GOOGL", "META", "NFLX", "DIS", "T", "VZ"],
-    "Consumer Disc.": ["AMZN", "HD", "MCD", "NKE", "SBUX", "TSLA", "LOW"],
-    "Consumer Staples": ["WMT", "COST", "KO", "PG", "PEP"],
-    "Financials": ["JPM", "BAC", "V", "MA", "GS", "WFC", "MS", "C"],
-    "Healthcare": ["UNH", "JNJ", "LLY", "ABBV", "PFE", "MRK", "TMO"],
-    "Energy": ["XOM", "CVX", "COP"],
-    "Industrials": ["CAT", "BA", "GE", "HON", "UPS"],
-    "Index ETF": ["SPY", "QQQ", "IWM", "DIA"],
-}
-# Flattened ticker -> sector map.
+# 24/7 crypto pairs (yfinance "-USD" symbols). Offered as a watchlist; kept OUT
+# of the default equity scan so market-hours logic stays clean.
+_CRYPTO_GROUP = [
+    "BTC-USD", "ETH-USD", "SOL-USD", "BNB-USD", "XRP-USD", "ADA-USD",
+    "DOGE-USD", "AVAX-USD", "LINK-USD", "DOT-USD", "LTC-USD", "MATIC-USD",
+]
+
+
+def _dedupe(seq: List[str]) -> List[str]:
+    """Order-preserving de-duplication."""
+    seen: set = set()
+    out: List[str] = []
+    for item in seq:
+        if item not in seen:
+            seen.add(item)
+            out.append(item)
+    return out
+
+
+# Derived: equities from the sector groups, then the ETFs. Never hand-edited.
+_EQUITY_TICKERS = _dedupe([t for names in _SECTOR_GROUPS.values() for t in names])
+DEFAULT_TICKERS = _dedupe(_EQUITY_TICKERS + _ETF_GROUP)
+
+# Flattened ticker -> sector map (ETFs -> "ETF", crypto -> "Crypto").
 SECTORS = {t: sec for sec, names in _SECTOR_GROUPS.items() for t in names}
+SECTORS.update({t: "ETF" for t in _ETF_GROUP})
+SECTORS.update({t: "Crypto" for t in _CRYPTO_GROUP})
+
+# Named watchlists, selectable via WATCHLIST=<name> (TICKERS still overrides all).
+WATCHLISTS = {
+    "default": DEFAULT_TICKERS,
+    "all": _dedupe(DEFAULT_TICKERS + _CRYPTO_GROUP),
+    "megacap": ["AAPL", "MSFT", "NVDA", "AMZN", "GOOGL", "META", "TSLA", "AVGO",
+                "BRK-B", "LLY", "JPM", "V", "UNH", "XOM", "WMT", "MA"],
+    "semis": _SECTOR_GROUPS["Semiconductors"],
+    "software": _SECTOR_GROUPS["Software"],
+    "ai": ["NVDA", "AMD", "AVGO", "MU", "SMCI", "TSM", "ARM", "PLTR", "MSFT",
+           "GOOGL", "META", "AMZN", "CRWD", "PANW", "SNOW", "NOW"],
+    "dividend": ["KO", "PEP", "PG", "JNJ", "XOM", "CVX", "MCD", "HD", "VZ", "T",
+                 "MO", "PM", "MMM", "O", "DUK", "SO"],
+    "etfs": _ETF_GROUP,
+    "crypto": _CRYPTO_GROUP,
+}
+
+
+def resolve_universe() -> List[str]:
+    """Resolve the scan universe: TICKERS env wins, else WATCHLIST, else default."""
+    raw = os.getenv("TICKERS")
+    if raw and raw.strip():
+        return [t.strip().upper() for t in raw.split(",") if t.strip()]
+    name = (os.getenv("WATCHLIST") or "default").strip().lower()
+    return list(WATCHLISTS.get(name, DEFAULT_TICKERS))
 
 
 # --------------------------------------------------------------------------- #
@@ -138,9 +189,7 @@ class Config:
     signal_value: int = field(default_factory=lambda: _int("SIGNAL_VALUE", 2))
 
     # --- universe & cadence ------------------------------------------------ #
-    tickers: List[str] = field(
-        default_factory=lambda: _list("TICKERS", DEFAULT_TICKERS)
-    )
+    tickers: List[str] = field(default_factory=resolve_universe)
     # Parallel workers for the multi-ticker scan (keeps a big universe fast).
     scan_workers: int = field(default_factory=lambda: _int("SCAN_WORKERS", 12))
     interval: str = field(default_factory=lambda: _str("INTERVAL", "1d"))

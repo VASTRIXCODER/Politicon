@@ -957,6 +957,10 @@ _SHELL_JS = r"""
       if(heat)tvScript(heat.parentElement,'https://s3.tradingview.com/external-embedding/embed-widget-stock-heatmap.js',{dataSource:'SPX500',blockSize:'market_cap_basic',blockColor:'change',grouping:'sector',locale:'en',colorTheme:'dark',hasTopBar:false,isDataSetEnabled:false,isZoomEnabled:true,hasSymbolTooltip:true,isMonoSize:false,width:'100%',height:'100%'});
       var ov=document.querySelector('#tv-overview .tradingview-widget-container__widget');
       if(ov)tvScript(ov.parentElement,'https://s3.tradingview.com/external-embedding/embed-widget-market-overview.js',{colorTheme:'dark',dateRange:'1D',showChart:true,locale:'en',isTransparent:true,showSymbolLogo:true,width:'100%',height:'100%',tabs:[{title:'Indices',symbols:[{s:'FOREXCOM:SPXUSD',d:'S&P 500'},{s:'FOREXCOM:NSXUSD',d:'Nasdaq 100'},{s:'FOREXCOM:DJI',d:'Dow 30'}]},{title:'Tech',symbols:[{s:'NASDAQ:AAPL'},{s:'NASDAQ:MSFT'},{s:'NASDAQ:NVDA'},{s:'NASDAQ:AMZN'}]}]});
+      var scr=document.querySelector('#tv-screener .tradingview-widget-container__widget');
+      if(scr)tvScript(scr.parentElement,'https://s3.tradingview.com/external-embedding/embed-widget-screener.js',{width:'100%',height:'100%',defaultColumn:'overview',defaultScreen:'most_capitalized',market:'america',showToolbar:true,colorTheme:'dark',locale:'en',isTransparent:true});
+      var gg=document.querySelector('#tv-gauge .tradingview-widget-container__widget');
+      if(gg)tvScript(gg.parentElement,'https://s3.tradingview.com/external-embedding/embed-widget-technical-analysis.js',{interval:'1D',width:'100%',height:'100%',isTransparent:true,symbol:'AMEX:SPY',showIntervalTabs:true,displayMode:'single',locale:'en',colorTheme:'dark'});
     }catch(e){}
   }
 
@@ -1097,6 +1101,10 @@ _MAIN_PAGE = """<!doctype html><html lang="en"><head>
         <div class="tvwrap tv-tall" id="tv-heatmap"><div class="tradingview-widget-container"><div class="tradingview-widget-container__widget"></div></div></div>
         <div class="subhead">Index &amp; sector overview</div>
         <div class="tvwrap tv-mid" id="tv-overview"><div class="tradingview-widget-container"><div class="tradingview-widget-container__widget"></div></div></div>
+        <div class="subhead">Full market screener — filter thousands of US tickers live (ratings, RSI, volume, %)</div>
+        <div class="tvwrap tv-tall" id="tv-screener"><div class="tradingview-widget-container"><div class="tradingview-widget-container__widget"></div></div></div>
+        <div class="subhead">Market-wide technical rating (S&amp;P 500 proxy)</div>
+        <div class="tvwrap tv-mid" id="tv-gauge"><div class="tradingview-widget-container"><div class="tradingview-widget-container__widget"></div></div></div>
         <div class="tvnote">Charts &amp; data © TradingView. Loads live in your browser and needs internet access.</div>
       </section>
 
@@ -1325,7 +1333,7 @@ function row(x,s){if(x.error)return `<tr><td><a href="/ticker/${x.ticker}">${x.t
 function visible(s){let arr=LAST.signals.slice();if(SEARCH)arr=arr.filter(x=>x.ticker.toLowerCase().includes(SEARCH)||(x.sector||'').toLowerCase().includes(SEARCH));if(FILTER==='buys')arr=arr.filter(x=>x.is_buy);else if(FILTER==='strong')arr=arr.filter(x=>x.recommendation==='STRONG BUY');else if(FILTER==='hold')arr=arr.filter(x=>x.recommendation==='HOLD');else if(FILTER==='sell')arr=arr.filter(x=>(x.recommendation||'').includes('SELL'));arr.sort((a,b)=>{const va=metric(a,SORTK,s),vb=metric(b,SORTK,s);return va<vb?SORTD:va>vb?-SORTD:0;});return arr;}
 function renderSignals(){if(!LAST)return;const s=getSettings();const buys=LAST.signals.filter(x=>x.is_buy&&!x.error);let tc=0,tr=0,tw=0,te=0;buys.forEach(x=>{const e=econ(x,s);tc+=e.cost;tr+=e.risk;tw+=e.reward;te+=e.ev;});const dep=CAPITAL?(tc/CAPITAL*100):0;document.getElementById('summary').innerHTML=[['Account equity',money(CAPITAL),''],['Buy signals',buys.length,'blue'],['Capital to deploy',money(tc)+' ('+dep.toFixed(0)+'%)',''],['Total risk (stops)',money(tr),'red'],['Profit at targets',money(tw),'green'],['Expected value',money(te),te>=0?'green':'red']].map((c,i)=>`<div class="stat" style="animation-delay:${i*40}ms"><div class="k">${c[0]}</div><div class="v ${c[2]}">${c[1]}</div></div>`).join('');const bySec={};buys.forEach(x=>bySec[x.sector]=(bySec[x.sector]||0)+1);const secs=Object.keys(bySec).sort();document.getElementById('sectors').innerHTML=secs.length?secs.map((k,i)=>`<div class="secchip" style="animation-delay:${i*40}ms">${k} <b>${bySec[k]}</b></div>`).join(''):'<span class="hint">No buy signals right now.</span>';document.getElementById('topbuys').innerHTML=buys.length?buys.map((x,i)=>card(x,s).replace('<div class="card','<div style="animation-delay:'+(i*50)+'ms" class="card')).join(''):'<div class="card"><div class="subline">No fresh buy signals right now. The scanner re-checks automatically.</div></div>';document.getElementById('allbody').innerHTML=visible(s).map(x=>row(x,s)).join('');requestAnimationFrame(()=>document.querySelectorAll('.bar>span').forEach(b=>b.style.width=b.dataset.w+'%'));document.getElementById('foot').textContent=`${LAST.signals.length} tickers monitored · refreshing every ${REFRESH/1000}s · click any ticker for full detail · build __BUILD__`;}
 
-async function tickSignals(){try{LAST=await (await fetch('/api/signals')).json();const dot=LAST.status==='ok'?'ok':(LAST.status==='error'?'error':'scanning');document.getElementById('sigstatus').innerHTML=`<span class="dot ${dot}"></span>signals ${LAST.status==='scanning'?'scanning '+LAST.config.universe+'…':LAST.status}`;const c=LAST.config;document.getElementById('cfg').textContent=`eq${c.equation_set} · ${c.interval} · ${c.universe} stocks`+(LAST.ai_enabled?' · AI on':'');document.getElementById('updated').textContent=LAST.updated?'updated '+LAST.updated:'';SIZEMODE=LAST.config.atr_adaptive?'atr':'fixed';updateModeUI();renderSignals();}catch(e){document.getElementById('sigstatus').innerHTML='<span class="dot error"></span>fetch error';}}
+async function tickSignals(){try{LAST=await (await fetch('/api/signals')).json();const dot=LAST.status==='ok'?'ok':(LAST.status==='error'?'error':'scanning');document.getElementById('sigstatus').innerHTML=`<span class="dot ${dot}"></span>signals ${LAST.status==='scanning'?'scanning '+LAST.config.universe+'…':LAST.status}`;const c=LAST.config;document.getElementById('cfg').textContent=`eq${c.equation_set} · ${c.interval} · ${c.universe} stocks`+(LAST.ai_enabled?' · AI on':'');(function(){var sg=(LAST.signals||[]).filter(function(x){return x.bar_time;});var fr='',stale=false;if(sg.length){sg.forEach(function(x){if(x.bar_time>fr)fr=x.bar_time;});stale=sg.filter(function(x){return x.stale;}).length>sg.length/2;}var fb=fr?(/00:00:00Z$/.test(fr)?fr.slice(0,10):fr.slice(0,16)):'';var pill=fb?('<span class="badge '+(stale?'red':'green')+'">'+(stale?'stale':'live')+'</span> data '+fb+(LAST.updated?' · ':'')):'';document.getElementById('updated').innerHTML=pill+(LAST.updated?'scanned '+LAST.updated:'');})();SIZEMODE=LAST.config.atr_adaptive?'atr':'fixed';updateModeUI();renderSignals();}catch(e){document.getElementById('sigstatus').innerHTML='<span class="dot error"></span>fetch error';}}
 async function tickAccount(){try{ACC=await (await fetch('/api/account')).json();renderAccount();}catch(e){}}
 // ===== charts (Chart.js) =====
 const CHARTS={};
@@ -1578,6 +1586,19 @@ _DETAIL_PAGE = """<!doctype html><html lang="en"><head>
       </div>
     </div>
     <div class="tvnote">Live chart © TradingView · loads in your browser and needs internet access.</div>
+  </section>
+  <section class="section">
+    <div class="sectionhead"><div class="eyebrow">Technical rating</div><div class="title">__TICKER__ · TradingView signal gauge</div>
+      <div class="desc">An independent Buy / Sell read from TradingView's oscillators &amp; moving averages, across timeframes — a second opinion next to the HP Analytics strategy signal.</div></div>
+    <div class="tvwrap tv-mid">
+      <div class="tradingview-widget-container" style="height:100%;width:100%">
+        <div class="tradingview-widget-container__widget" style="height:100%;width:100%"></div>
+        <script type="text/javascript" src="https://s3.tradingview.com/external-embedding/embed-widget-technical-analysis.js" async>
+        {"interval":"1D","width":"100%","isTransparent":true,"height":"100%","symbol":"__TICKER__","showIntervalTabs":true,"displayMode":"single","locale":"en","colorTheme":"dark"}
+        </script>
+      </div>
+    </div>
+    <div class="tvnote">Technical-rating gauge © TradingView · independent of the HP Analytics strategy.</div>
   </section>
   <section class="section">
     <div class="sectionhead"><div class="eyebrow">Price &amp; signals</div><div class="title">__TICKER__ price with buy / sell markers</div></div>
