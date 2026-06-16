@@ -213,6 +213,13 @@ class Config:
     stop_loss_pct: float = field(default_factory=lambda: _float("STOP_LOSS_PCT", 5.0))
     take_profit_pct: float = field(default_factory=lambda: _float("TAKE_PROFIT_PCT", 10.0))
     max_open_positions: int = field(default_factory=lambda: _int("MAX_OPEN_POSITIONS", 5))
+    # When true, the max-open-positions cap is computed live from account equity
+    # + market conditions (see risk.dynamic_position_cap) instead of the fixed
+    # number above. The fixed number then acts as an upper bound (0 = no bound).
+    dynamic_positions: bool = field(default_factory=lambda: _bool("DYNAMIC_POSITIONS", False))
+    # Smallest position the equity-based cap will plan for (don't open positions
+    # too tiny to matter / cover fees).
+    min_position_usd: float = field(default_factory=lambda: _float("MIN_POSITION_USD", 500.0))
     max_daily_loss_pct: float = field(default_factory=lambda: _float("MAX_DAILY_LOSS_PCT", 3.0))
 
     # When the daily-loss limit is hit, also flatten everything? (default: keep

@@ -39,6 +39,38 @@ class SizingDecision:
     reason: str
 
 
+def _attr(obj, key, default=None):
+    """Read ``key`` from a dict or an object (works for TickerSignal or its dict)."""
+    if isinstance(obj, dict):
+        return obj.get(key, default)
+    return getattr(obj, key, default)
+
+
+def market_regime(signals) -> dict:
+    """A 0..1 market-health score from a set of signals (breadth + trend + conviction).
+
+    ~0.2 = broadly risk-off (few names in uptrend), ~1.0 = risk-on. Used to scale
+    the dynamic position cap and to drive the Auto-Tune preset. Pure function of
+    data the scanner already produces — no extra network calls.
+    """
+    sigs = [s for s in (signals or []) if not _attr(s, "error")]
+    n = len(sigs)
+    if n == 0:
+        return {"score": 0.5, "label": "Neutral", "breadth": 0.0,
+                "uptrend_frac": 0.0, "avg_conviction": 0.0, "n": 0, "buys": 0}
+    buys = [s for s in sigs if _attr(s, "recommendation") in ("BUY", "STRONG BUY")]
+    breadth = len(buys) / n
+    uptrend_frac = sum(1 for s in sigs if _attr(s, "trend") == "Uptrend") / n
+    avg_conv = (sum(float(_attr(s, "conviction", 0.0)) for s in buys) / len(buys) / 100.0
+                ) if buys else 0.0
+    score = 0.20 + 0.60 * uptrend_frac + 0.15 * min(1.0, breadth * 5.0) + 0.05 * avg_conv
+    score = max(0.15, min(1.0, score))
+    label = "Risk-on" if score >= 0.70 else ("Risk-off" if score < 0.45 else "Neutral")
+    return {"score": round(score, 3), "label": label, "breadth": round(breadth, 3),
+            "uptrend_frac": round(uptrend_frac, 3), "avg_conviction": round(avg_conv, 3),
+            "n": n, "buys": len(buys)}
+
+
 class RiskManager:
     def __init__(self, config):
         self.config = config
@@ -112,12 +144,36 @@ class RiskManager:
     # ------------------------------------------------------------------ #
     # Concurrency
     # ------------------------------------------------------------------ #
-    def can_open_new(self, open_position_count: int) -> tuple[bool, str]:
-        if open_position_count >= self.config.max_open_positions:
-            return False, (
-                f"max open positions reached "
-                f"({open_position_count}/{self.config.max_open_positions})"
-            )
+    def dynamic_position_cap(self, equity: float, regime_score: float) -> int:
+        """Variable max-open-positions from account size + market regime.
+
+        Bounded three ways and takes the tightest:
+        * **capacity**  — how many positions fit by % sizing (never > 100% deployed)
+        * **affordable** — equity / MIN_POSITION_USD (a small account holds fewer)
+        * **regime**    — capacity scaled by a 0..1 market-health score (risk-off
+                          markets hold fewer; risk-on holds more)
+        """
+        pct = max(1.0, self.config.max_position_pct)
+        capacity = max(1, int(100 // pct))
+        affordable = capacity
+        if equity and equity > 0 and self.config.min_position_usd > 0:
+            affordable = max(1, int(equity // self.config.min_position_usd))
+        regime_cap = max(1, round(capacity * float(regime_score)))
+        return max(1, min(capacity, affordable, regime_cap))
+
+    def effective_position_cap(self, equity: Optional[float] = None,
+                               regime_score: Optional[float] = None) -> int:
+        """The cap in force right now: dynamic when enabled + context given, else fixed."""
+        if (self.config.dynamic_positions and equity is not None
+                and regime_score is not None):
+            return self.dynamic_position_cap(equity, regime_score)
+        return self.config.max_open_positions
+
+    def can_open_new(self, open_position_count: int, equity: Optional[float] = None,
+                     regime_score: Optional[float] = None) -> tuple[bool, str]:
+        cap = self.effective_position_cap(equity, regime_score)
+        if open_position_count >= cap:
+            return False, f"max open positions reached ({open_position_count}/{cap})"
         return True, "ok"
 
     # ------------------------------------------------------------------ #

@@ -360,6 +360,12 @@ def create_app(config=CONFIG):
         out["engine"]["day_trade"] = daytrade["on"]
         out["engine"]["interval"] = config.interval
         out["engine"]["loop_secs"] = config.engine_interval_seconds
+        # Surface the live market regime + the position cap currently in force.
+        from risk import RiskManager, market_regime
+        _reg = market_regime(service._signals)
+        out["engine"]["regime"] = _reg
+        out["engine"]["dynamic_positions"] = config.dynamic_positions
+        out["engine"]["max_open_fixed"] = config.max_open_positions
         broker = display_broker()
         if broker is None:
             out["broker_error"] = broker_holder["error"] or "no broker configured"
@@ -376,6 +382,9 @@ def create_app(config=CONFIG):
                 ]
             except Exception as exc:
                 out["broker_error"] = str(exc)
+        _eq = (out["account"] or {}).get("equity") or config.account_size
+        out["engine"]["max_open_effective"] = RiskManager(config).effective_position_cap(
+            _eq, _reg["score"])
         start = datetime.now(timezone.utc).strftime("%Y-%m-%dT00:00:00")
         out["today"] = [
             {"ticker": t["ticker"], "entry_price": t["entry_price"], "exit_price": t["exit_price"],
@@ -413,10 +422,51 @@ def create_app(config=CONFIG):
             if iv in INTERVAL_MAP and iv != config.interval:
                 config.interval = iv
                 _flush_scanner_caches()  # force a refetch at the new bar size
-        return jsonify({"ok": True, "atr_adaptive": config.atr_adaptive,
-                        "aggressive_mode": config.aggressive_mode, "ai_gate": config.ai_gate,
-                        "day_trade": daytrade["on"], "interval": config.interval,
-                        "engine_interval_seconds": config.engine_interval_seconds})
+        if "dynamic_positions" in body:
+            config.dynamic_positions = bool(body["dynamic_positions"])
+
+        autotune = None
+        if body.get("autotune"):
+            # Read current market conditions and apply the best RISK-ADJUSTED combo.
+            # NOT a profit guarantee -- it adapts entries/sizing/cap to the regime.
+            from risk import RiskManager, market_regime
+            reg = market_regime(service._signals)
+            s = reg["score"]
+            config.dynamic_positions = True     # equity + market-aware position cap
+            config.atr_adaptive = True          # volatility-normalised sizing & stops
+            config.autotrade_require_uptrend = True
+            if s >= 0.70:                        # risk-on -> lean in
+                config.aggressive_mode = True
+                config.autotrade_signal = "buy"
+            elif s < 0.45:                       # risk-off -> defensive
+                config.aggressive_mode = False
+                config.autotrade_signal = "strong"
+            else:                                # neutral
+                config.aggressive_mode = False
+                config.autotrade_signal = "buy"
+            eq = config.account_size
+            try:
+                b = display_broker()
+                if b is not None:
+                    eq = b.get_account().equity
+            except Exception:
+                pass
+            cap = RiskManager(config).effective_position_cap(eq, s)
+            autotune = {"regime": reg, "cap": cap, "message": (
+                f"{reg['label']} market (score {s:.2f}, {int(reg['uptrend_frac']*100)}% of names "
+                f"in uptrend): {'aggressive' if config.aggressive_mode else 'conservative'} entries, "
+                f"ATR-adaptive sizing, dynamic cap ≈ {cap} positions. Risk-adjusted, not a "
+                f"profit guarantee.")}
+
+        resp = {"ok": True, "atr_adaptive": config.atr_adaptive,
+                "aggressive_mode": config.aggressive_mode, "ai_gate": config.ai_gate,
+                "day_trade": daytrade["on"], "interval": config.interval,
+                "dynamic_positions": config.dynamic_positions,
+                "autotrade_signal": config.autotrade_signal,
+                "engine_interval_seconds": config.engine_interval_seconds}
+        if autotune:
+            resp["autotune"] = autotune
+        return jsonify(resp)
 
     @app.route("/api/stream")
     def api_stream():
@@ -1354,6 +1404,12 @@ _MAIN_PAGE = """<!doctype html><html lang="en"><head>
           <button class="btn" id="gateBtn" onclick="toggleGate()">🤖 AI risk-gate: off</button>
           <span class="meta" id="aggwarn"></span>
         </div>
+        <div class="ctrl" style="margin-top:12px">
+          <button class="bigbtn start" id="autotuneBtn" onclick="autoTune()" title="Read live market conditions and apply the best risk-adjusted combination of settings">⚡ Auto-Tune (adaptive)</button>
+          <button class="btn" id="dynBtn" onclick="toggleDynPos()">📊 Dynamic positions: off</button>
+          <span class="meta" id="regimeReadout"></span>
+        </div>
+        <div class="hint" id="autotuneMsg" style="margin-top:8px">Auto-Tune reads current market breadth/trend and sets entries, ATR sizing and a variable position cap to a risk-adjusted combination. It does not guarantee profit.</div>
         <div id="previewbox"></div>
         <div class="subhead">Engine activity</div>
         <div class="actfeed" id="actfeed"><div class="muted">Engine idle. Press Preview to see what it would do, or Start to run it.</div></div>
@@ -1516,6 +1572,8 @@ async function stopEngine(){ await eng('/api/engine/stop',{}); tickAccount(); }
 function setAggressive(on){if(on&&!confirm('🔥 Aggressive mode takes more, lower-conviction trades (any BUY, any trend) — higher risk. Turn it on?'))return;eng('/api/config',{aggressive_mode:on}).then(tickAccount);}
 function toggleGate(){const on=!(ACC&&ACC.engine&&ACC.engine.ai_gate);eng('/api/config',{ai_gate:on}).then(tickAccount);}
 function toggleDayTrade(){const on=!(ACC&&ACC.engine&&ACC.engine.day_trade);if(on&&!confirm('⚡ Day-trade mode switches to 1-hour bars, turns ON aggressive entries (any BUY), and runs the engine every ~3s.\\n\\nMore frequent trades, higher risk. Turn it on?'))return;eng('/api/config',{day_trade:on}).then(tickAccount);}
+function toggleDynPos(){const on=!(ACC&&ACC.engine&&ACC.engine.dynamic_positions);eng('/api/config',{dynamic_positions:on}).then(tickAccount);}
+async function autoTune(){const b=document.getElementById('autotuneBtn');b.disabled=true;const old=b.textContent;b.textContent='⚡ Tuning…';try{const r=await eng('/api/config',{autotune:true});if(r&&r.autotune){document.getElementById('autotuneMsg').innerHTML='✅ '+r.autotune.message;}else{document.getElementById('autotuneMsg').textContent='Auto-Tune applied.';}}catch(e){document.getElementById('autotuneMsg').textContent='Auto-Tune failed.';}finally{b.disabled=false;b.textContent=old;tickAccount();}}
 async function previewEngine(){
   document.getElementById('previewbox').innerHTML='<div class="note">Running preview…</div>';
   const r=await eng('/api/engine/preview',{}); const rows=r.rows||[];
@@ -1547,6 +1605,10 @@ function renderEngine(){
   const dt=e.day_trade;const dtb=document.getElementById('dayBtn');
   if(dtb){dtb.textContent=dt?`⚡ Day-trade mode: ON (${e.interval||'1h'} · ${e.loop_secs||3}s loop)`:'⚡ Day-trade mode: off';dtb.classList.toggle('active',dt);}
   document.getElementById('aggwarn').innerHTML=dt?'<span style="color:var(--amber);font-weight:700">⚡ DAY-TRADE: 1h bars · aggressive · ~3s loop — more trades, higher risk</span>':(agg?'<span style="color:var(--red);font-weight:700">🔥 AGGRESSIVE: more, lower-conviction trades — higher risk</span>':'');
+  const dyn=e.dynamic_positions;const db2=document.getElementById('dynBtn');
+  if(db2){db2.textContent='📊 Dynamic positions: '+(dyn?'ON':'off');db2.classList.toggle('active',dyn);}
+  const rr=document.getElementById('regimeReadout');
+  if(rr&&e.regime){const cap=dyn?e.max_open_effective:e.max_open_fixed;const rl=e.regime.label||'';const rcls=rl==='Risk-on'?'green':(rl==='Risk-off'?'red':'amber');rr.innerHTML=`max positions <b>${cap}</b> ${dyn?'(dynamic)':'(fixed)'} · market <span style="color:var(--${rcls});font-weight:700">${rl}</span> ${Math.round((e.regime.uptrend_frac||0)*100)}% uptrend`;}
   const feed=e.recent&&e.recent.length?e.recent.slice(-40).map(l=>`<div>${l.replace(/</g,'&lt;')}</div>`).join(''):'<div class="muted">No engine activity yet.</div>';
   const af=document.getElementById('actfeed'); af.innerHTML=feed; af.scrollTop=af.scrollHeight;
 }

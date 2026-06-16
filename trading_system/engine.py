@@ -33,7 +33,7 @@ from typing import Dict, Optional
 from broker import AccountInfo, Broker, build_broker
 from config import CONFIG, Config
 from database import Database
-from risk import RiskManager
+from risk import RiskManager, market_regime
 from scanner import Scanner, TickerSignal
 
 log = logging.getLogger("engine")
@@ -72,6 +72,10 @@ class TradingEngine:
             except Exception:
                 self.briefer = None
         self._stop = False
+        # Market-health + the position cap currently in force (for dynamic sizing
+        # of MAX_OPEN_POSITIONS), updated at the end of each scan cycle.
+        self._regime = {"score": 0.5, "label": "Neutral"}
+        self._effective_cap = config.max_open_positions
         self._last_summary_ts = 0.0  # throttles the per-cycle log at fast cadences
         self._clock_cache = (0.0, True)  # (monotonic_ts, is_open) -- avoids polling every cycle
 
@@ -281,10 +285,14 @@ class TradingEngine:
             market_open = self._is_market_open_cached()
 
         opened = closed = errors = 0
+        cycle_sigs: list = []
+        regime_score = self._regime["score"]  # use last cycle's regime for this cycle's caps
         for ticker in self.config.tickers:
             try:
                 r = self._process_ticker(ticker, account, positions, open_trades,
-                                         market_open=market_open, halt_new_entries=halt_new_entries)
+                                         market_open=market_open, halt_new_entries=halt_new_entries,
+                                         equity=account.equity, regime_score=regime_score,
+                                         cycle_sigs=cycle_sigs)
                 if r == "open":
                     opened += 1
                 elif r == "close":
@@ -294,6 +302,11 @@ class TradingEngine:
             except Exception:
                 log.exception("error processing %s", ticker)
                 errors += 1
+
+        # Refresh the market regime + the cap in force for next cycle / the UI.
+        if cycle_sigs:
+            self._regime = market_regime(cycle_sigs)
+        self._effective_cap = self.risk.effective_position_cap(account.equity, self._regime["score"])
 
         holding = len(self.db.get_open_trades())
         # At fast cadences (e.g. every 1s) logging every cycle floods the feed, so
@@ -343,8 +356,11 @@ class TradingEngine:
         return val
 
     def _process_ticker(self, ticker, account, positions, open_trades,
-                        *, market_open, halt_new_entries) -> Optional[str]:
+                        *, market_open, halt_new_entries,
+                        equity=None, regime_score=None, cycle_sigs=None) -> Optional[str]:
         sig = self.scanner.scan_ticker(ticker)
+        if cycle_sigs is not None:
+            cycle_sigs.append(sig)
         if sig.error:
             log.debug("%s scan error: %s", ticker, sig.error)
             return "error"
@@ -384,7 +400,8 @@ class TradingEngine:
             if not self.dry_run and self.config.require_market_open and not market_open:
                 log.info("%s BUY signal HELD -- market closed; will place at the next open.", ticker)
                 return did
-            can_open, why = self.risk.can_open_new(len(open_trades))
+            can_open, why = self.risk.can_open_new(len(open_trades), equity=equity,
+                                                   regime_score=regime_score)
             if not can_open:
                 log.info("%s BUY suppressed (%s).", ticker, why)
                 return did
