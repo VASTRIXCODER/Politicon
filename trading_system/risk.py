@@ -158,7 +158,10 @@ class RiskManager:
         affordable = capacity
         if equity and equity > 0 and self.config.min_position_usd > 0:
             affordable = max(1, int(equity // self.config.min_position_usd))
-        regime_cap = max(1, round(capacity * float(regime_score)))
+        # Capital (capacity + affordability) sets the ceiling; the market regime only
+        # MODULATES it (50%..100% of capacity) so you still hold plenty in a neutral
+        # tape and fewer only when it's genuinely risk-off.
+        regime_cap = max(1, round(capacity * (0.5 + 0.5 * float(regime_score))))
         return max(1, min(capacity, affordable, regime_cap))
 
     def effective_position_cap(self, equity: Optional[float] = None,

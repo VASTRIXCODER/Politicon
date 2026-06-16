@@ -213,10 +213,12 @@ class Config:
     stop_loss_pct: float = field(default_factory=lambda: _float("STOP_LOSS_PCT", 5.0))
     take_profit_pct: float = field(default_factory=lambda: _float("TAKE_PROFIT_PCT", 10.0))
     max_open_positions: int = field(default_factory=lambda: _int("MAX_OPEN_POSITIONS", 5))
-    # When true, the max-open-positions cap is computed live from account equity
-    # + market conditions (see risk.dynamic_position_cap) instead of the fixed
-    # number above. The fixed number then acts as an upper bound (0 = no bound).
-    dynamic_positions: bool = field(default_factory=lambda: _bool("DYNAMIC_POSITIONS", False))
+    # Variable cap (DEFAULT ON): the max number of concurrent positions is computed
+    # live from account equity + market conditions (risk.dynamic_position_cap),
+    # bounded by how many fit at MAX_POSITION_PCT (so you never deploy >100%). To
+    # hold MORE / a more diverse book, LOWER MAX_POSITION_PCT (e.g. 4 -> ~25 names).
+    # Set DYNAMIC_POSITIONS=false to use the fixed MAX_OPEN_POSITIONS above instead.
+    dynamic_positions: bool = field(default_factory=lambda: _bool("DYNAMIC_POSITIONS", True))
     # Smallest position the equity-based cap will plan for (don't open positions
     # too tiny to matter / cover fees).
     min_position_usd: float = field(default_factory=lambda: _float("MIN_POSITION_USD", 500.0))

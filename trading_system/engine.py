@@ -286,13 +286,14 @@ class TradingEngine:
 
         opened = closed = errors = 0
         cycle_sigs: list = []
+        entry_candidates: list = []
         regime_score = self._regime["score"]  # use last cycle's regime for this cycle's caps
         for ticker in self.config.tickers:
             try:
                 r = self._process_ticker(ticker, account, positions, open_trades,
                                          market_open=market_open, halt_new_entries=halt_new_entries,
                                          equity=account.equity, regime_score=regime_score,
-                                         cycle_sigs=cycle_sigs)
+                                         cycle_sigs=cycle_sigs, entry_candidates=entry_candidates)
                 if r == "open":
                     opened += 1
                 elif r == "close":
@@ -303,10 +304,33 @@ class TradingEngine:
                 log.exception("error processing %s", ticker)
                 errors += 1
 
-        # Refresh the market regime + the cap in force for next cycle / the UI.
+        # Refresh the market regime + the cap in force from THIS cycle's data.
         if cycle_sigs:
             self._regime = market_regime(cycle_sigs)
-        self._effective_cap = self.risk.effective_position_cap(account.equity, self._regime["score"])
+        fresh_score = self._regime["score"]
+        self._effective_cap = self.risk.effective_position_cap(account.equity, fresh_score)
+
+        # Open the STRONGEST candidates first (by conviction) up to the live cap, so
+        # the book chases the best fresh signals and diversifies as slots free up.
+        entry_candidates.sort(key=lambda c: c["conviction"], reverse=True)
+        suppressed = 0
+        for i, cand in enumerate(entry_candidates):
+            can_open, why = self.risk.can_open_new(
+                len(open_trades), equity=account.equity, regime_score=fresh_score)
+            if not can_open:
+                suppressed = len(entry_candidates) - i
+                break
+            if self.briefer is not None and not self.dry_run:
+                g = self.briefer.gate(cand["sig"].as_dict())
+                if not g.get("proceed", True):
+                    log.info("%s BUY VETOED by AI risk-gate: %s", cand["ticker"], g.get("reason", ""))
+                    continue
+            self._open(cand["ticker"], account, cand["price"], open_trades, cand["sig"])
+            opened += 1
+        if suppressed:
+            log.info("position cap %d reached -- opened %d top-ranked buy(s) this cycle, "
+                     "%d not opened (lower MAX_POSITION_PCT to hold more names).",
+                     self._effective_cap, opened, suppressed)
 
         holding = len(self.db.get_open_trades())
         # At fast cadences (e.g. every 1s) logging every cycle floods the feed, so
@@ -357,7 +381,8 @@ class TradingEngine:
 
     def _process_ticker(self, ticker, account, positions, open_trades,
                         *, market_open, halt_new_entries,
-                        equity=None, regime_score=None, cycle_sigs=None) -> Optional[str]:
+                        equity=None, regime_score=None, cycle_sigs=None,
+                        entry_candidates=None) -> Optional[str]:
         sig = self.scanner.scan_ticker(ticker)
         if cycle_sigs is not None:
             cycle_sigs.append(sig)
@@ -370,7 +395,11 @@ class TradingEngine:
         # an open position (to check its stop/target) or an actionable BUY/SELL this
         # cycle. Otherwise reuse the scan price -- this keeps a 1-second loop over a
         # big universe from blowing past the broker's rate limit.
-        need_live = open_trade is not None or action in ("BUY", "SELL")
+        # Live broker price only for EXITS (open positions). Entry candidates are
+        # collected here and the real entry price is resolved at fill time in
+        # _open() -- this avoids a live-quote call for every buy across a big
+        # universe (most of which won't fit under the cap anyway).
+        need_live = open_trade is not None
         current_price = self._latest_price(ticker, sig.price) if need_live else sig.price
         did: Optional[str] = None
 
@@ -392,26 +421,17 @@ class TradingEngine:
             open_trade = None
             did = "close"
 
-        # 3. signal-driven entry
-        if action == "BUY" and open_trade is None:
-            if halt_new_entries:
-                log.info("%s BUY suppressed (daily-loss halt).", ticker)
-                return did
+        # 3. signal-driven entry -> COLLECT as a candidate. The actual opens happen
+        # in step(), best-first by conviction up to the live cap, so the book chases
+        # the strongest fresh signals instead of whatever came first alphabetically.
+        if action == "BUY" and open_trade is None and not halt_new_entries:
             if not self.dry_run and self.config.require_market_open and not market_open:
-                log.info("%s BUY signal HELD -- market closed; will place at the next open.", ticker)
-                return did
-            can_open, why = self.risk.can_open_new(len(open_trades), equity=equity,
-                                                   regime_score=regime_score)
-            if not can_open:
-                log.info("%s BUY suppressed (%s).", ticker, why)
-                return did
-            if self.briefer is not None and not self.dry_run:
-                g = self.briefer.gate(sig.as_dict())
-                if not g.get("proceed", True):
-                    log.info("%s BUY VETOED by AI risk-gate: %s", ticker, g.get("reason", ""))
-                    return did
-            self._open(ticker, account, current_price, open_trades, sig)
-            did = "open"
+                log.debug("%s BUY held -- market closed.", ticker)
+            elif entry_candidates is not None:
+                entry_candidates.append({
+                    "ticker": ticker, "sig": sig, "price": sig.price,
+                    "conviction": float(getattr(sig, "conviction", 0.0) or 0.0),
+                })
         return did
 
     # ------------------------------------------------------------------ #
