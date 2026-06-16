@@ -436,6 +436,27 @@ def create_app(config=CONFIG):
         from options import options_summary
         return jsonify(options_summary(sym, request.args.get("expiry")))
 
+    @app.route("/api/options/idea/<sym>")
+    def api_option_idea(sym):
+        from options import options_idea
+        side = "bear" if request.args.get("side") == "bear" else "bull"
+        return jsonify(options_idea(sym.upper(), side=side, spot=request.args.get("spot", type=float)))
+
+    @app.route("/api/options/ideas")
+    def api_option_ideas():
+        # Express the current top BUY signals as call ideas (decision support).
+        from options import options_idea
+        with service._lock:
+            sigs = list(service._signals)
+        buys = [s for s in sigs if s.is_buy and not s.error][:6]
+        ideas = []
+        for s in buys:
+            idea = options_idea(s.ticker, side="bull", spot=s.price)
+            idea.update({"recommendation": s.recommendation, "conviction": s.conviction,
+                         "sector": s.sector})
+            ideas.append(idea)
+        return jsonify({"ideas": ideas, "count": len(ideas)})
+
     @app.route("/api/movers")
     def api_movers():
         from market_extras import live_movers
@@ -1029,8 +1050,8 @@ _SHELL_JS = r"""
 (function(){
   var app=document.getElementById('app');
   if(!app)return;
-  var VIEWS=['dashboard','markets','signals','engine','risk','performance','backtest','logs','trades'];
-  var TITLES={dashboard:'Mission Control',markets:'Markets',signals:'Signals',engine:'Engine',risk:'Risk',performance:'Performance',backtest:'Backtesting',logs:'Activity Log',trades:'Trades'};
+  var VIEWS=['dashboard','markets','signals','options','engine','risk','performance','backtest','logs','trades'];
+  var TITLES={dashboard:'Mission Control',markets:'Markets',signals:'Signals',options:'Options',engine:'Engine',risk:'Risk',performance:'Performance',backtest:'Backtesting',logs:'Activity Log',trades:'Trades'};
   var marketsReady=false;
 
   function setCrumb(v){var c=document.getElementById('crumb');if(c)c.innerHTML='Workspace <span class="sep">/</span> <b>'+(TITLES[v]||v)+'</b>';}
@@ -1157,6 +1178,9 @@ _MAIN_PAGE = """<!doctype html><html lang="en"><head>
     <div class="navitem" data-view="signals" role="button" tabindex="0">
       <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M2 12h4l3 7 5-15 3 8h5"/></svg>
       <span class="navlabel">Signals</span></div>
+    <div class="navitem" data-view="options" role="button" tabindex="0">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M3 3v18h18"/><path d="M7 14l4-4 3 3 5-6"/></svg>
+      <span class="navlabel">Options</span></div>
     <div class="navgroup-title">Trading</div>
     <div class="navitem" data-view="engine" role="button" tabindex="0">
       <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linejoin="round"><path d="M13 2L4 13h7l-1 9 10-12h-7z"/></svg>
@@ -1295,6 +1319,20 @@ _MAIN_PAGE = """<!doctype html><html lang="en"><head>
           <th class="num" onclick="setSort('rsi')">RSI</th><th class="num" onclick="setSort('shares')">Shares</th>
           <th class="num" onclick="setSort('ev')">Exp.value</th><th class="num" onclick="setSort('win')">Win rate</th><th></th>
         </tr></thead><tbody id="allbody"></tbody></table></div>
+      </section>
+
+      <section id="sec-options" class="section" data-views="options" style="display:none">
+        <div class="sectionhead"><div class="eyebrow">Options</div><div class="title">Express your signals as options</div>
+          <div class="desc">The strategy is a price buy/sell signal; this view translates today's BUY signals into a concrete options trade (an at-the-money call), and lets you inspect any ticker's chain. <b>Decision support — not advice, and no orders are placed.</b></div></div>
+        <div class="subhead">Options ideas from your BUY signals — at-the-money calls (nearest expiry)</div>
+        <div id="optideas"><div class="skel skel-card"></div></div>
+        <div class="subhead">Look up any options chain</div>
+        <div class="controls">
+          <input class="search" id="optsym" placeholder="Ticker, e.g. AAPL" aria-label="Options ticker" style="max-width:220px">
+          <button class="btn" id="optgo">Load chain</button>
+        </div>
+        <div id="optlookup"><div class="note muted">Enter a ticker above to see its nearest-expiry calls &amp; puts, volume and put/call ratio.</div></div>
+        <div class="tvnote">Options data © Yahoo via yfinance · loads live and needs internet access.</div>
       </section>
 
       <section id="sec-trades" class="section" data-views="dashboard trades">
@@ -1471,6 +1509,25 @@ function donutChart(id,labels,values,colors){if(typeof Chart==='undefined')retur
 function drawSectorDonut(bySec){const el=document.getElementById('sectorDonut');if(!el)return;const ks=Object.keys(bySec);if(!ks.length){if(CHARTS['sectorDonut']){CHARTS['sectorDonut'].destroy();delete CHARTS['sectorDonut'];}return;}donutChart('sectorDonut',ks,ks.map(k=>bySec[k]),ks.map((_,i)=>SECCOLORS[i%SECCOLORS.length]));}
 function drawDrawdown(eq){if(!eq||!eq.length)return;let peak=-1e18;const dd=eq.map(p=>{peak=Math.max(peak,p.equity);return peak>0?((p.equity-peak)/peak*100):0;});lineChart('ddChart',eq.map(p=>(p.time||'').slice(0,10)),dd,'#e5635f','rgba(229,99,95,.12)');}
 async function loadMiniEquity(){try{const d=await (await fetch('/api/performance')).json();const eq=d.equity||[];if(!eq.length)return;lineChart('miniEquity',eq.map(p=>(p.time||'').slice(0,10)),eq.map(p=>p.equity),'#6c8cff','rgba(108,140,255,.10)');}catch(e){}}
+// ===== Options (centralised) =====
+function optChainHTML(d){
+  if(!d||d.error)return '<div class="note muted">'+((d&&d.error)||'No data')+'</div>';
+  function tbl(rows){return '<table><thead><tr><th></th><th class="num">Strike</th><th class="num">Last</th><th class="num">Vol</th><th class="num">OI</th><th class="num">IV%</th></tr></thead><tbody>'+((rows||[]).map(function(r){return '<tr><td>'+(r.itm?'<span class="badge green">ITM</span>':'')+'</td><td class="num">'+r.strike+'</td><td class="num">'+usd(r.last)+'</td><td class="num">'+(r.volume||0).toLocaleString()+'</td><td class="num">'+(r.open_interest||0).toLocaleString()+'</td><td class="num">'+r.iv+'</td></tr>';}).join('')||'<tr><td colspan="6" class="muted">none</td></tr>')+'</tbody></table>';}
+  var pcr=d.put_call_ratio==null?'—':d.put_call_ratio,bcls=/bull/.test(d.bias||'')?'green':(/bear/.test(d.bias||'')?'red':'muted');
+  return '<div class="card"><div class="summary">'+statCardHTML(d.symbol+' · '+d.expiry,'expiry')+statCardHTML('Call volume',(d.call_volume||0).toLocaleString(),'green')+statCardHTML('Put volume',(d.put_volume||0).toLocaleString(),'red')+statCardHTML('Put / Call',pcr,bcls)+'</div><div style="margin:8px 0"><span class="badge '+bcls+'">'+(d.bias||'')+'</span></div><div class="subhead">Most active calls</div><div class="tablewrap">'+tbl(d.calls)+'</div><div class="subhead">Most active puts</div><div class="tablewrap">'+tbl(d.puts)+'</div></div>';
+}
+function ideaCardHTML(x){
+  if(!x||x.error)return '<div class="card"><div class="subline"><b>'+((x&&x.symbol)||'?')+'</b> — '+((x&&x.error)||'no idea')+'</div></div>';
+  return '<div class="card"><div style="display:flex;align-items:center;gap:9px;margin-bottom:6px"><span class="chip '+cls(x.recommendation)+'">'+(x.recommendation||'')+'</span> <b>'+x.label+'</b></div><div class="summary">'+statCardHTML('Premium',usd(x.premium))+statCardHTML('Break-even',usd(x.breakeven))+statCardHTML('Spot',usd(x.spot))+statCardHTML('IV',x.iv+'%')+statCardHTML('Max risk / contract',usd(x.max_risk_per_contract),'red')+'</div><div class="subline" style="margin-top:6px">Buy 1 contract of <b>'+x.label+'</b> to express the '+(x.recommendation||'BUY')+' — ≈ '+usd(x.max_risk_per_contract)+' risk, break-even '+usd(x.breakeven)+'. <a href="/ticker/'+x.symbol+'">full detail →</a></div></div>';
+}
+async function loadOptionChain(sym){sym=(sym||'').trim().toUpperCase();if(!sym)return;var box=document.getElementById('optlookup');box.innerHTML='<div class="skel skel-card"></div>';try{const d=await (await fetch('/api/options/'+encodeURIComponent(sym))).json();box.innerHTML=optChainHTML(d);}catch(e){box.innerHTML='<div class="note muted">Could not load '+sym+' chain (needs internet).</div>';}}
+async function loadOptionsView(){
+  var go=document.getElementById('optgo');
+  if(go&&!go._wired){go._wired=true;go.addEventListener('click',function(){loadOptionChain(document.getElementById('optsym').value);});document.getElementById('optsym').addEventListener('keydown',function(e){if(e.key==='Enter')loadOptionChain(document.getElementById('optsym').value);});}
+  var box=document.getElementById('optideas');box.innerHTML='<div class="skel skel-card"></div><div class="skel skel-card"></div>';
+  try{const d=await (await fetch('/api/options/ideas')).json();const ideas=d.ideas||[];box.innerHTML=ideas.length?ideas.map(ideaCardHTML).join(''):'<div class="card"><div class="subline">No BUY signals right now — options ideas appear here when the scanner finds buys.</div></div>';}
+  catch(e){box.innerHTML='<div class="note muted">Could not load options ideas (needs internet).</div>';}
+}
 
 // ===== Performance =====
 async function loadPerformance(){try{const d=await (await fetch('/api/performance')).json();const r=d.report||{};const pf=(r.profit_factor==null)?'—':(r.profit_factor>99?'∞':r.profit_factor.toFixed(2));
@@ -1508,7 +1565,7 @@ function cpPush(who,text){CP_MSGS.push({who,text});const box=document.getElement
 async function cpSend(){const inp=document.getElementById('cpInput');const q=(inp.value||'').trim();if(!q)return;inp.value='';inp.style.height='auto';cpPush('me',q);cpPush('ai','…');try{const d=await (await fetch('/api/ai/ask',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({question:q})})).json();CP_MSGS.pop();cpPush('ai',d.answer||'No response.');}catch(e){CP_MSGS.pop();cpPush('ai','Network error — try again.');}}
 
 // ===== view hook + wiring =====
-window.onOsView=function(v){if(LOG_AUTO){clearInterval(LOG_AUTO);LOG_AUTO=null;}if(v==='performance')loadPerformance();else if(v==='dashboard')loadMiniEquity();else if(v==='logs'){loadLogs();LOG_AUTO=setInterval(loadLogs,5000);}};
+window.onOsView=function(v){if(LOG_AUTO){clearInterval(LOG_AUTO);LOG_AUTO=null;}if(v==='performance')loadPerformance();else if(v==='dashboard')loadMiniEquity();else if(v==='options')loadOptionsView();else if(v==='logs'){loadLogs();LOG_AUTO=setInterval(loadLogs,5000);}};
 function setTimeframe(iv){fetch('/api/config',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({interval:iv})}).then(function(){document.querySelectorAll('#tfsel .btn').forEach(function(b){b.classList.toggle('active',b.dataset.iv===iv);});tickSignals();}).catch(function(){});}
 document.querySelectorAll('#tfsel .btn').forEach(function(b){b.addEventListener('click',function(){setTimeframe(b.dataset.iv);});});
 // SSE: refresh the instant a scan lands (falls back to polling if unsupported)
@@ -1738,8 +1795,9 @@ _DETAIL_PAGE = """<!doctype html><html lang="en"><head>
     <div class="tvnote">Technical-rating gauge © TradingView · independent of the HP Analytics strategy.</div>
   </section>
   <section class="section">
-    <div class="sectionhead"><div class="eyebrow">Options flow</div><div class="title">__TICKER__ · nearest-expiry options</div>
-      <div class="desc">Call vs put volume and the most active strikes (Yahoo data). The put/call ratio is a quick read on directional positioning.</div></div>
+    <div class="sectionhead"><div class="eyebrow">Options ticket</div><div class="title">__TICKER__ · express this signal with options</div>
+      <div class="desc">A concrete at-the-money contract that expresses the strategy's signal (call for a buy, put for a bearish read), then the full nearest-expiry flow. <b>Decision support — no orders are placed.</b></div></div>
+    <div id="optidea"></div>
     <div id="optbox"><div class="skel skel-card"></div></div>
   </section>
   <section class="section">
@@ -1778,7 +1836,8 @@ async function loadOptions(){const box=document.getElementById('optbox');try{con
   box.innerHTML='<div class="card"><div class="summary">'+statCard('Expiry',d.expiry)+statCard('Call volume',(d.call_volume||0).toLocaleString(),'green')+statCard('Put volume',(d.put_volume||0).toLocaleString(),'red')+statCard('Put / Call',pcr,bcls)+'</div><div style="margin:8px 0"><span class="badge '+bcls+'">'+(d.bias||'')+'</span></div><div class="subhead">Most active calls</div><div class="tablewrap">'+tbl(d.calls)+'</div><div class="subhead">Most active puts</div><div class="tablewrap">'+tbl(d.puts)+'</div></div>';
 }catch(e){box.innerHTML='<div class="note muted">Options data unavailable (needs internet).</div>';}}
 async function loadPredict(){const box=document.getElementById('predbox');if(!box)return;try{const d=await (await fetch('/api/predict/'+TICKER)).json();if(d.error){box.innerHTML='<div class="note muted">Prediction: '+d.error+'</div>';return;}const up=d.prob_up>=0.5;box.innerHTML='<div class="card"><div class="summary">'+statCard('P(next bar up)',(d.prob_up*100).toFixed(1)+'%',up?'green':'red')+statCard('Direction',(d.direction||'').toUpperCase(),up?'green':'red')+statCard('Confidence',d.confidence+'%')+statCard('Holdout accuracy',(d.holdout_accuracy*100).toFixed(0)+'%','blue')+'</div><div class="note warn" style="margin-top:8px">⚠️ Experimental — logistic regression on '+d.n_train+' bars; base rate up '+(d.base_rate_up*100).toFixed(0)+'%. A score near 50% / accuracy near the base rate is expected. Not part of the strategy; not advice.</div></div>';}catch(e){box.innerHTML='<div class="note muted">Prediction unavailable.</div>';}}
+async function loadOptionIdea(side,spot){const box=document.getElementById('optidea');if(!box)return;try{const x=await (await fetch('/api/options/idea/'+TICKER+'?side='+side+'&spot='+(spot||''))).json();if(!x||x.error){box.innerHTML='<div class="note muted" style="margin-bottom:10px">Options idea: '+((x&&x.error)||'unavailable')+'</div>';return;}box.innerHTML='<div class="card" style="margin-bottom:12px"><div style="display:flex;align-items:center;gap:9px;margin-bottom:6px"><span class="badge '+(side==='bear'?'red':'green')+'">'+(side==='bear'?'PUT':'CALL')+'</span> <b>'+x.label+'</b></div><div class="summary">'+statCard('Premium',usd(x.premium))+statCard('Break-even',usd(x.breakeven))+statCard('Spot',usd(x.spot))+statCard('IV',x.iv+'%')+statCard('Max risk / contract',usd(x.max_risk_per_contract),'red')+'</div><div class="subline" style="margin-top:6px">Buy 1 contract of <b>'+x.label+'</b> ≈ '+usd(x.max_risk_per_contract)+' risk, break-even '+usd(x.breakeven)+'. Expresses the signal directionally; not advice, no order placed.</div></div>';}catch(e){box.innerHTML='';}}
 function drawCharts(d){if(typeof Chart==='undefined'){document.getElementById('foot').textContent='(charts need internet to load chart library)';return;}const ax={grid:{color:'rgba(255,255,255,.06)'},border:{color:'rgba(255,255,255,.08)'},ticks:{color:'#737d8e',maxTicksLimit:8}};if(priceChart)priceChart.destroy();priceChart=new Chart(document.getElementById('priceChart'),{type:'line',data:{labels:d.chart.labels,datasets:[{label:'Price',data:d.chart.price,borderColor:'#6c8cff',borderWidth:1.8,pointRadius:0,tension:.12},{label:'Buy',data:d.chart.buys,borderColor:'#4cc38a',backgroundColor:'#4cc38a',showLine:false,pointRadius:6,pointStyle:'triangle'},{label:'Sell',data:d.chart.sells,borderColor:'#e5635f',backgroundColor:'#e5635f',showLine:false,pointRadius:6,pointStyle:'triangle',rotation:180}]},options:{responsive:true,maintainAspectRatio:false,plugins:{legend:{labels:{color:'#aeb6c4',usePointStyle:true,boxWidth:7}}},scales:{x:ax,y:ax}}});if(equityChart)equityChart.destroy();equityChart=new Chart(document.getElementById('equityChart'),{type:'line',data:{labels:d.equity.labels,datasets:[{label:'Equity ($)',data:d.equity.values,borderColor:'#4cc38a',borderWidth:1.8,pointRadius:0,fill:true,backgroundColor:'rgba(76,195,138,.10)',tension:.12}]},options:{responsive:true,maintainAspectRatio:false,plugins:{legend:{labels:{color:'#aeb6c4',usePointStyle:true,boxWidth:7}}},scales:{x:ax,y:ax}}});}
-async function load(){document.getElementById('head').textContent='loading…';const d=await (await fetch(`/api/ticker/${TICKER}?eq=${EQ}`)).json();if(d.error){document.getElementById('head').innerHTML=`<span class="red">${d.error}</span>`;return;}document.getElementById('head').innerHTML=`<span class="chip ${cls(d.recommendation)}">${d.recommendation}</span> · ${d.sector} · ${usd(d.price)} · conv ${d.conviction.toFixed(0)}/100`;SIZEMODE=d.atr_adaptive?'atr':'fixed';const s=getSettings();const _x={ticker:d.ticker,recommendation:d.recommendation,price:d.price,atr:d.atr,atr_stop:d.atr_stop,atr_target:d.atr_target,eq1:{edge_win_rate:(d.stats?d.stats.win_rate:0.5)}};const e=econ(_x,s);document.getElementById('planbox').innerHTML=`<div class="card">${orderTicket(d,e,s,'bar')}</div>`;const st=d.stats;document.getElementById('stats').innerHTML=statCard('Win rate',(st.win_rate*100).toFixed(0)+'%','blue')+statCard('Total return',(st.return_pct>=0?'+':'')+st.return_pct.toFixed(0)+'%',st.return_pct>=0?'green':'red')+statCard('Trades',st.trades)+statCard('Avg win',money(st.avg_win),'green')+statCard('Avg loss',money(st.avg_loss),'red')+statCard('Max drawdown',st.max_dd_pct.toFixed(1)+'%','red')+statCard('Sharpe',st.sharpe.toFixed(2))+statCard('Profit factor',st.profit_factor.toFixed(2));document.getElementById('hist').innerHTML=(d.history||[]).map(h=>`<tr><td>${h.date}</td><td><span class="chip ${h.action}">${h.action}</span></td><td class="num">${usd(h.price)}</td></tr>`).join('')||'<tr><td colspan="3" class="muted">no signals in range</td></tr>';document.getElementById('foot').textContent=`as of ${d.asof} · equation set ${d.equation_set} · ${st.trades} historical trades`;drawCharts(d);}
+async function load(){document.getElementById('head').textContent='loading…';const d=await (await fetch(`/api/ticker/${TICKER}?eq=${EQ}`)).json();if(d.error){document.getElementById('head').innerHTML=`<span class="red">${d.error}</span>`;return;}document.getElementById('head').innerHTML=`<span class="chip ${cls(d.recommendation)}">${d.recommendation}</span> · ${d.sector} · ${usd(d.price)} · conv ${d.conviction.toFixed(0)}/100`;SIZEMODE=d.atr_adaptive?'atr':'fixed';const s=getSettings();const _x={ticker:d.ticker,recommendation:d.recommendation,price:d.price,atr:d.atr,atr_stop:d.atr_stop,atr_target:d.atr_target,eq1:{edge_win_rate:(d.stats?d.stats.win_rate:0.5)}};const e=econ(_x,s);document.getElementById('planbox').innerHTML=`<div class="card">${orderTicket(d,e,s,'bar')}</div>`;const st=d.stats;document.getElementById('stats').innerHTML=statCard('Win rate',(st.win_rate*100).toFixed(0)+'%','blue')+statCard('Total return',(st.return_pct>=0?'+':'')+st.return_pct.toFixed(0)+'%',st.return_pct>=0?'green':'red')+statCard('Trades',st.trades)+statCard('Avg win',money(st.avg_win),'green')+statCard('Avg loss',money(st.avg_loss),'red')+statCard('Max drawdown',st.max_dd_pct.toFixed(1)+'%','red')+statCard('Sharpe',st.sharpe.toFixed(2))+statCard('Profit factor',st.profit_factor.toFixed(2));document.getElementById('hist').innerHTML=(d.history||[]).map(h=>`<tr><td>${h.date}</td><td><span class="chip ${h.action}">${h.action}</span></td><td class="num">${usd(h.price)}</td></tr>`).join('')||'<tr><td colspan="3" class="muted">no signals in range</td></tr>';document.getElementById('foot').textContent=`as of ${d.asof} · equation set ${d.equation_set} · ${st.trades} historical trades`;const _side=(d.recommendation||'').includes('SELL')?'bear':'bull';loadOptionIdea(_side,d.price);drawCharts(d);}
 fetch('/api/account').then(r=>r.json()).then(a=>{if(a&&a.account)CAPITAL=a.account.equity;}).catch(()=>{}).finally(()=>{load();loadOptions();loadPredict();setInterval(load,__REFRESH__*1000);});
 </script></body></html>"""

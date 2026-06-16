@@ -91,10 +91,17 @@ decision:
   pick one. `TICKERS` still overrides everything.
 - **[Phase 1] Add a curated crypto pack** (`BTC-USD`, `ETH-USD`, …) — works
   through the existing yfinance path (24/7 symbols).
-- **"Options"**: the MCP exposes `stock_options_chain` and
-  `stock_options_unusual_activity`. **[Phase 3]** surface an options-flow panel
-  on the detail page via the co-pilot (agent-side), since the app can't call the
-  MCP directly. Not a core equity-signal feature, kept opt-in.
+- **"Options" (centralised, [Phase 3])**: the original Pine script is a
+  **price** buy/sell indicator — it has no options logic. Rather than invent an
+  options strategy, the app now **translates the equity signal into options**:
+  a dedicated **Options view** lists today's BUY signals as at-the-money call
+  ideas (premium, break-even, max risk) and lets you look up any chain; each
+  ticker's detail page shows an **options ticket** (the contract that expresses
+  its signal) plus the full nearest-expiry flow. All of this is built on the
+  app's own yfinance option-chain data (`options.py`) — **decision support, not
+  order execution.** Actually placing options orders (e.g. via Alpaca's options
+  API, paper-first) is a deliberate, higher-risk follow-up, intentionally not
+  auto-wired.
 
 > Performance note: the scan pulls ~3y of daily bars per ticker (cached) across
 > `SCAN_WORKERS` threads. A very large universe (300+) can hit yfinance rate
@@ -149,7 +156,7 @@ clearly-labeled **[Phase 4]** experiment — documented, not silently bolted on.
 |---|---|---|
 | **1** | Universe expansion + watchlists (drift-free); `(ticker,interval)` cache + interval-aware TTL; real bar-time freshness + data-age badge; TradingView Technical-Analysis gauge (detail + markets) + screener widget | **Implemented with this guide** |
 | **2** | Timeframe selector (1m/1h/1d, live); SSE push (instant refresh on scan); Mission-Control equity sparkline; sector donut; drawdown/underwater + win/loss charts | **Implemented** |
-| **3** | Options-flow panel on the detail page (yfinance chain: call/put volume, put/call ratio, most-active strikes); optional server-side `tradingview-screener` live movers (`/api/movers`, graceful fallback) | **Implemented** |
+| **3** | **Centralised Options**: a dedicated Options view (ideas from BUY signals as ATM calls + any-ticker chain lookup), a per-ticker options ticket + flow panel on the detail page (`/api/options/<sym>`, `/api/options/idea/<sym>`, `/api/options/ideas`); optional server-side `tradingview-screener` live movers (`/api/movers`, graceful fallback) | **Implemented** |
 | **4** | Experimental next-bar ML predictor (pure-NumPy logistic regression) on the detail page — separate, opt-in (`PREDICT_ENABLED`), clearly labelled, with an honest holdout accuracy; never feeds the strategy | **Implemented** |
 
 ---

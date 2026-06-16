@@ -286,8 +286,9 @@ market-tuned policy (`AUTOTRADE_SIGNAL`, `AUTOTRADE_MIN_CONVICTION`,
 `python main.py web` serves a browser dashboard at `http://127.0.0.1:5000`
 (use `WEB_PORT=5001` on macOS, where AirPlay grabs 5000). It is **advisory**: it
 tells you exactly what to do and you place the trade in your own broker. It
-re-scans a diverse default universe (~33 names across 9 sectors) every
-`WEB_REFRESH_SECONDS`, in parallel (`SCAN_WORKERS`), and shows:
+re-scans a diverse default universe (~150 names across 13 sectors + ETFs, or a
+named `WATCHLIST`) every `WEB_REFRESH_SECONDS` — pushed live over Server-Sent
+Events the instant a scan lands — in parallel (`SCAN_WORKERS`), and shows:
 
 - a **settings panel** — type in your real capital, max % per position, stop %
   and take-profit %; every share count, dollar amount, stop, target and plan
@@ -298,7 +299,13 @@ re-scans a diverse default universe (~33 names across 9 sectors) every
 - a **diversification** breakdown of your buy signals by sector;
 - a **portfolio summary** (capital to deploy, total risk, profit-at-targets, EV);
 - a full ranked table where every ticker links to a **detail page** with
-  interactive price/equity charts, full edge stats, and signal history.
+  interactive price/equity charts, a TradingView technical-rating gauge, full
+  edge stats, and signal history;
+- an **Options** view that translates your BUY signals into concrete
+  at-the-money **call ideas** (premium, break-even, max risk) and lets you look
+  up any ticker's option chain — plus a per-ticker **options ticket** on each
+  detail page. The original indicator is price-only; this expresses its signals
+  with options as **decision support (no orders are placed)**.
 
 Each signal shows a **conviction** score (0–100, from the buy/sell vote margin),
 whether **both equations agree** (a STRONG BUY), and the historical **edge** of
