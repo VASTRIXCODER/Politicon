@@ -417,8 +417,9 @@ def create_app(config=CONFIG):
             yield f"event: tick\ndata: {last}\n\n"
             if once:
                 return
-            while True:
-                v = service.wait_for_update(last, 20)
+            deadline = time.time() + 120   # recycle the connection ~every 2 min
+            while time.time() < deadline:
+                v = service.wait_for_update(last, 15)
                 if v != last:
                     last = v
                     yield f"event: tick\ndata: {v}\n\n"
@@ -629,7 +630,41 @@ def create_app(config=CONFIG):
     return app
 
 
+def _tune_runtime() -> None:
+    """Best-effort: raise the open-file limit and quiet noisy third-party logs.
+
+    macOS ships a 256 soft file-descriptor limit; a multi-ticker scan + SSE
+    streams on the threaded dev server can exhaust it, which surfaces as
+    ``OSError: [Errno 24] Too many open files`` and, downstream,
+    ``sqlite3.OperationalError: unable to open database file``. Raise the soft
+    limit toward the hard cap (stepping down if the kernel rejects the value).
+    """
+    try:
+        import resource
+        soft, hard = resource.getrlimit(resource.RLIMIT_NOFILE)
+        for want in (8192, 4096, 2048, 1024):
+            cap = want if hard == resource.RLIM_INFINITY else min(want, hard)
+            if cap <= soft:
+                break
+            try:
+                resource.setrlimit(resource.RLIMIT_NOFILE, (cap, hard))
+                log.info("raised open-file limit %s -> %s", soft, cap)
+                break
+            except (ValueError, OSError):
+                continue
+    except Exception:
+        pass  # non-POSIX (e.g. Windows) or restricted: carry on
+    # yfinance logs every throttled/missing ticker at ERROR; the scan already
+    # records those as error rows, so keep the operator's console readable.
+    for name in ("yfinance", "yfinance.data", "yfinance.ticker", "yfinance.utils", "peewee"):
+        try:
+            logging.getLogger(name).setLevel(logging.CRITICAL)
+        except Exception:
+            pass
+
+
 def run(config=CONFIG) -> None:
+    _tune_runtime()
     app = create_app(config)
     # Make the auth state obvious at startup. A half-configured gate (enabled but
     # missing a Supabase value) silently leaves the dashboard OPEN -- shout about it.

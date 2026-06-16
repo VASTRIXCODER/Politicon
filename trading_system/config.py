@@ -191,7 +191,7 @@ class Config:
     # --- universe & cadence ------------------------------------------------ #
     tickers: List[str] = field(default_factory=resolve_universe)
     # Parallel workers for the multi-ticker scan (keeps a big universe fast).
-    scan_workers: int = field(default_factory=lambda: _int("SCAN_WORKERS", 12))
+    scan_workers: int = field(default_factory=lambda: _int("SCAN_WORKERS", 6))
     interval: str = field(default_factory=lambda: _str("INTERVAL", "1d"))
     data_source: str = field(default_factory=lambda: _str("DATA_SOURCE", "yfinance"))
 

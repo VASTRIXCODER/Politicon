@@ -18,6 +18,7 @@ from __future__ import annotations
 
 import math
 import sqlite3
+import time
 from contextlib import contextmanager
 from datetime import datetime, timezone
 from typing import Dict, List, Optional
@@ -72,7 +73,18 @@ class Database:
     # ------------------------------------------------------------------ #
     @contextmanager
     def _conn(self):
-        conn = sqlite3.connect(self.path)
+        # Retry briefly: under transient file-descriptor pressure or a locked
+        # db, sqlite raises OperationalError ("unable to open database file" /
+        # "database is locked"). A couple of short retries avoids 500s.
+        conn = None
+        for attempt in range(3):
+            try:
+                conn = sqlite3.connect(self.path, timeout=5)
+                break
+            except sqlite3.OperationalError:
+                if attempt == 2:
+                    raise
+                time.sleep(0.25)
         conn.row_factory = sqlite3.Row
         try:
             yield conn
