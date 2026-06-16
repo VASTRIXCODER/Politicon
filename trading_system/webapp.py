@@ -22,6 +22,7 @@ Run::  python main.py web   →   http://127.0.0.1:5000  (use WEB_PORT=5051 on m
 
 from __future__ import annotations
 
+import json
 import logging
 import threading
 import time
@@ -476,12 +477,21 @@ def create_app(config=CONFIG):
         return jsonify(res)
 
     # ----- optional Supabase auth gate (single-tenant; off unless configured) ---
+    def _is_local() -> bool:
+        """True when the request originates from the loopback interface."""
+        return (request.remote_addr or "") in ("127.0.0.1", "::1", "localhost")
+
     @app.before_request
     def _auth_gate():
         if not config.auth_active:
             return None
         p = request.path
         if p == "/login" or p.startswith("/api/auth/") or p.startswith("/static/"):
+            return None
+        # Dev-mode escape hatch: a local operator can opt out of the login gate.
+        # Honored only for loopback requests, so a publicly-served instance stays
+        # protected even if the cookie is somehow set.
+        if request.cookies.get("dev_bypass") == "1" and _is_local():
             return None
         from auth import verify_supabase_jwt, email_allowed
         claims = verify_supabase_jwt(request.cookies.get("sb_token", ""), config.supabase_jwt_secret)
@@ -495,9 +505,26 @@ def create_app(config=CONFIG):
     def login_page():
         if not config.auth_active:
             return redirect("/")
-        return Response(fill(_LOGIN_PAGE, {"__SBURL__": config.supabase_url,
-                                           "__SBKEY__": config.supabase_anon_key}),
+        # JSON-encode so a stray quote / trailing space in SUPABASE_URL can't break
+        # the page's JS (a classic "Failed to fetch" cause). Also trim a trailing slash.
+        sb_url = json.dumps((config.supabase_url or "").strip().rstrip("/"))
+        sb_key = json.dumps((config.supabase_anon_key or "").strip())
+        return Response(fill(_LOGIN_PAGE, {"__SBURL__": sb_url, "__SBKEY__": sb_key,
+                                           "__DEVLOCAL__": "true" if _is_local() else "false"}),
                         mimetype="text/html")
+
+    @app.route("/api/auth/dev", methods=["POST"])
+    def auth_dev():
+        """Set a local-only bypass cookie so the operator can skip sign-in."""
+        if not config.auth_active:
+            return jsonify({"ok": True})  # nothing to bypass
+        if not _is_local():
+            return jsonify({"ok": False,
+                            "error": "Dev mode is only available on localhost."}), 403
+        resp = jsonify({"ok": True})
+        resp.set_cookie("dev_bypass", "1", max_age=86400, httponly=True, samesite="Lax",
+                        secure=bool(config.auth_cookie_secure or request.is_secure))
+        return resp
 
     @app.route("/api/auth/session", methods=["POST"])
     def auth_session():
@@ -523,6 +550,7 @@ def create_app(config=CONFIG):
     def auth_logout():
         resp = jsonify({"ok": True})
         resp.delete_cookie("sb_token")
+        resp.delete_cookie("dev_bypass")
         return resp
 
     app.scanner_service = service
@@ -1355,64 +1383,167 @@ initInputs(); tickSignals(); tickAccount(); setInterval(tickSignals,REFRESH); se
 _LOGIN_PAGE = """<!doctype html><html lang="en"><head>
 <meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
 <title>HP Analytics — Sign in</title><style>""" + _CSS + """
-  .authwrap{min-height:100vh;display:grid;place-items:center;padding:24px}
-  .authcard{width:min(404px,94vw);background:var(--surface);border:1px solid var(--hairline);border-radius:20px;padding:30px 28px;box-shadow:var(--sh-3);animation:fadeUp .5s both}
-  .authbrand{display:flex;align-items:center;gap:11px;font-weight:700;font-size:18px;margin-bottom:6px}
-  .authbrand .logo{width:34px;height:34px;border-radius:10px;display:grid;place-items:center;background:var(--brand-grad);font-size:18px}
+  *{box-sizing:border-box}
+  html,body{height:100%}
+  body{margin:0;min-height:100vh;overflow:hidden;position:relative}
+  /* animated aurora backdrop */
+  .auth-bg{position:fixed;inset:0;z-index:0;background:
+    radial-gradient(1100px 620px at 12% -8%,var(--accent-soft),transparent 58%),
+    radial-gradient(900px 520px at 112% 116%,rgba(76,195,138,.14),transparent 55%),var(--bg)}
+  .auth-bg span{position:absolute;border-radius:50%;filter:blur(80px);opacity:.55;will-change:transform}
+  .auth-bg .b1{width:480px;height:480px;left:-130px;top:-140px;background:var(--brand-grad);animation:drift 18s ease-in-out infinite}
+  .auth-bg .b2{width:400px;height:400px;right:-120px;bottom:-150px;background:linear-gradient(135deg,#4cc38a,#3aa0ff);animation:drift 22s ease-in-out infinite reverse}
+  .auth-bg .b3{width:300px;height:300px;left:48%;top:62%;background:linear-gradient(135deg,#a855f7,#6366f1);opacity:.28;animation:drift 26s ease-in-out infinite}
+  @keyframes drift{0%,100%{transform:translate(0,0) scale(1)}33%{transform:translate(40px,30px) scale(1.07)}66%{transform:translate(-30px,20px) scale(.96)}}
+  @media (prefers-reduced-motion:reduce){.auth-bg span{animation:none}}
+
+  .authwrap{position:relative;z-index:2;min-height:100vh;display:grid;place-items:center;padding:24px}
+  .authcard{width:min(424px,94vw);background:var(--surface);border:1px solid var(--hairline);border-radius:24px;padding:36px 32px 30px;box-shadow:0 40px 90px -28px rgba(0,0,0,.65);animation:fadeUp .6s cubic-bezier(.2,.7,.2,1) both;position:relative;overflow:hidden}
+  @supports ((backdrop-filter:blur(1px)) or (-webkit-backdrop-filter:blur(1px))){
+    .authcard{background:color-mix(in srgb,var(--surface) 78%,transparent);backdrop-filter:blur(20px) saturate(1.5);-webkit-backdrop-filter:blur(20px) saturate(1.5)}}
+  .authcard::before{content:"";position:absolute;inset:0 0 auto 0;height:1px;background:linear-gradient(90deg,transparent,rgba(255,255,255,.35),transparent)}
+
+  .authbrand{display:flex;align-items:center;gap:12px;font-weight:800;font-size:19px;letter-spacing:-.01em}
+  .authbrand .logo{width:40px;height:40px;border-radius:12px;display:grid;place-items:center;background:var(--brand-grad);font-size:21px;box-shadow:0 8px 22px -8px var(--accent)}
   .authbrand .g{background:var(--brand-grad);-webkit-background-clip:text;background-clip:text;color:transparent}
-  .authsub{color:var(--muted);font-size:13px;margin-bottom:22px}
-  .authfield{display:flex;flex-direction:column;gap:7px;margin-bottom:14px}
-  .authfield label{font-size:11px;text-transform:uppercase;letter-spacing:.06em;color:var(--muted);font-weight:600}
-  .authfield input{background:var(--bg);border:1px solid var(--hairline-2);color:var(--fg);border-radius:10px;padding:12px 13px;font-size:15px;transition:.16s}
-  .authfield input:focus{outline:none;border-color:var(--accent);box-shadow:0 0 0 3px var(--accent-soft)}
-  .authbtn{width:100%;padding:13px;border-radius:11px;border:0;background:var(--accent);color:#0a0f1f;font-weight:700;font-size:14px;cursor:pointer;transition:.16s}
-  .authbtn:hover{background:var(--accent-2)} .authbtn:disabled{opacity:.5;cursor:wait}
-  .authlink{background:none;border:0;color:var(--accent-2);cursor:pointer;font-size:13px;font-weight:600}
-  .authmsg{font-size:13px;margin-top:14px;padding:10px 12px;border-radius:9px;display:none;line-height:1.5}
+  .authtitle{font-size:24px;font-weight:800;letter-spacing:-.02em;margin:22px 0 6px}
+  .authsub{color:var(--muted);font-size:13.5px;margin-bottom:24px}
+
+  .authfield{margin-bottom:15px}
+  .authfield label{display:block;font-size:11px;text-transform:uppercase;letter-spacing:.07em;color:var(--muted);font-weight:700;margin-bottom:7px}
+  .inp{display:flex;align-items:center;gap:10px;background:var(--bg);border:1px solid var(--hairline-2);border-radius:12px;padding:0 12px;transition:.18s}
+  .inp:focus-within{border-color:var(--accent);box-shadow:0 0 0 3px var(--accent-soft)}
+  .inp svg{flex:0 0 auto;width:17px;height:17px;color:var(--muted);opacity:.85}
+  .inp input{flex:1;min-width:0;background:none;border:0;color:var(--fg);font-size:15px;padding:12px 0;outline:none}
+  .inp input::placeholder{color:var(--muted);opacity:.6}
+  .eye{background:none;border:0;color:var(--muted);cursor:pointer;font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.05em;padding:4px 2px;opacity:.75}
+  .eye:hover{opacity:1;color:var(--accent-2)}
+
+  .authbtn{position:relative;width:100%;margin-top:6px;padding:14px;border-radius:13px;border:0;background:var(--brand-grad);color:#06122b;font-weight:800;font-size:14.5px;cursor:pointer;transition:transform .15s,box-shadow .15s;box-shadow:0 12px 28px -12px var(--accent);display:flex;align-items:center;justify-content:center;gap:9px}
+  .authbtn:hover{transform:translateY(-1px);box-shadow:0 16px 34px -12px var(--accent)}
+  .authbtn:active{transform:translateY(0)}
+  .authbtn:disabled{opacity:.7;cursor:wait;transform:none}
+  .authbtn .spin{display:none;width:16px;height:16px;border:2px solid rgba(6,18,43,.35);border-top-color:#06122b;border-radius:50%;animation:spin .7s linear infinite}
+  .authbtn.loading .spin{display:inline-block}
+  @keyframes spin{to{transform:rotate(360deg)}}
+
+  .authmsg{font-size:13px;margin-top:15px;padding:11px 13px;border-radius:11px;display:none;line-height:1.5}
   .authmsg.err{display:block;background:var(--loss-soft);color:var(--loss);border:1px solid rgba(229,99,95,.4)}
   .authmsg.ok{display:block;background:var(--profit-soft);color:var(--profit);border:1px solid rgba(76,195,138,.4)}
-  .authfoot{text-align:center;margin-top:18px;color:var(--muted);font-size:12.5px}
+
+  .authfoot{text-align:center;margin-top:20px;color:var(--muted);font-size:13px}
+  .authlink{background:none;border:0;color:var(--accent-2);cursor:pointer;font-size:13px;font-weight:700;padding:0}
+  .authlink:hover{text-decoration:underline}
+
+  .authdiv{display:flex;align-items:center;gap:12px;margin:22px 0 16px;color:var(--muted);font-size:11px;text-transform:uppercase;letter-spacing:.08em}
+  .authdiv::before,.authdiv::after{content:"";height:1px;flex:1;background:var(--hairline)}
+  .devbtn{width:100%;padding:11px;border-radius:11px;border:1px dashed var(--hairline-2);background:transparent;color:var(--muted);font-weight:600;font-size:13px;cursor:pointer;transition:.18s;display:flex;align-items:center;justify-content:center;gap:8px}
+  .devbtn:hover:not(:disabled){border-color:var(--accent-2);color:var(--accent-2);background:var(--accent-soft)}
+  .devbtn:disabled{opacity:.45;cursor:not-allowed}
+  .devnote{text-align:center;color:var(--muted);font-size:11.5px;margin-top:9px;opacity:.8}
+  .authcredit{position:relative;z-index:2;text-align:center;color:var(--muted);font-size:11.5px;margin-top:18px;opacity:.7}
 </style></head><body>
-<div class="authwrap"><div class="authcard">
-  <div class="authbrand"><span class="logo">🦙</span> HP Analytics <span class="g">OS</span></div>
-  <div class="authsub" id="authsub">Sign in to your control center.</div>
-  <div class="authfield"><label>Email</label><input id="email" type="email" autocomplete="email" placeholder="you@example.com"></div>
-  <div class="authfield"><label>Password</label><input id="password" type="password" autocomplete="current-password" placeholder="••••••••"></div>
-  <button class="authbtn" id="primaryBtn">Sign in</button>
-  <div class="authmsg" id="msg"></div>
-  <div class="authfoot"><span id="toggleText">New here?</span> <button class="authlink" id="toggleBtn">Create an account</button></div>
+<div class="auth-bg"><span class="b1"></span><span class="b2"></span><span class="b3"></span></div>
+<div class="authwrap"><div>
+  <div class="authcard">
+    <div class="authbrand"><span class="logo">🦙</span><span>HP Analytics <span class="g">OS</span></span></div>
+    <div class="authtitle" id="authtitle">Welcome back</div>
+    <div class="authsub" id="authsub">Sign in to your control center.</div>
+    <div class="authfield"><label for="email">Email</label>
+      <div class="inp">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="5" width="18" height="14" rx="2"/><path d="m3 7 9 6 9-6"/></svg>
+        <input id="email" type="email" autocomplete="email" placeholder="you@example.com">
+      </div>
+    </div>
+    <div class="authfield"><label for="password">Password</label>
+      <div class="inp">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="4" y="11" width="16" height="9" rx="2"/><path d="M8 11V8a4 4 0 0 1 8 0v3"/></svg>
+        <input id="password" type="password" autocomplete="current-password" placeholder="••••••••">
+        <button class="eye" id="eye" type="button" aria-label="Show password">show</button>
+      </div>
+    </div>
+    <button class="authbtn" id="primaryBtn"><span class="lbl">Sign in</span><span class="spin" aria-hidden="true"></span></button>
+    <div class="authmsg" id="msg"></div>
+    <div class="authfoot"><span id="toggleText">New here?</span> <button class="authlink" id="toggleBtn">Create an account</button></div>
+    <div class="authdiv">or</div>
+    <button class="devbtn" id="devBtn" title="Skip sign-in for local access">⚡ Dev mode — skip sign-in</button>
+    <div class="devnote" id="devNote"></div>
+  </div>
+  <div class="authcredit">🔒 Secured by Supabase · single-tenant gate</div>
 </div></div>
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
 <script>
-const SB_URL="__SBURL__", SB_KEY="__SBKEY__";
-let client=null, mode='signin';
-try{ client = supabase.createClient(SB_URL, SB_KEY); }catch(e){}
+const SB_URL=__SBURL__, SB_KEY=__SBKEY__, DEV_LOCAL=__DEVLOCAL__;
+let client=null, mode='signin', busy=false;
+try{ client = window.supabase ? supabase.createClient(SB_URL, SB_KEY) : null; }catch(e){ client=null; }
 const $=id=>document.getElementById(id);
 function setMsg(t,ok){const m=$('msg');m.textContent=t;m.className='authmsg '+(ok?'ok':'err');}
-function setMode(m){mode=m;$('primaryBtn').textContent=m==='signin'?'Sign in':'Create account';$('authsub').textContent=m==='signin'?'Sign in to your control center.':'Create your account.';$('toggleText').textContent=m==='signin'?'New here?':'Already have an account?';$('toggleBtn').textContent=m==='signin'?'Create an account':'Sign in';$('password').setAttribute('autocomplete',m==='signin'?'current-password':'new-password');}
+function clearMsg(){const m=$('msg');m.textContent='';m.className='authmsg';}
+function loading(on){busy=on;const b=$('primaryBtn');b.disabled=on;b.classList.toggle('loading',on);}
+function friendly(err){
+  const m=((err&&err.message)||err||'').toString();
+  if(/failed to fetch|networkerror|load failed|fetch/i.test(m))
+    return "Couldn't reach Supabase. Check SUPABASE_URL in your .env (no quotes or trailing spaces), that the project is active, and that email auth is enabled.";
+  if(/invalid login credentials/i.test(m)) return "Wrong email or password.";
+  if(/user already registered|already been registered/i.test(m)) return "That email already has an account — try signing in instead.";
+  if(/password/i.test(m)&&/least|short|6/i.test(m)) return "Password is too short (Supabase requires at least 6 characters).";
+  return m||'Something went wrong. Please try again.';
+}
+function setMode(m){
+  mode=m;clearMsg();
+  $('authtitle').textContent=m==='signin'?'Welcome back':'Create your account';
+  $('primaryBtn').querySelector('.lbl').textContent=m==='signin'?'Sign in':'Create account';
+  $('authsub').textContent=m==='signin'?'Sign in to your control center.':'Set up access to your control center.';
+  $('toggleText').textContent=m==='signin'?'New here?':'Already have an account?';
+  $('toggleBtn').textContent=m==='signin'?'Create an account':'Sign in';
+  $('password').setAttribute('autocomplete',m==='signin'?'current-password':'new-password');
+}
 $('toggleBtn').onclick=()=>setMode(mode==='signin'?'signup':'signin');
-async function establish(token){const r=await fetch('/api/auth/session',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({access_token:token})});const d=await r.json();if(d.ok){location.href='/';}else{setMsg(d.error||'Could not start session.',false);}}
-$('primaryBtn').onclick=async()=>{
-  if(!client){setMsg('Auth is not configured on the server.',false);return;}
+$('eye').onclick=()=>{const p=$('password');const sh=p.type==='password';p.type=sh?'text':'password';$('eye').textContent=sh?'hide':'show';p.focus();};
+async function establish(token){
+  try{
+    const r=await fetch('/api/auth/session',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({access_token:token})});
+    const d=await r.json();
+    if(d.ok){location.href='/';}else{setMsg(d.error||'Could not start session.',false);}
+  }catch(e){setMsg('Could not reach the server to start your session.',false);}
+}
+async function submit(){
+  if(busy)return;
+  if(!client){setMsg('Auth is not configured on the server. Check SUPABASE_URL / SUPABASE_ANON_KEY in .env, then restart.',false);return;}
   const email=$('email').value.trim(), password=$('password').value;
   if(!email||!password){setMsg('Enter your email and password.',false);return;}
-  const btn=$('primaryBtn');btn.disabled=true;
+  loading(true);clearMsg();
   try{
     if(mode==='signup'){
       const {data,error}=await client.auth.signUp({email,password});
-      if(error){setMsg(error.message,false);}
+      if(error){setMsg(friendly(error),false);}
       else if(data.session){await establish(data.session.access_token);}
       else{setMsg('Account created — check your email to confirm, then sign in.',true);setMode('signin');}
     }else{
       const {data,error}=await client.auth.signInWithPassword({email,password});
-      if(error){setMsg(error.message,false);}
+      if(error){setMsg(friendly(error),false);}
       else if(data.session){await establish(data.session.access_token);}
       else{setMsg('Could not sign in.',false);}
     }
-  }catch(e){setMsg('Network error — please try again.',false);}
-  finally{btn.disabled=false;}
-};
-$('password').addEventListener('keydown',e=>{if(e.key==='Enter')$('primaryBtn').click();});
+  }catch(e){setMsg(friendly(e),false);}
+  finally{loading(false);}
+}
+$('primaryBtn').onclick=submit;
+$('email').addEventListener('keydown',e=>{if(e.key==='Enter')$('password').focus();});
+$('password').addEventListener('keydown',e=>{if(e.key==='Enter')submit();});
+(function(){
+  const b=$('devBtn'), note=$('devNote');
+  if(!DEV_LOCAL){b.disabled=true;note.textContent='Available only when viewing from the server machine (localhost).';return;}
+  note.textContent='Bypasses the login gate on this machine only.';
+  b.onclick=async()=>{
+    b.disabled=true;
+    try{
+      const r=await fetch('/api/auth/dev',{method:'POST'});
+      const d=await r.json();
+      if(d.ok){location.href='/';}else{setMsg(d.error||'Dev mode unavailable.',false);b.disabled=false;}
+    }catch(e){setMsg('Could not reach the server.',false);b.disabled=false;}
+  };
+})();
 </script></body></html>"""
 
 
