@@ -236,6 +236,24 @@ class Config:
         default_factory=lambda: _str("ANTHROPIC_MODEL", "claude-haiku-4-5")
     )
 
+    # --- auth (Supabase, single-tenant gate; OFF by default) --------------- #
+    auth_enabled: bool = field(default_factory=lambda: _bool("AUTH_ENABLED", False))
+    supabase_url: str = field(default_factory=lambda: _str("SUPABASE_URL", ""))
+    supabase_anon_key: str = field(default_factory=lambda: _str("SUPABASE_ANON_KEY", ""))
+    supabase_jwt_secret: str = field(default_factory=lambda: _str("SUPABASE_JWT_SECRET", ""))
+    # Optional comma-separated allow-list; if set, only these emails may enter.
+    auth_allowed_emails: List[str] = field(
+        default_factory=lambda: [e.strip().lower() for e in
+                                 _str("AUTH_ALLOWED_EMAILS", "").split(",") if e.strip()]
+    )
+    auth_cookie_secure: bool = field(default_factory=lambda: _bool("AUTH_COOKIE_SECURE", False))
+
+    @property
+    def auth_active(self) -> bool:
+        """Auth only gates the app when explicitly enabled AND configured."""
+        return bool(self.auth_enabled and self.supabase_url
+                    and self.supabase_anon_key and self.supabase_jwt_secret)
+
     # --- infra ------------------------------------------------------------- #
     db_path: str = field(default_factory=lambda: _str("DB_PATH", str(BASE_DIR / "trades.db")))
     dashboard_refresh_seconds: int = field(

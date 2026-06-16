@@ -222,7 +222,7 @@ class EngineController:
 # --------------------------------------------------------------------------- #
 def create_app(config=CONFIG):
     try:
-        from flask import Flask, Response, jsonify, request
+        from flask import Flask, Response, jsonify, redirect, request
     except ImportError as exc:  # pragma: no cover
         raise SystemExit("Flask is required for the web UI: pip install flask") from exc
 
@@ -474,6 +474,56 @@ def create_app(config=CONFIG):
         body = request.get_json(silent=True) or {}
         res = briefer.ask((body.get("question") or "").strip(), context=_ai_context())
         return jsonify(res)
+
+    # ----- optional Supabase auth gate (single-tenant; off unless configured) ---
+    @app.before_request
+    def _auth_gate():
+        if not config.auth_active:
+            return None
+        p = request.path
+        if p == "/login" or p.startswith("/api/auth/") or p.startswith("/static/"):
+            return None
+        from auth import verify_supabase_jwt, email_allowed
+        claims = verify_supabase_jwt(request.cookies.get("sb_token", ""), config.supabase_jwt_secret)
+        if claims and email_allowed(claims, config.auth_allowed_emails):
+            return None
+        if p.startswith("/api/"):
+            return jsonify({"error": "unauthorized"}), 401
+        return redirect("/login")
+
+    @app.route("/login")
+    def login_page():
+        if not config.auth_active:
+            return redirect("/")
+        return Response(fill(_LOGIN_PAGE, {"__SBURL__": config.supabase_url,
+                                           "__SBKEY__": config.supabase_anon_key}),
+                        mimetype="text/html")
+
+    @app.route("/api/auth/session", methods=["POST"])
+    def auth_session():
+        if not config.auth_active:
+            return jsonify({"ok": False, "error": "auth disabled"})
+        from auth import verify_supabase_jwt, email_allowed
+        token = ((request.get_json(silent=True) or {}).get("access_token") or "").strip()
+        claims = verify_supabase_jwt(token, config.supabase_jwt_secret)
+        if not claims:
+            return jsonify({"ok": False, "error": "invalid or expired token"}), 401
+        if not email_allowed(claims, config.auth_allowed_emails):
+            return jsonify({"ok": False, "error": "this account is not allowed"}), 403
+        resp = jsonify({"ok": True})
+        try:
+            max_age = max(60, int(float(claims.get("exp", time.time() + 3600))) - int(time.time()))
+        except Exception:
+            max_age = 3600
+        resp.set_cookie("sb_token", token, max_age=max_age, httponly=True, samesite="Lax",
+                        secure=bool(config.auth_cookie_secure or request.is_secure))
+        return resp
+
+    @app.route("/api/auth/logout", methods=["POST"])
+    def auth_logout():
+        resp = jsonify({"ok": True})
+        resp.delete_cookie("sb_token")
+        return resp
 
     app.scanner_service = service
     app.engine_controller = controller
@@ -881,6 +931,7 @@ _SHELL_JS = r"""
     a.push({g:'Sizing',t:'Fixed % sizing',ic:'%',run:function(){if(window.setSizeMode)setSizeMode('fixed');}});
     a.push({g:'Sizing',t:'ATR-adaptive sizing',ic:'≈',run:function(){if(window.setSizeMode)setSizeMode('atr');}});
     a.push({g:'AI',t:'Ask the AI co-pilot',ic:'✦',run:function(){if(window.openCopilot)openCopilot();}});
+    a.push({g:'Account',t:'Sign out',ic:'⎋',run:function(){fetch('/api/auth/logout',{method:'POST'}).then(function(){location.href='/login';});}});
     var sg=(window.LAST&&LAST.signals)||[];
     sg.slice(0,50).forEach(function(x){a.push({g:'Tickers',t:x.ticker+'  ·  '+(x.recommendation||''),ic:'▫',meta:x.sector||'',run:function(){location.href='/ticker/'+x.ticker;}});});
     return a;
@@ -1281,6 +1332,73 @@ initInputs(); tickSignals(); tickAccount(); setInterval(tickSignals,REFRESH); se
 # --------------------------------------------------------------------------- #
 # Detail page
 # --------------------------------------------------------------------------- #
+# --------------------------------------------------------------------------- #
+# Login page (only served when the Supabase auth gate is active)
+# --------------------------------------------------------------------------- #
+_LOGIN_PAGE = """<!doctype html><html lang="en"><head>
+<meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
+<title>HP Analytics — Sign in</title><style>""" + _CSS + """
+  .authwrap{min-height:100vh;display:grid;place-items:center;padding:24px}
+  .authcard{width:min(404px,94vw);background:var(--surface);border:1px solid var(--hairline);border-radius:20px;padding:30px 28px;box-shadow:var(--sh-3);animation:fadeUp .5s both}
+  .authbrand{display:flex;align-items:center;gap:11px;font-weight:700;font-size:18px;margin-bottom:6px}
+  .authbrand .logo{width:34px;height:34px;border-radius:10px;display:grid;place-items:center;background:var(--brand-grad);font-size:18px}
+  .authbrand .g{background:var(--brand-grad);-webkit-background-clip:text;background-clip:text;color:transparent}
+  .authsub{color:var(--muted);font-size:13px;margin-bottom:22px}
+  .authfield{display:flex;flex-direction:column;gap:7px;margin-bottom:14px}
+  .authfield label{font-size:11px;text-transform:uppercase;letter-spacing:.06em;color:var(--muted);font-weight:600}
+  .authfield input{background:var(--bg);border:1px solid var(--hairline-2);color:var(--fg);border-radius:10px;padding:12px 13px;font-size:15px;transition:.16s}
+  .authfield input:focus{outline:none;border-color:var(--accent);box-shadow:0 0 0 3px var(--accent-soft)}
+  .authbtn{width:100%;padding:13px;border-radius:11px;border:0;background:var(--accent);color:#0a0f1f;font-weight:700;font-size:14px;cursor:pointer;transition:.16s}
+  .authbtn:hover{background:var(--accent-2)} .authbtn:disabled{opacity:.5;cursor:wait}
+  .authlink{background:none;border:0;color:var(--accent-2);cursor:pointer;font-size:13px;font-weight:600}
+  .authmsg{font-size:13px;margin-top:14px;padding:10px 12px;border-radius:9px;display:none;line-height:1.5}
+  .authmsg.err{display:block;background:var(--loss-soft);color:var(--loss);border:1px solid rgba(229,99,95,.4)}
+  .authmsg.ok{display:block;background:var(--profit-soft);color:var(--profit);border:1px solid rgba(76,195,138,.4)}
+  .authfoot{text-align:center;margin-top:18px;color:var(--muted);font-size:12.5px}
+</style></head><body>
+<div class="authwrap"><div class="authcard">
+  <div class="authbrand"><span class="logo">🦙</span> HP Analytics <span class="g">OS</span></div>
+  <div class="authsub" id="authsub">Sign in to your control center.</div>
+  <div class="authfield"><label>Email</label><input id="email" type="email" autocomplete="email" placeholder="you@example.com"></div>
+  <div class="authfield"><label>Password</label><input id="password" type="password" autocomplete="current-password" placeholder="••••••••"></div>
+  <button class="authbtn" id="primaryBtn">Sign in</button>
+  <div class="authmsg" id="msg"></div>
+  <div class="authfoot"><span id="toggleText">New here?</span> <button class="authlink" id="toggleBtn">Create an account</button></div>
+</div></div>
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+<script>
+const SB_URL="__SBURL__", SB_KEY="__SBKEY__";
+let client=null, mode='signin';
+try{ client = supabase.createClient(SB_URL, SB_KEY); }catch(e){}
+const $=id=>document.getElementById(id);
+function setMsg(t,ok){const m=$('msg');m.textContent=t;m.className='authmsg '+(ok?'ok':'err');}
+function setMode(m){mode=m;$('primaryBtn').textContent=m==='signin'?'Sign in':'Create account';$('authsub').textContent=m==='signin'?'Sign in to your control center.':'Create your account.';$('toggleText').textContent=m==='signin'?'New here?':'Already have an account?';$('toggleBtn').textContent=m==='signin'?'Create an account':'Sign in';$('password').setAttribute('autocomplete',m==='signin'?'current-password':'new-password');}
+$('toggleBtn').onclick=()=>setMode(mode==='signin'?'signup':'signin');
+async function establish(token){const r=await fetch('/api/auth/session',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({access_token:token})});const d=await r.json();if(d.ok){location.href='/';}else{setMsg(d.error||'Could not start session.',false);}}
+$('primaryBtn').onclick=async()=>{
+  if(!client){setMsg('Auth is not configured on the server.',false);return;}
+  const email=$('email').value.trim(), password=$('password').value;
+  if(!email||!password){setMsg('Enter your email and password.',false);return;}
+  const btn=$('primaryBtn');btn.disabled=true;
+  try{
+    if(mode==='signup'){
+      const {data,error}=await client.auth.signUp({email,password});
+      if(error){setMsg(error.message,false);}
+      else if(data.session){await establish(data.session.access_token);}
+      else{setMsg('Account created — check your email to confirm, then sign in.',true);setMode('signin');}
+    }else{
+      const {data,error}=await client.auth.signInWithPassword({email,password});
+      if(error){setMsg(error.message,false);}
+      else if(data.session){await establish(data.session.access_token);}
+      else{setMsg('Could not sign in.',false);}
+    }
+  }catch(e){setMsg('Network error — please try again.',false);}
+  finally{btn.disabled=false;}
+};
+$('password').addEventListener('keydown',e=>{if(e.key==='Enter')$('primaryBtn').click();});
+</script></body></html>"""
+
+
 _DETAIL_PAGE = """<!doctype html><html lang="en"><head>
 <meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
 <title>__TICKER__ — detail</title><style>""" + _CSS + _SHELL_CSS + """</style>
