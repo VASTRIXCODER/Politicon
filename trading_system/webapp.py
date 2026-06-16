@@ -430,6 +430,17 @@ def create_app(config=CONFIG):
         resp.headers["X-Accel-Buffering"] = "no"    # don't let proxies buffer SSE
         return resp
 
+    @app.route("/api/options/<sym>")
+    def api_options(sym):
+        from options import options_summary
+        return jsonify(options_summary(sym, request.args.get("expiry")))
+
+    @app.route("/api/movers")
+    def api_movers():
+        from market_extras import live_movers
+        direction = "losers" if request.args.get("dir") == "losers" else "gainers"
+        return jsonify(live_movers(direction))
+
     @app.route("/api/engine/log")
     def api_engine_log():
         limit = min(int(request.args.get("limit", 600) or 600), 5000)
@@ -1670,6 +1681,11 @@ _DETAIL_PAGE = """<!doctype html><html lang="en"><head>
     <div class="tvnote">Technical-rating gauge © TradingView · independent of the HP Analytics strategy.</div>
   </section>
   <section class="section">
+    <div class="sectionhead"><div class="eyebrow">Options flow</div><div class="title">__TICKER__ · nearest-expiry options</div>
+      <div class="desc">Call vs put volume and the most active strikes (Yahoo data). The put/call ratio is a quick read on directional positioning.</div></div>
+    <div id="optbox"><div class="skel skel-card"></div></div>
+  </section>
+  <section class="section">
     <div class="sectionhead"><div class="eyebrow">Price &amp; signals</div><div class="title">__TICKER__ price with buy / sell markers</div></div>
     <div class="chartbox"><canvas id="priceChart"></canvas></div>
   </section>
@@ -1694,7 +1710,12 @@ const TICKER="__TICKER__"; let EQ=1, priceChart, equityChart;
 """ + _SHARED_JS + """
 function setEq(n){EQ=n;document.getElementById('b1').classList.toggle('active',n===1);document.getElementById('b2').classList.toggle('active',n===2);load();}
 function statCard(k,v,c){return `<div class="stat"><div class="k">${k}</div><div class="v ${c||''}">${v}</div></div>`;}
+async function loadOptions(){const box=document.getElementById('optbox');try{const d=await (await fetch('/api/options/'+TICKER)).json();if(d.error){box.innerHTML='<div class="note muted">Options: '+d.error+'</div>';return;}
+  function tbl(rows){return '<table><thead><tr><th></th><th class="num">Strike</th><th class="num">Last</th><th class="num">Vol</th><th class="num">OI</th><th class="num">IV%</th></tr></thead><tbody>'+((rows||[]).map(r=>'<tr><td>'+(r.itm?'<span class="badge green">ITM</span>':'')+'</td><td class="num">'+r.strike+'</td><td class="num">'+usd(r.last)+'</td><td class="num">'+(r.volume||0).toLocaleString()+'</td><td class="num">'+(r.open_interest||0).toLocaleString()+'</td><td class="num">'+r.iv+'</td></tr>').join('')||'<tr><td colspan="6" class="muted">none</td></tr>')+'</tbody></table>';}
+  const pcr=d.put_call_ratio==null?'—':d.put_call_ratio;const bcls=/bull/.test(d.bias||'')?'green':(/bear/.test(d.bias||'')?'red':'muted');
+  box.innerHTML='<div class="card"><div class="summary">'+statCard('Expiry',d.expiry)+statCard('Call volume',(d.call_volume||0).toLocaleString(),'green')+statCard('Put volume',(d.put_volume||0).toLocaleString(),'red')+statCard('Put / Call',pcr,bcls)+'</div><div style="margin:8px 0"><span class="badge '+bcls+'">'+(d.bias||'')+'</span></div><div class="subhead">Most active calls</div><div class="tablewrap">'+tbl(d.calls)+'</div><div class="subhead">Most active puts</div><div class="tablewrap">'+tbl(d.puts)+'</div></div>';
+}catch(e){box.innerHTML='<div class="note muted">Options data unavailable (needs internet).</div>';}}
 function drawCharts(d){if(typeof Chart==='undefined'){document.getElementById('foot').textContent='(charts need internet to load chart library)';return;}const ax={grid:{color:'rgba(255,255,255,.06)'},border:{color:'rgba(255,255,255,.08)'},ticks:{color:'#737d8e',maxTicksLimit:8}};if(priceChart)priceChart.destroy();priceChart=new Chart(document.getElementById('priceChart'),{type:'line',data:{labels:d.chart.labels,datasets:[{label:'Price',data:d.chart.price,borderColor:'#6c8cff',borderWidth:1.8,pointRadius:0,tension:.12},{label:'Buy',data:d.chart.buys,borderColor:'#4cc38a',backgroundColor:'#4cc38a',showLine:false,pointRadius:6,pointStyle:'triangle'},{label:'Sell',data:d.chart.sells,borderColor:'#e5635f',backgroundColor:'#e5635f',showLine:false,pointRadius:6,pointStyle:'triangle',rotation:180}]},options:{responsive:true,maintainAspectRatio:false,plugins:{legend:{labels:{color:'#aeb6c4',usePointStyle:true,boxWidth:7}}},scales:{x:ax,y:ax}}});if(equityChart)equityChart.destroy();equityChart=new Chart(document.getElementById('equityChart'),{type:'line',data:{labels:d.equity.labels,datasets:[{label:'Equity ($)',data:d.equity.values,borderColor:'#4cc38a',borderWidth:1.8,pointRadius:0,fill:true,backgroundColor:'rgba(76,195,138,.10)',tension:.12}]},options:{responsive:true,maintainAspectRatio:false,plugins:{legend:{labels:{color:'#aeb6c4',usePointStyle:true,boxWidth:7}}},scales:{x:ax,y:ax}}});}
 async function load(){document.getElementById('head').textContent='loading…';const d=await (await fetch(`/api/ticker/${TICKER}?eq=${EQ}`)).json();if(d.error){document.getElementById('head').innerHTML=`<span class="red">${d.error}</span>`;return;}document.getElementById('head').innerHTML=`<span class="chip ${cls(d.recommendation)}">${d.recommendation}</span> · ${d.sector} · ${usd(d.price)} · conv ${d.conviction.toFixed(0)}/100`;SIZEMODE=d.atr_adaptive?'atr':'fixed';const s=getSettings();const _x={ticker:d.ticker,recommendation:d.recommendation,price:d.price,atr:d.atr,atr_stop:d.atr_stop,atr_target:d.atr_target,eq1:{edge_win_rate:(d.stats?d.stats.win_rate:0.5)}};const e=econ(_x,s);document.getElementById('planbox').innerHTML=`<div class="card">${orderTicket(d,e,s,'bar')}</div>`;const st=d.stats;document.getElementById('stats').innerHTML=statCard('Win rate',(st.win_rate*100).toFixed(0)+'%','blue')+statCard('Total return',(st.return_pct>=0?'+':'')+st.return_pct.toFixed(0)+'%',st.return_pct>=0?'green':'red')+statCard('Trades',st.trades)+statCard('Avg win',money(st.avg_win),'green')+statCard('Avg loss',money(st.avg_loss),'red')+statCard('Max drawdown',st.max_dd_pct.toFixed(1)+'%','red')+statCard('Sharpe',st.sharpe.toFixed(2))+statCard('Profit factor',st.profit_factor.toFixed(2));document.getElementById('hist').innerHTML=(d.history||[]).map(h=>`<tr><td>${h.date}</td><td><span class="chip ${h.action}">${h.action}</span></td><td class="num">${usd(h.price)}</td></tr>`).join('')||'<tr><td colspan="3" class="muted">no signals in range</td></tr>';document.getElementById('foot').textContent=`as of ${d.asof} · equation set ${d.equation_set} · ${st.trades} historical trades`;drawCharts(d);}
-fetch('/api/account').then(r=>r.json()).then(a=>{if(a&&a.account)CAPITAL=a.account.equity;}).catch(()=>{}).finally(()=>{load();setInterval(load,__REFRESH__*1000);});
+fetch('/api/account').then(r=>r.json()).then(a=>{if(a&&a.account)CAPITAL=a.account.equity;}).catch(()=>{}).finally(()=>{load();loadOptions();setInterval(load,__REFRESH__*1000);});
 </script></body></html>"""
