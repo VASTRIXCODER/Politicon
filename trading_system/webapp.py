@@ -131,9 +131,24 @@ class _BufHandler(logging.Handler):
             pass
 
 
+class _DbLogHandler(logging.Handler):
+    """Persists engine log lines to SQLite so the Logs view keeps full history."""
+
+    def __init__(self, db):
+        super().__init__()
+        self.db = db
+
+    def emit(self, record):
+        try:
+            self.db.log_event(record.getMessage(), level=record.levelname)
+        except Exception:
+            pass
+
+
 class EngineController:
-    def __init__(self, config=CONFIG):
+    def __init__(self, config=CONFIG, db=None):
         self.config = config
+        self.db = db
         self._engine = None
         self._thread: Optional[threading.Thread] = None
         self._lock = threading.Lock()
@@ -144,6 +159,8 @@ class EngineController:
         h = _BufHandler(self._log_buffer)
         h.setFormatter(logging.Formatter("%(asctime)s %(message)s", "%H:%M:%S"))
         eng_log.addHandler(h)
+        if db is not None:
+            eng_log.addHandler(_DbLogHandler(db))  # full persistent history
 
     @property
     def running(self) -> bool:
@@ -213,10 +230,11 @@ def create_app(config=CONFIG):
     from database import Database
 
     app = Flask(__name__)
-    service = ScannerService(config, briefer=AIBriefer(config))
+    briefer = AIBriefer(config)
+    service = ScannerService(config, briefer=briefer)
     service.start()
-    controller = EngineController(config)
     db = Database(config.db_path)
+    controller = EngineController(config, db)
     broker_holder: Dict = {"broker": None, "error": None, "tried": False}
 
     def display_broker():
@@ -361,6 +379,101 @@ def create_app(config=CONFIG):
                         "aggressive_mode": config.aggressive_mode, "ai_gate": config.ai_gate,
                         "day_trade": daytrade["on"], "interval": config.interval,
                         "engine_interval_seconds": config.engine_interval_seconds})
+
+    @app.route("/api/engine/log")
+    def api_engine_log():
+        limit = min(int(request.args.get("limit", 600) or 600), 5000)
+        return jsonify({"rows": db.get_engine_log(
+            limit=limit, search=request.args.get("q") or None,
+            level=request.args.get("level") or None)})
+
+    @app.route("/api/performance")
+    def api_performance():
+        base = float(config.account_size)
+        report = db.performance_report(starting_equity=base)
+        series = db.equity_series(starting_equity=base)
+        closed = [
+            {"ticker": t["ticker"], "entry_price": t["entry_price"], "exit_price": t["exit_price"],
+             "qty": t["qty"], "pnl_dollars": t["pnl_dollars"], "pnl_pct": t["pnl_pct"],
+             "exit_time": t["exit_time"], "exit_reason": t["exit_reason"]}
+            for t in db.get_closed_trades()
+        ][-300:][::-1]
+        return jsonify({"report": report, "equity": series, "closed": closed,
+                        "starting_equity": base})
+
+    @app.route("/api/backtest")
+    def api_backtest():
+        from datetime import timedelta
+        from config import INTERVAL_MAP
+        ticker = (request.args.get("ticker") or "AAPL").upper().strip()
+        eq = int(request.args.get("eq", config.equation_set) or config.equation_set)
+        eq = eq if eq in (1, 2) else 1
+        interval = request.args.get("interval") or config.interval
+        if interval not in INTERVAL_MAP:
+            interval = config.interval
+        try:
+            years = max(0.5, min(float(request.args.get("years", 3) or 3), 15))
+        except ValueError:
+            years = 3.0
+        try:
+            from data import fetch_history_yf
+            from backtest import simulate
+            yf_interval = INTERVAL_MAP[interval]["yf"]
+            start = (datetime.now(timezone.utc) - timedelta(days=int(years * 365) + 30)).strftime("%Y-%m-%d")
+            df = fetch_history_yf(ticker, yf_interval, start)
+            if df is None or len(df) < config.lookback_length + 5:
+                return jsonify({"ok": False, "error": f"Not enough data for {ticker}."})
+            res = simulate(df, ticker=ticker, equation_set=eq, lookback=config.lookback_length,
+                           signal_value=config.signal_value, interval=interval, position_pct=100.0,
+                           stop_loss_pct=config.stop_loss_pct, take_profit_pct=config.take_profit_pct)
+            e = res.equity
+            stride = max(1, len(e) // 420)
+            fmt = "%Y-%m-%d" if interval == "1d" else "%m-%d %H:%M"
+            return jsonify({"ok": True, "ticker": ticker, "equation_set": eq, "interval": interval,
+                            "years": years, "report": res.report,
+                            "equity": {"labels": [d.strftime(fmt) for d in e.index[::stride]],
+                                       "values": [round(float(v), 2) for v in e.values[::stride]]}})
+        except Exception as exc:  # pragma: no cover - network/runtime guard
+            return jsonify({"ok": False, "error": str(exc)})
+
+    def _ai_context():
+        import json as _json
+        try:
+            snap = service.snapshot()
+            sigs = snap.get("signals", [])
+            buys = [s for s in sigs if s.get("is_buy") and not s.get("error")][:8]
+            top = [{"ticker": s.get("ticker"), "rec": s.get("recommendation"),
+                    "conv": s.get("conviction"), "price": s.get("price"), "trend": s.get("trend"),
+                    "sector": s.get("sector")} for s in buys]
+            acct = None
+            broker = display_broker()
+            if broker is not None:
+                try:
+                    a = broker.get_account()
+                    acct = {"equity": a.equity, "cash": a.cash, "buying_power": a.buying_power}
+                except Exception:
+                    pass
+            est = controller.status()
+            return "\n".join([
+                "Config: " + _json.dumps(snap.get("config", {})),
+                "Account: " + _json.dumps(acct),
+                "Engine: " + _json.dumps({"running": est.get("running"), "mode": est.get("mode"),
+                                          "policy": est.get("policy")}),
+                "Today report: " + _json.dumps(db.performance_report(starting_equity=config.account_size)),
+                "Top buy signals: " + _json.dumps(top),
+            ])
+        except Exception:
+            return None
+
+    @app.route("/api/ai/status")
+    def api_ai_status():
+        return jsonify({"enabled": bool(briefer.has_key), "model": config.anthropic_model})
+
+    @app.route("/api/ai/ask", methods=["POST"])
+    def api_ai_ask():
+        body = request.get_json(silent=True) or {}
+        res = briefer.ask((body.get("question") or "").strip(), context=_ai_context())
+        return jsonify(res)
 
     app.scanner_service = service
     app.engine_controller = controller

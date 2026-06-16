@@ -45,6 +45,14 @@ CREATE TABLE IF NOT EXISTS trades (
 CREATE INDEX IF NOT EXISTS idx_trades_status  ON trades(status);
 CREATE INDEX IF NOT EXISTS idx_trades_ticker  ON trades(ticker);
 CREATE INDEX IF NOT EXISTS idx_trades_exit    ON trades(exit_time);
+
+CREATE TABLE IF NOT EXISTS engine_log (
+    id       INTEGER PRIMARY KEY AUTOINCREMENT,
+    ts       TEXT    NOT NULL,
+    level    TEXT    NOT NULL DEFAULT 'INFO',
+    message  TEXT    NOT NULL
+);
+CREATE INDEX IF NOT EXISTS idx_log_ts ON engine_log(ts);
 """
 
 
@@ -141,6 +149,62 @@ class Database:
                  exit_reason, trade_id),
             )
             return conn.execute("SELECT * FROM trades WHERE id = ?", (trade_id,)).fetchone()
+
+    # ------------------------------------------------------------------ #
+    # Engine activity log (persistent history)
+    # ------------------------------------------------------------------ #
+    _log_writes = 0
+
+    def log_event(self, message: str, level: str = "INFO", ts: Optional[str] = None) -> None:
+        """Append one engine-activity line. Self-prunes occasionally."""
+        try:
+            with self._conn() as conn:
+                conn.execute(
+                    "INSERT INTO engine_log (ts, level, message) VALUES (?, ?, ?)",
+                    (ts or _utcnow_iso(), level.upper(), message),
+                )
+            Database._log_writes += 1
+            if Database._log_writes % 200 == 0:
+                self.prune_engine_log()
+        except Exception:
+            pass  # logging must never break the engine
+
+    def prune_engine_log(self, keep: int = 20000) -> None:
+        with self._conn() as conn:
+            conn.execute(
+                "DELETE FROM engine_log WHERE id NOT IN "
+                "(SELECT id FROM engine_log ORDER BY id DESC LIMIT ?)",
+                (keep,),
+            )
+
+    def get_engine_log(self, limit: int = 500, search: Optional[str] = None,
+                       level: Optional[str] = None) -> List[Dict]:
+        sql = "SELECT ts, level, message FROM engine_log"
+        clauses, params = [], []
+        if search:
+            clauses.append("message LIKE ?")
+            params.append(f"%{search}%")
+        if level and level.upper() != "ALL":
+            clauses.append("level = ?")
+            params.append(level.upper())
+        if clauses:
+            sql += " WHERE " + " AND ".join(clauses)
+        sql += " ORDER BY id DESC LIMIT ?"
+        params.append(int(limit))
+        rows = self._query(sql, tuple(params))
+        return [{"ts": r["ts"], "level": r["level"], "message": r["message"]} for r in rows]
+
+    def equity_series(self, starting_equity: float = 100_000.0) -> List[Dict]:
+        """Cumulative realised-equity curve from closed trades (oldest→newest)."""
+        trades = self.get_closed_trades()
+        out, equity = [], float(starting_equity)
+        for t in trades:
+            equity += (t["pnl_dollars"] or 0.0)
+            out.append({
+                "time": t["exit_time"], "ticker": t["ticker"],
+                "pnl": t["pnl_dollars"] or 0.0, "equity": round(equity, 2),
+            })
+        return out
 
     # ------------------------------------------------------------------ #
     # Reads

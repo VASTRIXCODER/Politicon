@@ -55,6 +55,20 @@ catalyst check was inconclusive."""
 # Output cap is small — these briefings are short.
 _MAX_TOKENS = 1024
 
+# System prompt for the in-app AI co-pilot (explanations + Q&A, never advice).
+_COPILOT_SYSTEM = (
+    "You are the embedded AI co-pilot inside the HP Analytics trading platform — a "
+    "calm, precise, risk-aware analyst. You help the user understand what the platform "
+    "is showing: technical signals (produced by fixed quant formulas, not by you), "
+    "their account and positions, risk settings, ATR sizing, backtest edge, and how to "
+    "place the suggested orders. You may use web search for recent market context or "
+    "news when it helps. Hard rules: be concise and concrete (short paragraphs or tight "
+    "bullets); never promise profit or predict prices; this is educational, not financial "
+    "advice; if given a data snapshot, ground your answer in it; if something is outside "
+    "the provided context, say what you'd need. End with one short 'Next step:' line when "
+    "the user asks what to do."
+)
+
 # System prompt for the pre-trade risk gate (a veto-only safety check).
 _GATE_SYSTEM = (
     "You are a pre-trade risk checker for an automated trading system. You do NOT "
@@ -81,6 +95,64 @@ class AIBriefer:
     @property
     def enabled(self) -> bool:
         return bool(self.config.ai_briefing and self.config.anthropic_api_key)
+
+    @property
+    def has_key(self) -> bool:
+        """The co-pilot only needs a key (independent of the AI_BRIEFING flag)."""
+        return bool(self.config.anthropic_api_key)
+
+    def ask(self, question: str, context: Optional[str] = None) -> Dict:
+        """In-app co-pilot Q&A. Returns {'ok': bool, 'answer': str}.
+
+        Degrades gracefully: no key / SDK / API error -> ok False with a clear
+        message, so the UI never breaks.
+        """
+        if not self.has_key:
+            return {"ok": False, "answer": "The AI co-pilot is off. Add ANTHROPIC_API_KEY "
+                    "to your .env (and restart) to enable it."}
+        client = self._get_client()
+        if client is None:
+            return {"ok": False, "answer": self._import_error or "AI client unavailable."}
+        q = (question or "").strip()
+        if not q:
+            return {"ok": False, "answer": "Ask me anything about your signals, positions or risk."}
+        prompt = q if not context else (
+            "Current platform snapshot (JSON-ish):\n" + context[:6000] + "\n\nUser question: " + q
+        )
+        text = self._call_copilot(client, prompt)
+        if not text:
+            return {"ok": False, "answer": "I couldn't reach the model just now — try again."}
+        return {"ok": True, "answer": text}
+
+    def _call_copilot(self, client, prompt: str) -> Optional[str]:
+        import anthropic
+        base = dict(model=self.config.anthropic_model, max_tokens=1024, system=_COPILOT_SYSTEM)
+
+        def run(tools):
+            msgs = [{"role": "user", "content": prompt}]
+            resp = None
+            for _ in range(4):
+                kw = dict(base, messages=msgs)
+                if tools:
+                    kw["tools"] = tools
+                resp = client.messages.create(**kw)
+                if resp.stop_reason == "pause_turn":
+                    msgs = msgs + [{"role": "assistant", "content": resp.content}]
+                    continue
+                return self._extract_text(resp)
+            return self._extract_text(resp)
+
+        try:
+            return run([{"type": "web_search_20250305", "name": "web_search", "max_uses": 3}])
+        except anthropic.APIError:
+            try:
+                return run(None)
+            except Exception as exc:
+                log.warning("copilot call failed: %s", exc)
+                return None
+        except Exception as exc:
+            log.warning("copilot unexpected error: %s", exc)
+            return None
 
     def _get_client(self):
         if self._client is not None:
