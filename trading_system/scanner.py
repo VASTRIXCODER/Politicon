@@ -465,14 +465,49 @@ class Scanner:
         ]
 
     # ------------------------------------------------------------------ #
+    def _bars_needed(self) -> int:
+        """How many bars the Alpaca real-time path should pull for this interval.
+
+        Enough for the signal lookback AND a meaningful edge window.
+        """
+        lb = self.config.lookback_length + 50
+        iv = self.config.interval
+        if iv == "1d":
+            return max(lb, int(self.config.edge_years * 252) + 30)
+        if iv == "1h":
+            return max(lb, 60 * 8)     # a couple of months of hourly bars
+        return max(lb, 390 * 5)        # ~5 sessions of 1-minute bars
+
     def _fetch(self, ticker):
         yf_interval = self.config.yf_interval
-        key = (ticker, yf_interval)
+        # Cache key includes the source so switching DATA_SOURCE can't serve a
+        # stale cross-provider frame.
+        key = (ticker, yf_interval, self.config.data_source)
         # Intraday bars go stale fast; daily bars barely move within a session.
         ttl = {"1m": 20, "60m": 60}.get(yf_interval, self._df_ttl)
         cached = self._df_cache.get(key)
         if cached and (time.time() - cached[0]) < ttl:
             return cached[1]
+        df = self._fetch_fresh(ticker, yf_interval)
+        self._df_cache[key] = (time.time(), df)
+        return df
+
+    def _fetch_fresh(self, ticker, yf_interval):
+        # Real-time path: Alpaca IEX bars (no ~15-min yfinance delay) for live
+        # SIGNALS. Falls back to yfinance on any error / too few bars, so a bad
+        # key or rate-limit never blanks the scan. (The backtest tool always uses
+        # yfinance, independently of this.)
+        if self.config.data_source == "alpaca" and self.config.alpaca_api_key:
+            try:
+                from data import DataProvider
+                df = DataProvider(self.config).recent(ticker, self._bars_needed())
+                if df is not None and len(df) >= self.config.lookback_length + 2:
+                    return df
+                log.debug("alpaca returned %d bars for %s; using yfinance",
+                          0 if df is None else len(df), ticker)
+            except Exception as exc:
+                log.debug("alpaca fetch failed for %s (%s); using yfinance", ticker, exc)
+
         now = datetime.now(timezone.utc)
         if yf_interval == "1m":
             start = now - timedelta(days=7)
@@ -480,9 +515,7 @@ class Scanner:
             start = now - timedelta(days=59)
         else:
             start = now - timedelta(days=int(self.config.edge_years * 365) + 30)
-        df = fetch_history_yf(ticker, yf_interval, start.strftime("%Y-%m-%d"))
-        self._df_cache[key] = (time.time(), df)
-        return df
+        return fetch_history_yf(ticker, yf_interval, start.strftime("%Y-%m-%d"))
 
     def _freshness(self, df):
         """Return (iso_bar_time, age_seconds, stale) for the last bar.
