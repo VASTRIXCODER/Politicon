@@ -1,11 +1,15 @@
-import { NextResponse } from 'next/server';
+import { NextRequest, NextResponse } from 'next/server';
 import { createClient } from '@/lib/supabase/server';
 import { createClient as createAdminClient } from '@supabase/supabase-js';
+import { rateLimit, RATE_LIMITS } from '@/lib/rateLimit';
 
 export const dynamic = 'force-dynamic';
 
-export async function DELETE() {
+export async function DELETE(req: NextRequest) {
   try {
+    const rl = await rateLimit(req, 'accountDelete', RATE_LIMITS.accountDelete);
+    if (!rl.ok) return rl.response;
+
     const supabase = createClient();
     const { data: { user }, error: authError } = await supabase.auth.getUser();
     if (authError || !user) {

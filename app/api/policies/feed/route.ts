@@ -3,6 +3,7 @@ import { createClient } from '@/lib/supabase/server';
 import { discoverPolicyFeed } from '@/lib/claude';
 import { UserProfile } from '@/types';
 import { mapDbProfile } from '@/lib/profile';
+import { rateLimit, RATE_LIMITS } from '@/lib/rateLimit';
 
 export const dynamic = 'force-dynamic';
 export const maxDuration = 60;
@@ -29,6 +30,13 @@ const TTL_MS = 24 * 60 * 60 * 1000; // 24h
 
 export async function GET(req: NextRequest) {
   const refresh = req.nextUrl.searchParams.get('refresh') === '1';
+
+  // Manual refresh triggers a fresh (expensive) AI generation — rate-limit it.
+  if (refresh) {
+    const rl = await rateLimit(req, 'feedRefresh', RATE_LIMITS.feedRefresh);
+    if (!rl.ok) return rl.response;
+  }
+
   let profile = { ...DEFAULT_PROFILE };
   let userId: string | null = null;
 

@@ -255,6 +255,10 @@ export default function DashboardPage() {
     if (refresh) setFeedRefreshing(true); else setFeedLoading(true);
     try {
       const res = await fetch(`/api/policies/feed${refresh ? '?refresh=1' : ''}`, { cache: 'no-store' });
+      if (res.status === 429) {
+        showToast('You’re refreshing too often. Please wait a bit and try again.', 'error');
+        return;
+      }
       const data = await res.json();
       const policies = Array.isArray(data.policies) ? data.policies : Array.isArray(data) ? data : [];
       setFeedPolicies(policies);
@@ -285,6 +289,10 @@ export default function DashboardPage() {
           },
         }),
       });
+      if (res.status === 429) {
+        showToast('You’ve hit the analysis limit for now. Please try again later.', 'error');
+        return;
+      }
       const data = await res.json();
       if (data.error) throw new Error(data.error);
       showToast(`Analysis complete for "${policy.title}"`);

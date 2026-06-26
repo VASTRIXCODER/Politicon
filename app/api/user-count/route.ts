@@ -1,10 +1,14 @@
-import { NextResponse } from 'next/server';
+import { NextRequest, NextResponse } from 'next/server';
 import { createClient } from '@supabase/supabase-js';
+import { rateLimit, RATE_LIMITS } from '@/lib/rateLimit';
 
 export const dynamic = 'force-dynamic';
 
-export async function GET() {
+export async function GET(req: NextRequest) {
   try {
+    const rl = await rateLimit(req, 'userCount', RATE_LIMITS.userCount);
+    if (!rl.ok) return rl.response;
+
     // Use service role key so this works for unauthenticated visitors (bypasses RLS)
     const admin = createClient(
       process.env.NEXT_PUBLIC_SUPABASE_URL!,

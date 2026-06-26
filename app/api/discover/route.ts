@@ -3,9 +3,13 @@ import { createClient } from '@/lib/supabase/server';
 import { discoverPolicies } from '@/lib/claude';
 import { UserProfile } from '@/types';
 import { mapDbProfile } from '@/lib/profile';
+import { rateLimit, RATE_LIMITS } from '@/lib/rateLimit';
 
 export async function POST(req: NextRequest) {
   try {
+    const rl = await rateLimit(req, 'discover', RATE_LIMITS.discover);
+    if (!rl.ok) return rl.response;
+
     let profile: UserProfile = {
       id: 'anonymous',
       hasCompletedOnboarding: false,

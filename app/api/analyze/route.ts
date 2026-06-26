@@ -3,6 +3,7 @@ import { createClient } from '@/lib/supabase/server';
 import { analyzePolicyFull } from '@/lib/claude';
 import { Policy, UserProfile, FullAnalysis } from '@/types';
 import { mapDbProfile } from '@/lib/profile';
+import { rateLimit, RATE_LIMITS } from '@/lib/rateLimit';
 
 export const dynamic = 'force-dynamic';
 export const maxDuration = 60;
@@ -65,6 +66,9 @@ function renderAnalysisText(a: FullAnalysis): string {
 
 export async function POST(req: NextRequest) {
   try {
+    const rl = await rateLimit(req, 'analyze', RATE_LIMITS.analyze);
+    if (!rl.ok) return rl.response;
+
     const { policy } = (await req.json()) as { policy: Policy };
     if (!policy) {
       return NextResponse.json({ error: 'Policy data required' }, { status: 400 });

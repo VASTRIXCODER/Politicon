@@ -3,6 +3,7 @@ import { createClient } from '@/lib/supabase/server';
 import { chatWithAdvisor, advisorPolicyReply } from '@/lib/claude';
 import { UserProfile } from '@/types';
 import { mapDbProfile } from '@/lib/profile';
+import { rateLimit, RATE_LIMITS } from '@/lib/rateLimit';
 
 export const dynamic = 'force-dynamic';
 export const maxDuration = 60;
@@ -27,6 +28,9 @@ const DEFAULT_PROFILE: UserProfile = {
 
 export async function POST(req: NextRequest) {
   try {
+    const rl = await rateLimit(req, 'advisor', RATE_LIMITS.advisor);
+    if (!rl.ok) return rl.response;
+
     const { messages, policyContext, simpleMode } = await req.json();
 
     if (!messages || !Array.isArray(messages)) {
