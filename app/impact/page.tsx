@@ -10,6 +10,7 @@ import Badge from '@/components/ui/Badge';
 import GsapCounter from '@/components/ui/GsapCounter';
 import Navbar from '@/components/layout/Navbar';
 import AmbientBackground from '@/components/landing/AmbientBackground';
+import { apiFetch } from '@/lib/api';
 import ViewFullImpactButton from '@/components/ViewFullImpactButton';
 import { CumulativeStackedBar, CumulativeProjectionLines } from '@/components/charts/Charts';
 import Link from 'next/link';
@@ -180,19 +181,12 @@ function ImpactContent() {
     if (checkedAnalyses.length === 0) { setCumSummary(''); return; }
     let cancelled = false;
     setCumLoading(true);
-    const items = checkedAnalyses.map(a => ({ title: a.policy_title, category: a.category, annual: a.dollar_impact || 0 }));
+    const policyIds = checkedAnalyses.map(a => a.policy_id).slice(0, 50);
     const t = setTimeout(async () => {
-      try {
-        const res = await fetch('/api/cumulative-summary', {
-          method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ items }),
-        });
-        const data = await res.json();
-        if (!cancelled) setCumSummary(data.summary || '');
-      } catch {
-        if (!cancelled) setCumSummary('');
-      } finally {
-        if (!cancelled) setCumLoading(false);
-      }
+      const res = await apiFetch<{ summary: string }>('/api/cumulative-summary', { body: { policyIds } });
+      if (cancelled) return;
+      setCumSummary(res.ok ? res.data.summary || '' : '');
+      setCumLoading(false);
     }, 700);
     return () => { cancelled = true; clearTimeout(t); };
     // eslint-disable-next-line react-hooks/exhaustive-deps

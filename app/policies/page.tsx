@@ -10,6 +10,8 @@ import Badge from '@/components/ui/Badge';
 import Navbar from '@/components/layout/Navbar';
 import AmbientBackground from '@/components/landing/AmbientBackground';
 import { getStatusColor, getCategoryIcon, formatCurrency } from '@/lib/utils';
+import { apiFetch } from '@/lib/api';
+import type { FullAnalysis } from '@/types';
 
 const categories: PolicyCategory[] = ['All', 'Taxes', 'Healthcare', 'Housing', 'Employment', 'Education', 'Energy', 'Social Security'];
 
@@ -32,17 +34,10 @@ export default function PoliciesPage() {
     setSelectedPolicy(policy);
     setAnalyzing(true);
     setAnalysis('');
-    try {
-      const res = await fetch('/api/analyze', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ policyId: policy.id, policy }),
-      });
-      const data = await res.json();
-      setAnalysis(data.analysis || 'Analysis unavailable at this time.');
-    } catch {
-      setAnalysis('Unable to load analysis. Please try again.');
-    }
+    // The server only analyzes policies from the user's own feed; these
+    // sample policies resolve to a friendly "not in your feed" message.
+    const res = await apiFetch<{ analysis: FullAnalysis }>('/api/analyze', { body: { policyId: policy.id } });
+    setAnalysis(res.ok ? res.data.analysis.plainEnglishSummary : res.message);
     setAnalyzing(false);
   };
 

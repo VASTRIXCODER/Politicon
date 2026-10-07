@@ -8,6 +8,7 @@ import {
   Eye, Zap, ChevronRight, Check, AlertTriangle, X,
   Lock, Trash2, RefreshCw, Save, ArrowLeft, BookOpen
 } from 'lucide-react';
+import { apiFetch } from '@/lib/api';
 import { createClient } from '@/lib/supabase/client';
 import AmbientBackground from '@/components/landing/AmbientBackground';
 import { useReadingMode } from '@/components/providers/ReadingModeProvider';
@@ -214,6 +215,8 @@ export default function SettingsPage() {
 
   // Profile state
   const [email, setEmail] = useState('');
+  // OAuth-only accounts have no password to confirm with.
+  const [hasPassword, setHasPassword] = useState(true);
   const [firstName, setFirstName] = useState('');
 
   // Financial profile state
@@ -231,10 +234,13 @@ export default function SettingsPage() {
   const [topFinancialConcerns, setTopFinancialConcerns] = useState<string[]>([]);
 
   // Security state
+  const [currentPassword, setCurrentPassword] = useState('');
   const [newPassword, setNewPassword] = useState('');
   const [confirmPassword, setConfirmPassword] = useState('');
   const [passwordLoading, setPasswordLoading] = useState(false);
   const [deleteConfirm, setDeleteConfirm] = useState('');
+  const [deletePassword, setDeletePassword] = useState('');
+  const [signOutOthersLoading, setSignOutOthersLoading] = useState(false);
   const [deleteLoading, setDeleteLoading] = useState(false);
   const [showDeleteZone, setShowDeleteZone] = useState(false);
 
@@ -246,6 +252,8 @@ export default function SettingsPage() {
     if (!user) { router.replace('/auth/signin'); return; }
 
     setEmail(user.email || '');
+    const providers = (user.app_metadata?.providers as string[] | undefined) || [user.app_metadata?.provider];
+    setHasPassword(providers.includes('email'));
     setFirstName(user.user_metadata?.first_name || '');
 
     const { data } = await supabase.from('user_profiles').select('*').eq('id', user.id).single();
@@ -320,13 +328,22 @@ export default function SettingsPage() {
   const changePassword = async () => {
     if (newPassword.length < 8) { showToast('Password must be at least 8 characters', 'error'); return; }
     if (newPassword !== confirmPassword) { showToast('Passwords do not match', 'error'); return; }
+    if (hasPassword && !currentPassword) { showToast('Enter your current password', 'error'); return; }
     setPasswordLoading(true);
     try {
+      // Re-authenticate first so a hijacked session can't change the password.
+      if (hasPassword) {
+        const { error: reauthError } = await supabase.auth.signInWithPassword({ email, password: currentPassword });
+        if (reauthError) throw new Error('Your current password is incorrect');
+      }
       const { error } = await supabase.auth.updateUser({ password: newPassword });
       if (error) throw error;
+      // Any other device signed in with the old password is signed out.
+      await supabase.auth.signOut({ scope: 'others' });
+      setCurrentPassword('');
       setNewPassword('');
       setConfirmPassword('');
-      showToast('Password updated successfully', 'success');
+      showToast('Password updated. Other devices have been signed out.', 'success');
     } catch (err: unknown) {
       showToast((err as Error).message || 'Failed to update password', 'error');
     } finally {
@@ -334,19 +351,30 @@ export default function SettingsPage() {
     }
   };
 
+  // ── sign out other devices ───────────────────────────────────────────────
+  const signOutOthers = async () => {
+    setSignOutOthersLoading(true);
+    const { error } = await supabase.auth.signOut({ scope: 'others' });
+    setSignOutOthersLoading(false);
+    showToast(error ? 'Could not sign out other devices. Please try again.' : 'Signed out of all other devices', error ? 'error' : 'success');
+  };
+
   // ── delete account ───────────────────────────────────────────────────────
   const deleteAccount = async () => {
     if (deleteConfirm !== 'DELETE') { showToast('Type DELETE to confirm', 'error'); return; }
+    if (hasPassword && !deletePassword) { showToast('Enter your password to confirm', 'error'); return; }
     setDeleteLoading(true);
-    try {
-      const res = await fetch('/api/account/delete', { method: 'DELETE' });
-      if (!res.ok) throw new Error('Deletion failed');
-      await supabase.auth.signOut();
-      router.push('/');
-    } catch {
-      showToast('Failed to delete account. Contact support.', 'error');
+    const res = await apiFetch('/api/account/delete', { method: 'DELETE', body: hasPassword ? { password: deletePassword } : {} });
+    if (!res.ok) {
+      showToast(res.message, 'error');
       setDeleteLoading(false);
+      return;
     }
+    try {
+      Object.keys(localStorage).filter(k => k.startsWith('politicon')).forEach(k => localStorage.removeItem(k));
+    } catch { /* storage unavailable */ }
+    await supabase.auth.signOut({ scope: 'local' });
+    router.push('/');
   };
 
   if (loading) {
@@ -656,10 +684,22 @@ export default function SettingsPage() {
                   <div className="space-y-4">
                     <SectionCard title="Change Password" subtitle="Choose a strong password you don't use elsewhere">
                       <div className="space-y-4">
+                        {hasPassword && <div>
+                          <FieldLabel>Current Password</FieldLabel>
+                          <input
+                            type="password"
+                            autoComplete="current-password"
+                            value={currentPassword}
+                            onChange={e => setCurrentPassword(e.target.value)}
+                            placeholder="Your current password"
+                            className="input-glass w-full px-4 py-3 text-sm rounded-xl"
+                          />
+                        </div>}
                         <div>
                           <FieldLabel>New Password</FieldLabel>
                           <input
                             type="password"
+                            autoComplete="new-password"
                             value={newPassword}
                             onChange={e => setNewPassword(e.target.value)}
                             placeholder="At least 8 characters"
@@ -686,23 +726,19 @@ export default function SettingsPage() {
                         loading={passwordLoading}
                         label="Update Password"
                         icon={<Lock className="w-4 h-4" />}
-                        disabled={!newPassword || newPassword !== confirmPassword || newPassword.length < 8}
+                        disabled={(hasPassword && !currentPassword) || !newPassword || newPassword !== confirmPassword || newPassword.length < 8}
                       />
                     </SectionCard>
 
-                    <SectionCard title="Active Sessions" subtitle="You are currently signed in on this device">
-                      <div className="flex items-center justify-between py-2">
-                        <div className="flex items-center gap-3">
-                          <div className="w-9 h-9 rounded-xl bg-emerald-500/10 border border-emerald-500/20 flex items-center justify-center">
-                            <div className="w-2 h-2 rounded-full bg-emerald-400" />
-                          </div>
-                          <div>
-                            <p className="text-sm text-text-primary font-medium">Current session</p>
-                            <p className="text-xs text-text-muted">Active now</p>
-                          </div>
-                        </div>
-                        <span className="text-xs px-2.5 py-1 rounded-full bg-emerald-500/10 text-emerald-400 border border-emerald-500/20">Active</span>
-                      </div>
+                    <SectionCard title="Sessions" subtitle="Signed in somewhere you don't recognize? End every other session.">
+                      <button
+                        onClick={signOutOthers}
+                        disabled={signOutOthersLoading}
+                        className="flex items-center gap-2 px-5 py-2.5 rounded-xl bg-white/5 border border-white/10 text-text-primary text-sm font-medium hover:bg-white/10 transition-all disabled:opacity-50"
+                      >
+                        {signOutOthersLoading && <RefreshCw className="w-4 h-4 animate-spin" />}
+                        Sign out all other devices
+                      </button>
                     </SectionCard>
 
                     {/* Danger Zone */}
@@ -744,9 +780,20 @@ export default function SettingsPage() {
                                   className="input-glass w-full px-4 py-3 text-sm rounded-xl border border-red-500/20 focus:border-red-500/50"
                                 />
                               </div>
+                              {hasPassword && <div>
+                                <FieldLabel>Your password</FieldLabel>
+                                <input
+                                  type="password"
+                                  autoComplete="current-password"
+                                  value={deletePassword}
+                                  onChange={e => setDeletePassword(e.target.value)}
+                                  placeholder="Confirm with your password"
+                                  className="input-glass w-full px-4 py-3 text-sm rounded-xl border border-red-500/20 focus:border-red-500/50"
+                                />
+                              </div>}
                               <button
                                 onClick={deleteAccount}
-                                disabled={deleteConfirm !== 'DELETE' || deleteLoading}
+                                disabled={deleteConfirm !== 'DELETE' || (hasPassword && !deletePassword) || deleteLoading}
                                 className="flex items-center gap-2 px-5 py-2.5 rounded-xl bg-red-500/15 border border-red-500/30 text-red-400 text-sm font-medium hover:bg-red-500/25 transition-all disabled:opacity-40 disabled:cursor-not-allowed"
                               >
                                 {deleteLoading ? <RefreshCw className="w-4 h-4 animate-spin" /> : <Trash2 className="w-4 h-4" />}

@@ -10,6 +10,7 @@ import { timeAgo } from '@/lib/utils';
 import GlassCard from '@/components/ui/GlassCard';
 import Badge from '@/components/ui/Badge';
 import AnimatedCounter from '@/components/ui/AnimatedCounter';
+import { apiFetch } from '@/lib/api';
 import ViewFullImpactButton from '@/components/ViewFullImpactButton';
 import Navbar from '@/components/layout/Navbar';
 import AmbientBackground from '@/components/landing/AmbientBackground';
@@ -157,6 +158,8 @@ export default function DashboardPage() {
   const [analyzingId, setAnalyzingId] = useState<string | null>(null);
   const [toast, setToast] = useState<{ message: string; type: 'success' | 'error' } | null>(null);
   const [activeTab, setActiveTab] = useState<'analyzed' | 'cumulative'>('analyzed');
+  const [feedError, setFeedError] = useState<string | null>(null);
+  const [needsOnboarding, setNeedsOnboarding] = useState(false);
 
   function showToast(message: string, type: 'success' | 'error' = 'success') {
     setToast({ message, type });
@@ -211,22 +214,7 @@ export default function DashboardPage() {
             if ((analysesErr as { code?: string }).code !== '42P01') console.error('policy_analyses load error:', analysesErr);
           } else {
             setAnalyses(analysesData || []);
-            if (analysesData && analysesData.length > 0) {
-              setInsightLoading(true);
-              try {
-                const policyList = analysesData.slice(0, 5).map(a => `${a.policy_title} (${a.category}, $${a.dollar_impact}/yr)`).join('; ');
-                const res = await fetch('/api/advisor', {
-                  method: 'POST',
-                  headers: { 'Content-Type': 'application/json' },
-                  body: JSON.stringify({
-                    messages: [{ role: 'user', parts: [{ text: `Based on these ${analysesData.length} policies the user has analyzed: ${policyList} — provide a 2-3 sentence portfolio insight summarizing the net financial picture and one actionable recommendation. Be concise and dollar-specific.` }] }],
-                  }),
-                });
-                const data = await res.json();
-                if (data.response) setPortfolioInsight(data.response);
-              } catch { /* insight optional */ }
-              setInsightLoading(false);
-            }
+            if (analysesData && analysesData.length > 0) loadInsight();
           }
         } catch (e) {
           console.error('Failed to load analyses:', e);
@@ -251,62 +239,56 @@ export default function DashboardPage() {
     return () => { supabase.removeChannel(channel); };
   }, []);
 
-  async function loadFeed(refresh = false) {
+  // The insight is optional and loads after the page is already usable.
+  async function loadInsight() {
+    setInsightLoading(true);
+    const res = await apiFetch<{ insight: string }>('/api/insight', { method: 'POST' });
+    if (res.ok && res.data.insight) setPortfolioInsight(res.data.insight);
+    setInsightLoading(false);
+  }
+
+  async function loadFeed(refresh = false, attempt = 0) {
     if (refresh) setFeedRefreshing(true); else setFeedLoading(true);
-    try {
-      const res = await fetch(`/api/policies/feed${refresh ? '?refresh=1' : ''}`, { cache: 'no-store' });
-      if (res.status === 429) {
-        showToast('You’re refreshing too often. Please wait a bit and try again.', 'error');
-        return;
-      }
-      const data = await res.json();
-      const policies = Array.isArray(data.policies) ? data.policies : Array.isArray(data) ? data : [];
-      setFeedPolicies(policies);
-      if (data.updatedAt) setFeedUpdatedAt(data.updatedAt);
-    } catch (e) {
-      console.error('Failed to load policy feed:', e);
-      setFeedPolicies([]);
-    } finally {
-      setFeedLoading(false);
-      setFeedRefreshing(false);
+    setFeedError(null);
+    const res = await apiFetch<{ policies?: FeedPolicy[]; updatedAt?: string; generating?: boolean }>(
+      '/api/policies/feed',
+      refresh ? { method: 'POST' } : {},
+    );
+    // 202: another request is already building this user's feed — check back shortly.
+    if (res.ok && res.status === 202) {
+      if (attempt < 12) { setTimeout(() => loadFeed(false, attempt + 1), 5000); return; }
+      setFeedError('Your feed is taking longer than usual. Please try again in a minute.');
+    } else if (res.ok) {
+      setFeedPolicies(Array.isArray(res.data.policies) ? res.data.policies : []);
+      if (res.data.updatedAt) setFeedUpdatedAt(res.data.updatedAt);
+    } else if (res.code === 'needs_onboarding') {
+      setNeedsOnboarding(true);
+    } else if (refresh) {
+      // Keep the previous feed on a failed refresh.
+      showToast(res.message, 'error');
+    } else {
+      setFeedError(res.message);
     }
+    setFeedLoading(false);
+    setFeedRefreshing(false);
   }
 
   useEffect(() => { loadFeed(false); }, []);
 
   async function handleAnalyze(policy: FeedPolicy) {
     setAnalyzingId(policy.id);
-    try {
-      const res = await fetch('/api/analyze', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          policy: {
-            id: policy.id, title: policy.title, summary: policy.description, description: policy.description,
-            category: policy.category, status: 'proposed', date: new Date().toISOString(),
-            source: 'AI Feed', sourceUrl: '', governingBody: policy.region, region: policy.region,
-            confidenceLevel: 'medium', impacts: [], assumptions: [], tags: [],
-          },
-        }),
-      });
-      if (res.status === 429) {
-        showToast('You’ve hit the analysis limit for now. Please try again later.', 'error');
-        return;
-      }
-      const data = await res.json();
-      if (data.error) throw new Error(data.error);
+    const res = await apiFetch('/api/analyze', { body: { policyId: policy.id } });
+    if (res.ok) {
       showToast(`Analysis complete for "${policy.title}"`);
       await refetchAnalyses();
-    } catch (e) {
-      console.error('Analyze error:', e);
-      showToast('Analysis failed. Please try again.', 'error');
-    } finally {
-      setAnalyzingId(null);
+    } else {
+      showToast(res.message, 'error');
     }
+    setAnalyzingId(null);
   }
 
   function handleAskAdvisor(policy: FeedPolicy) {
-    router.push(`/advisor?policy=${encodeURIComponent(policy.title)}&context=${encodeURIComponent(policy.description)}`);
+    router.push(`/advisor?policyId=${encodeURIComponent(policy.id)}`);
   }
 
   const netImpact = useMemo(() => analyses.reduce((sum, a) => sum + (a.dollar_impact || 0), 0), [analyses]);
@@ -490,16 +472,32 @@ export default function DashboardPage() {
 
                       {feedLoading ? (
                         <div className="space-y-4">{[...Array(3)].map((_, i) => <FeedSkeletonCard key={i} />)}</div>
+                      ) : needsOnboarding ? (
+                        <GlassCard className="rounded-2xl p-10 text-center">
+                          <div className="w-12 h-12 rounded-2xl bg-primary/10 border border-primary/20 flex items-center justify-center mx-auto mb-4">
+                            <BookOpen className="w-6 h-6 text-primary" />
+                          </div>
+                          <h3 className="font-medium text-text-primary mb-2">Finish your profile first</h3>
+                          <p className="text-sm text-text-muted mb-6 max-w-xs mx-auto">Your feed is built from your financial profile. It takes about two minutes.</p>
+                          <Link href="/onboarding" className="inline-block bg-primary/20 hover:bg-primary/30 border border-primary/20 text-primary px-5 py-3 rounded-xl text-sm font-medium transition-all">
+                            Complete profile →
+                          </Link>
+                        </GlassCard>
+                      ) : feedError ? (
+                        <GlassCard className="rounded-2xl p-10 text-center" role="alert">
+                          <h3 className="font-medium text-text-primary mb-2">Couldn&apos;t load your feed</h3>
+                          <p className="text-sm text-text-muted mb-6 max-w-xs mx-auto">{feedError}</p>
+                          <button onClick={() => loadFeed(false)} className="bg-primary/20 hover:bg-primary/30 border border-primary/20 text-primary px-5 py-3 rounded-xl text-sm font-medium transition-all">
+                            Try again
+                          </button>
+                        </GlassCard>
                       ) : feedPolicies.length === 0 ? (
                         <GlassCard className="rounded-2xl p-10 text-center">
                           <div className="w-12 h-12 rounded-2xl bg-primary/10 border border-primary/20 flex items-center justify-center mx-auto mb-4">
                             <BookOpen className="w-6 h-6 text-primary" />
                           </div>
-                          <h3 className="font-medium text-text-primary mb-2">No policies in feed yet</h3>
-                          <p className="text-sm text-text-muted mb-6 max-w-xs mx-auto">Complete your profile to get personalized policy recommendations.</p>
-                          <Link href="/onboarding">
-                            <button className="bg-primary/20 hover:bg-primary/30 border border-primary/20 text-primary px-5 py-3 rounded-xl text-sm font-medium transition-all">Complete Profile →</button>
-                          </Link>
+                          <h3 className="font-medium text-text-primary mb-2">No policies in your feed yet</h3>
+                          <p className="text-sm text-text-muted mb-6 max-w-xs mx-auto">Use Refresh to build your personalized feed.</p>
                         </GlassCard>
                       ) : (
                         <div className="space-y-4">

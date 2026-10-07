@@ -1,30 +1,22 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { createClient } from '@/lib/supabase/server';
+import { z } from 'zod';
 import { analyzePolicyFull } from '@/lib/claude';
-import { Policy, UserProfile, FullAnalysis } from '@/types';
-import { mapDbProfile } from '@/lib/profile';
-import { rateLimit, RATE_LIMITS } from '@/lib/rateLimit';
+import { FullAnalysis } from '@/types';
+import { getRequestContext } from '@/lib/server/requestContext';
+import { readJson, apiError } from '@/lib/server/http';
+import { rateLimit } from '@/lib/rateLimit';
+import { checkAiBudget } from '@/lib/server/aiGuard';
+import { aiFailure } from '@/lib/server/aiErrors';
+import { resolvePolicy } from '@/lib/server/policies';
+import { createAdminClient } from '@/lib/supabase/admin';
 
 export const dynamic = 'force-dynamic';
 export const maxDuration = 60;
 
-const DEFAULT_PROFILE: UserProfile = {
-  id: 'anonymous',
-  hasCompletedOnboarding: false,
-  country: 'United States',
-  state: 'Unknown',
-  city: '',
-  ageRange: '31_45',
-  educationStage: 'college_4yr',
-  employmentStatus: 'employed_full',
-  occupationCategory: 'business_finance',
-  incomeRange: '75k_100k',
-  filingStatus: 'single',
-  housingSituation: 'rent',
-  debtTypes: [],
-  hasDependents: false,
-  topFinancialConcerns: ['cost_of_living', 'retirement'],
-};
+const Body = z.object({
+  policyId: z.string().min(1).max(80),
+  force: z.boolean().optional(),
+});
 
 const money = (n: number) => `${n >= 0 ? '+' : '-'}$${Math.abs(Math.round(n)).toLocaleString()}`;
 
@@ -65,83 +57,86 @@ function renderAnalysisText(a: FullAnalysis): string {
 }
 
 export async function POST(req: NextRequest) {
-  try {
-    const rl = await rateLimit(req, 'analyze', RATE_LIMITS.analyze);
-    if (!rl.ok) return rl.response;
+  const auth = await getRequestContext();
+  if (!auth.ok) return auth.response;
+  const { supabase, user, profile } = auth.ctx;
 
-    const { policy } = (await req.json()) as { policy: Policy };
-    if (!policy) {
-      return NextResponse.json({ error: 'Policy data required' }, { status: 400 });
+  const body = await readJson(req, Body);
+  if (!body.ok) return body.response;
+
+  const policy = await resolvePolicy(supabase, user.id, body.data.policyId);
+  if (!policy) return apiError(404, 'policy_not_found', 'That policy is not in your feed. Refresh your feed and try again.');
+
+  // Re-use an existing analysis unless the caller explicitly asks to regenerate.
+  if (!body.data.force) {
+    const { data: existing } = await supabase
+      .from('analyzed_policies')
+      .select('analysis, net_annual_impact, net_monthly_impact')
+      .eq('user_id', user.id)
+      .eq('policy_id', policy.id)
+      .maybeSingle();
+    if (existing?.analysis && Object.keys(existing.analysis).length > 0) {
+      return NextResponse.json({
+        analysis: existing.analysis,
+        netAnnual: existing.net_annual_impact,
+        netMonthly: existing.net_monthly_impact,
+        cached: true,
+      });
     }
-
-    let profile: UserProfile = { ...DEFAULT_PROFILE };
-    let userId: string | null = null;
-    const supabase = createClient();
-
-    try {
-      const { data: { user } } = await supabase.auth.getUser();
-      if (user) {
-        userId = user.id;
-        const { data: profileData } = await supabase
-          .from('user_profiles')
-          .select('*')
-          .eq('id', user.id)
-          .single();
-        if (profileData) profile = mapDbProfile(profileData, profile);
-      }
-    } catch { /* use default profile */ }
-
-    const analysis = await analyzePolicyFull(policy, profile);
-
-    if (userId) {
-      try {
-        const now = new Date().toISOString();
-        // Rich structured store (source of truth for the detail page)
-        const { error: apErr } = await supabase.from('analyzed_policies').upsert(
-          {
-            user_id: userId,
-            policy_id: policy.id,
-            policy_title: policy.title,
-            bill_number: analysis.billNumber,
-            status: analysis.status,
-            category: analysis.category,
-            direction: analysis.direction,
-            confidence_score: analysis.confidenceScore,
-            net_annual_impact: analysis.netAnnualImpact,
-            net_monthly_impact: analysis.netMonthlyImpact,
-            analysis,
-            updated_at: now,
-          },
-          { onConflict: 'user_id,policy_id' }
-        );
-        if (apErr) console.error('analyzed_policies upsert error:', apErr);
-        // Lightweight mirror for dashboard list + realtime
-        const { error: paErr } = await supabase.from('policy_analyses').upsert(
-          {
-            user_id: userId,
-            policy_id: policy.id,
-            policy_title: policy.title,
-            analysis_text: renderAnalysisText(analysis),
-            dollar_impact: analysis.netAnnualImpact,
-            category: policy.category,
-            updated_at: now,
-          },
-          { onConflict: 'user_id,policy_id' }
-        );
-        if (paErr) console.error('policy_analyses upsert error:', paErr);
-      } catch (e) {
-        console.error('Analyze save error:', e);
-      }
-    }
-
-    return NextResponse.json({
-      analysis,
-      dollar_impact: analysis.netAnnualImpact,
-      netAnnual: analysis.netAnnualImpact,
-      netMonthly: analysis.netMonthlyImpact,
-    });
-  } catch (error) {
-    console.error('Analyze error:', error);
-    return NextResponse.json({ error: 'Analysis failed. Please try again.' }, { status: 500 });
   }
+
+  const limited = await rateLimit(req, 'analyze', { userId: user.id });
+  if (!limited.ok) return limited.response;
+  const budget = await checkAiBudget('analyze', user.id);
+  if (!budget.ok) return budget.response;
+
+  let analysis: FullAnalysis;
+  try {
+    analysis = await analyzePolicyFull(policy, profile, { feature: 'analyze', userId: user.id, usageId: budget.usageId });
+  } catch (e) {
+    return aiFailure(e, 'Policy analysis');
+  }
+
+  // Only a validated analysis is ever written, so a failure never overwrites a good row.
+  const admin = createAdminClient();
+  const now = new Date().toISOString();
+  const { error: apErr } = await admin.from('analyzed_policies').upsert(
+    {
+      user_id: user.id,
+      policy_id: policy.id,
+      policy_title: policy.title,
+      bill_number: analysis.billNumber,
+      status: analysis.status,
+      category: analysis.category,
+      direction: analysis.direction,
+      confidence_score: analysis.confidenceScore,
+      net_annual_impact: analysis.netAnnualImpact,
+      net_monthly_impact: analysis.netMonthlyImpact,
+      analysis,
+      updated_at: now,
+    },
+    { onConflict: 'user_id,policy_id' }
+  );
+  if (apErr) console.error('analyzed_policies upsert error:', apErr);
+  // Lightweight mirror for the dashboard list + realtime (consolidated in a later migration).
+  const { error: paErr } = await admin.from('policy_analyses').upsert(
+    {
+      user_id: user.id,
+      policy_id: policy.id,
+      policy_title: policy.title,
+      analysis_text: renderAnalysisText(analysis),
+      dollar_impact: analysis.netAnnualImpact,
+      category: policy.category,
+      updated_at: now,
+    },
+    { onConflict: 'user_id,policy_id' }
+  );
+  if (paErr) console.error('policy_analyses upsert error:', paErr);
+
+  return NextResponse.json({
+    analysis,
+    netAnnual: analysis.netAnnualImpact,
+    netMonthly: analysis.netMonthlyImpact,
+    cached: false,
+  });
 }

@@ -14,6 +14,7 @@ import AmbientBackground from '@/components/landing/AmbientBackground';
 import ViewFullImpactButton from '@/components/ViewFullImpactButton';
 import ReadingModeToggle from '@/components/ui/ReadingModeToggle';
 import { useReadingMode } from '@/components/providers/ReadingModeProvider';
+import { apiFetch } from '@/lib/api';
 
 const quickPrompts = [
   { icon: Home, label: 'Housing', text: 'How does the first-time homebuyer credit affect me?' },
@@ -22,10 +23,6 @@ const quickPrompts = [
   { icon: Briefcase, label: 'Career', text: 'What clean energy job training programs could I qualify for?' },
   { icon: DollarSign, label: 'Taxes', text: 'How does the proposed capital gains tax increase affect my investments?' },
 ];
-
-function slugify(s: string): string {
-  return s.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '').slice(0, 60);
-}
 
 interface PolicyMeta {
   policyId: string;
@@ -50,6 +47,8 @@ interface ExtendedMessage extends ChatMessage {
   dollarLine?: string;
   hasFullAnalysis?: boolean;
   compiling?: boolean;
+  /** UI-only messages (greeting, errors) are never sent to the model or saved. */
+  local?: boolean;
 }
 
 function TypingIndicator() {
@@ -143,7 +142,7 @@ function FeedPolicyCard({ policy, onPick }: { policy: DiscoveredPolicy; onPick: 
     <button
       draggable
       onDragStart={(e) => {
-        e.dataTransfer.setData('application/json', JSON.stringify(policy));
+        e.dataTransfer.setData(POLICY_DRAG_TYPE, policy.id);
         e.dataTransfer.effectAllowed = 'copy';
       }}
       onClick={() => onPick(policy)}
@@ -162,8 +161,13 @@ function FeedPolicyCard({ policy, onPick }: { policy: DiscoveredPolicy; onPick: 
   );
 }
 
+const POLICY_DRAG_TYPE = 'application/x-politicon-policy';
+const MAX_HISTORY_TURNS = 20;
+const MAX_TURN_CHARS = 4000;
+
 const INITIAL_MESSAGE: ExtendedMessage = {
   id: '0',
+  local: true,
   role: 'assistant',
   content: "Hi! I'm your Politicon AI Financial Advisor. I have your profile loaded and can tell you exactly how any policy affects your wallet — in real dollars.\n\nPick a policy from the feed on the right, or ask me anything.",
   timestamp: new Date(),
@@ -171,8 +175,7 @@ const INITIAL_MESSAGE: ExtendedMessage = {
 
 function AdvisorInner() {
   const searchParams = useSearchParams();
-  const policyParam = searchParams.get('policy');
-  const contextParam = searchParams.get('context');
+  const policyIdParam = searchParams.get('policyId');
   const { simple } = useReadingMode();
 
   const [sessions, setSessions] = useState<ChatSession[]>([]);
@@ -189,7 +192,8 @@ function AdvisorInner() {
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLTextAreaElement>(null);
   const userId = useRef<string | null>(null);
-  const autoSentRef = useRef(false);
+  const prefilledRef = useRef(false);
+  const [pendingPolicy, setPendingPolicy] = useState<PolicyMeta | null>(null);
 
   useEffect(() => {
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
@@ -224,15 +228,17 @@ function AdvisorInner() {
   useEffect(() => {
     async function loadFeed() {
       setFeedLoading(true);
-      try {
-        const res = await fetch('/api/policies/feed');
-        const data = await res.json();
-        setFeed(Array.isArray(data.policies) ? data.policies : Array.isArray(data) ? data : []);
-      } catch {
-        setFeed([]);
-      } finally {
-        setFeedLoading(false);
+      // 202 means the feed is still being built — check back a few times.
+      for (let attempt = 0; attempt < 12; attempt++) {
+        const res = await apiFetch<{ policies?: DiscoveredPolicy[] }>('/api/policies/feed');
+        if (res.ok && res.status === 202) {
+          await new Promise(r => setTimeout(r, 5000));
+          continue;
+        }
+        setFeed(res.ok && Array.isArray(res.data.policies) ? res.data.policies : []);
+        break;
       }
+      setFeedLoading(false);
     }
     loadFeed();
   }, []);
@@ -241,7 +247,7 @@ function AdvisorInner() {
     if (!userId.current) return sessionId;
     const supabase = createClient();
     const title = firstUserMsg?.slice(0, 40) || 'New conversation';
-    const serialized = msgs.map(m => ({ ...m, compiling: false, timestamp: m.timestamp instanceof Date ? m.timestamp.toISOString() : m.timestamp }));
+    const serialized = msgs.filter(m => !m.local).map(m => ({ ...m, compiling: false, timestamp: m.timestamp instanceof Date ? m.timestamp.toISOString() : m.timestamp }));
     try {
       if (sessionId) {
         await supabase.from('chat_sessions').update({ messages: serialized }).eq('id', sessionId);
@@ -265,92 +271,81 @@ function AdvisorInner() {
   const sendMessage = useCallback(async (text: string, policyMeta?: PolicyMeta) => {
     if (!text.trim() || isTyping) return;
 
-    const isFirst = messages.length === 1;
+    const isFirst = !messages.some(m => m.role === 'user');
     const userMsg: ExtendedMessage = { id: Date.now().toString(), role: 'user', content: text.trim(), timestamp: new Date() };
     const newMessages = [...messages, userMsg];
     setMessages(newMessages);
     setInput('');
     setIsTyping(true);
 
-    try {
-      const history = messages.map(m => ({ role: m.role === 'assistant' ? 'model' : 'user', parts: [{ text: m.content }] }));
-      const res = await fetch('/api/advisor', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          messages: [...history, { role: 'user', parts: [{ text: text.trim() }] }],
-          ...(policyMeta ? { policyContext: policyMeta } : {}),
-          simpleMode: simple,
-        }),
-      });
-      const data = await res.json();
+    // Only real conversation turns go to the model — never the UI greeting or
+    // error bubbles — and only the recent part of a long conversation.
+    const history = newMessages
+      .filter(m => !m.local)
+      .slice(-MAX_HISTORY_TURNS)
+      .map(m => ({ role: m.role, content: m.content.slice(0, MAX_TURN_CHARS) }));
+    const res = await apiFetch<{
+      response: string; summary?: string; dollarLine?: string; policyId?: string;
+      policyTitle?: string; category?: string; hasFullAnalysis?: boolean;
+    }>('/api/advisor', {
+      body: { messages: history, ...(policyMeta ? { policyId: policyMeta.policyId } : {}), simpleMode: simple },
+    });
 
-      const aiId = (Date.now() + 1).toString();
-      const aiMsg: ExtendedMessage = {
-        id: aiId,
-        role: 'assistant',
-        content: data.response || 'I had trouble processing that. Please try again.',
-        timestamp: new Date(),
-        summary: data.summary || undefined,
-        dollarLine: data.dollarLine || undefined,
-        policyId: data.policyId || policyMeta?.policyId || undefined,
-        policyTitle: data.policyTitle || policyMeta?.policyTitle || undefined,
-        category: data.category || policyMeta?.category || undefined,
-        hasFullAnalysis: data.hasFullAnalysis || false,
-        compiling: !!policyMeta,
-      };
-      const finalMessages = [...newMessages, aiMsg];
-      setMessages(finalMessages);
-
-      const savedId = await saveSession(activeSessionId, finalMessages, isFirst ? text.trim() : undefined);
-      if (!activeSessionId && savedId) setActiveSessionId(savedId);
-
-      // Background: pre-compile the full analysis so View Full Impact is instant.
-      if (policyMeta) {
-        fetch('/api/analyze', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            policy: {
-              id: policyMeta.policyId, title: policyMeta.policyTitle,
-              summary: policyMeta.context || policyMeta.policyTitle, description: policyMeta.context || policyMeta.policyTitle,
-              category: policyMeta.category || 'General', status: 'proposed', date: new Date().toISOString(),
-              source: 'Advisor', sourceUrl: '', governingBody: 'Federal', region: 'Federal',
-              confidenceLevel: 'medium', impacts: [], assumptions: [], tags: [],
-            },
-          }),
-        }).catch(() => null).finally(() => {
-          setMessages(prev => prev.map(m => m.id === aiId ? { ...m, compiling: false } : m));
-        });
-      }
-    } catch {
+    if (!res.ok) {
+      // Shown once, not saved, and not sent back to the model.
       setMessages(prev => [...prev, {
-        id: (Date.now() + 1).toString(), role: 'assistant',
-        content: "I'm having trouble connecting right now. Please try again in a moment.",
-        timestamp: new Date(),
+        id: (Date.now() + 1).toString(), role: 'assistant', local: true,
+        content: res.message, timestamp: new Date(),
       }]);
+      setIsTyping(false);
+      return;
     }
+
+    const data = res.data;
+    const aiMsg: ExtendedMessage = {
+      id: (Date.now() + 1).toString(),
+      role: 'assistant',
+      content: data.response,
+      timestamp: new Date(),
+      summary: data.summary || undefined,
+      dollarLine: data.dollarLine || undefined,
+      policyId: data.policyId || policyMeta?.policyId || undefined,
+      policyTitle: data.policyTitle || policyMeta?.policyTitle || undefined,
+      category: data.category || policyMeta?.category || undefined,
+      hasFullAnalysis: data.hasFullAnalysis || false,
+    };
+    const finalMessages = [...newMessages, aiMsg];
+    setMessages(finalMessages);
+
+    const savedId = await saveSession(activeSessionId, finalMessages, isFirst ? text.trim() : undefined);
+    if (!activeSessionId && savedId) setActiveSessionId(savedId);
     setIsTyping(false);
   }, [messages, isTyping, activeSessionId, simple]);
 
-  // Auto-send from URL params — wait until auth resolves so saveSession has userId
+  // Arriving with ?policyId= (e.g. "Ask advisor" on the dashboard) prefills the
+  // question for a policy from the user's own feed. Nothing is sent until the
+  // user presses send.
   useEffect(() => {
-    if (!policyParam || autoSentRef.current) return;
-    autoSentRef.current = true;
-    const text = contextParam
-      ? `Tell me about the financial impact of ${policyParam}: ${contextParam}`
-      : `Tell me about the financial impact of ${policyParam}`;
-    const meta: PolicyMeta = { policyId: slugify(policyParam), policyTitle: policyParam, context: contextParam || undefined };
-    // Wait for sessions load (which sets userId.current) before firing
-    const timer = setTimeout(() => sendMessage(text, meta), 1200);
-    return () => clearTimeout(timer);
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [policyParam, contextParam]);
+    if (!policyIdParam || prefilledRef.current || feedLoading) return;
+    const match = feed.find(p => p.id === policyIdParam);
+    if (!match) return;
+    prefilledRef.current = true;
+    setPendingPolicy({ policyId: match.id, policyTitle: match.title, category: match.category });
+    setInput(`Tell me about the financial impact of ${match.title}`);
+    inputRef.current?.focus();
+  }, [policyIdParam, feed, feedLoading]);
 
   const pickPolicy = (p: DiscoveredPolicy) => {
+    setPendingPolicy(null);
     sendMessage(`Tell me about the financial impact of ${p.title}`, {
-      policyId: p.id, policyTitle: p.title, category: p.category, context: p.summary || p.description,
+      policyId: p.id, policyTitle: p.title, category: p.category,
     });
+  };
+
+  const submitInput = () => {
+    const meta = pendingPolicy;
+    setPendingPolicy(null);
+    sendMessage(input, meta || undefined);
   };
 
   const loadSession = (session: ChatSession) => {
@@ -364,7 +359,7 @@ function AdvisorInner() {
   };
 
   const handleKeyDown = (e: React.KeyboardEvent) => {
-    if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); sendMessage(input); }
+    if (e.key === 'Enter' && !e.shiftKey && !e.nativeEvent.isComposing) { e.preventDefault(); submitInput(); }
   };
 
   return (
@@ -469,10 +464,10 @@ function AdvisorInner() {
                 onDragLeave={() => setDragOver(false)}
                 onDrop={(e) => {
                   e.preventDefault(); setDragOver(false);
-                  try {
-                    const p = JSON.parse(e.dataTransfer.getData('application/json')) as DiscoveredPolicy;
-                    if (p?.title) pickPolicy(p);
-                  } catch { /* ignore bad drops */ }
+                  // Only ids of policies already in the loaded feed are accepted.
+                  const id = e.dataTransfer.getData(POLICY_DRAG_TYPE);
+                  const p = feed.find(f => f.id === id);
+                  if (p) pickPolicy(p);
                 }}
                 className={`mt-4 glass-strong rounded-2xl p-3 transition-all ${dragOver ? 'border-primary/50 ring-2 ring-primary/30' : ''}`}
               >
@@ -484,10 +479,11 @@ function AdvisorInner() {
                     onKeyDown={handleKeyDown}
                     placeholder={dragOver ? 'Drop a policy here to analyze it…' : 'Ask about any policy and how it affects your finances…'}
                     rows={1}
+                    maxLength={MAX_TURN_CHARS}
                     className="flex-1 bg-transparent text-sm text-text-primary placeholder-text-muted resize-none outline-none py-1.5 max-h-32"
                     style={{ minHeight: '28px' }}
                   />
-                  <button onClick={() => sendMessage(input)} disabled={!input.trim() || isTyping}
+                  <button onClick={submitInput} disabled={!input.trim() || isTyping}
                     className="w-9 h-9 rounded-xl bg-primary hover:bg-primary/90 disabled:opacity-40 disabled:cursor-not-allowed flex items-center justify-center transition-colors flex-shrink-0">
                     <Send className="w-4 h-4 text-white" />
                   </button>

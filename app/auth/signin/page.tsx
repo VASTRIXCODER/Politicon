@@ -6,6 +6,7 @@ import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import { Eye, EyeOff, Zap, ArrowLeft } from 'lucide-react';
 import { createClient } from '@/lib/supabase/client';
+import { safeNextPath } from '@/lib/safeNext';
 import ImpactCardDemo from '@/components/landing/ImpactCardDemo';
 import Button from '@/components/ui/Button';
 import AmbientBackground from '@/components/landing/AmbientBackground';
@@ -59,7 +60,8 @@ export default function SignInPage() {
         .eq('id', data.user.id)
         .single();
       if (profile?.has_completed_onboarding) {
-        router.push('/dashboard');
+        const next = safeNextPath(new URLSearchParams(window.location.search).get('next'));
+        router.push(next || '/dashboard');
       } else {
         router.push('/onboarding');
       }

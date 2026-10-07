@@ -1,103 +1,113 @@
-import { NextRequest, NextResponse } from 'next/server';
-import { createClient as createAdminClient } from '@supabase/supabase-js';
-import { createClient as createServerClient } from '@/lib/supabase/server';
+import 'server-only';
+import { createHmac } from 'node:crypto';
+import type { NextResponse } from 'next/server';
+import { createAdminClient } from '@/lib/supabase/admin';
+import { apiError } from '@/lib/server/http';
 
 /**
- * Supabase-backed fixed-window rate limiting.
- *
- * Vercel runs each route on many short-lived serverless instances, so an
- * in-memory counter would only ever see a fraction of the traffic. Instead we
- * delegate the atomic increment-and-check to a Postgres function (see
- * supabase/migrations/20260626_rate_limits.sql) via the service-role client.
+ * Fixed-window rate limiting backed by Postgres (see the check_rate_limit RPC),
+ * so limits hold across Vercel's many serverless instances. A small in-memory
+ * counter per instance is a second layer that still works if the database
+ * can't be reached.
  */
 
-export type RateLimitConfig = { limit: number; windowSeconds: number };
+export type RateLimitConfig = {
+  limit: number;
+  windowSeconds: number;
+  /** Claude-backed routes refuse requests when the limiter itself is down. */
+  failClosed: boolean;
+};
 
-// Per-route limits. AI routes are expensive (Claude calls), so they're tighter.
 export const RATE_LIMITS = {
-  analyze:            { limit: 20,  windowSeconds: 3600 }, // full policy analysis
-  advisor:            { limit: 40,  windowSeconds: 3600 }, // chat / policy reply
-  discover:           { limit: 20,  windowSeconds: 3600 }, // personalized discovery
-  feedRefresh:        { limit: 10,  windowSeconds: 3600 }, // manual feed refresh (AI)
-  cumulativeSummary:  { limit: 40,  windowSeconds: 3600 },
-  newsletter:         { limit: 5,   windowSeconds: 3600 }, // signup spam guard
-  accountDelete:      { limit: 5,   windowSeconds: 3600 },
-  userCount:          { limit: 120, windowSeconds: 60 },   // cheap, but cap scraping
+  analyze:           { limit: 20,  windowSeconds: 3600, failClosed: true },
+  advisor:           { limit: 40,  windowSeconds: 3600, failClosed: true },
+  feed:              { limit: 10,  windowSeconds: 3600, failClosed: true },
+  insight:           { limit: 20,  windowSeconds: 3600, failClosed: true },
+  cumulativeSummary: { limit: 40,  windowSeconds: 3600, failClosed: true },
+  newsletter:        { limit: 5,   windowSeconds: 3600, failClosed: false },
+  accountDelete:     { limit: 5,   windowSeconds: 3600, failClosed: false },
+  userCount:         { limit: 120, windowSeconds: 60,   failClosed: false },
+  health:            { limit: 60,  windowSeconds: 60,   failClosed: false },
 } as const satisfies Record<string, RateLimitConfig>;
 
-function admin() {
-  return createAdminClient(
-    process.env.NEXT_PUBLIC_SUPABASE_URL!,
-    process.env.SUPABASE_SERVICE_ROLE_KEY!,
+export type RateLimitRoute = keyof typeof RATE_LIMITS;
+
+/** Client IP as reported by Vercel's edge (x-real-ip can't be set by the client). */
+export function clientIp(req: Request): string {
+  return (
+    req.headers.get('x-real-ip') ||
+    req.headers.get('x-forwarded-for')?.split(',')[0].trim() ||
+    'unknown'
   );
 }
 
-/** Derive a stable identifier: the authenticated user id, else the client IP. */
-async function identify(req: NextRequest): Promise<string> {
-  try {
-    const supabase = createServerClient();
-    const { data: { user } } = await supabase.auth.getUser();
-    if (user) return `user:${user.id}`;
-  } catch { /* fall through to IP */ }
-
-  const fwd = req.headers.get('x-forwarded-for');
-  const ip = fwd?.split(',')[0].trim() || req.headers.get('x-real-ip') || 'unknown';
-  return `ip:${ip}`;
+/** IPs are stored only as a keyed hash, never raw. */
+function hashIp(ip: string): string {
+  const secret = process.env.RATE_LIMIT_SALT || process.env.SUPABASE_SERVICE_ROLE_KEY || 'politicon-rate-limit';
+  return createHmac('sha256', secret).update(ip).digest('hex').slice(0, 32);
 }
 
-export type RateLimitResult =
-  | { ok: true; remaining: number; reset: number }
-  | { ok: false; response: NextResponse };
+// ---------------------------------------------------------------------------
+// Per-instance fallback layer
+// ---------------------------------------------------------------------------
+const memory = new Map<string, { count: number; resetAt: number }>();
+
+function memoryHit(key: string, config: RateLimitConfig): { allowed: boolean; resetAt: number } {
+  const now = Date.now();
+  const entry = memory.get(key);
+  if (!entry || entry.resetAt <= now) {
+    const resetAt = now + config.windowSeconds * 1000;
+    memory.set(key, { count: 1, resetAt });
+    if (memory.size > 5000) {
+      memory.forEach((v, k) => { if (v.resetAt <= now) memory.delete(k); });
+    }
+    return { allowed: true, resetAt };
+  }
+  entry.count += 1;
+  return { allowed: entry.count <= config.limit, resetAt: entry.resetAt };
+}
+
+function tooMany(config: RateLimitConfig, resetAtMs: number): NextResponse {
+  const retryAfter = Math.max(1, Math.ceil((resetAtMs - Date.now()) / 1000));
+  const res = apiError(429, 'rate_limited', 'Too many requests. Please slow down and try again shortly.', retryAfter);
+  res.headers.set('X-RateLimit-Limit', String(config.limit));
+  res.headers.set('X-RateLimit-Remaining', '0');
+  res.headers.set('X-RateLimit-Reset', String(Math.ceil(resetAtMs / 1000)));
+  return res;
+}
 
 /**
- * Check (and consume) one unit against the given route's limit.
- * Fails open: if the rate-limit store is unreachable, the request is allowed
- * so an outage never takes the whole app down.
+ * Consume one unit of the route's limit. Pass the authenticated user's id when
+ * there is one; otherwise the caller is identified by a hash of their IP.
  */
 export async function rateLimit(
-  req: NextRequest,
-  route: string,
-  config: RateLimitConfig,
-): Promise<RateLimitResult> {
+  req: Request,
+  route: RateLimitRoute,
+  opts: { userId?: string } = {},
+): Promise<{ ok: true } | { ok: false; response: NextResponse }> {
+  const config: RateLimitConfig = RATE_LIMITS[route];
+  const identifier = opts.userId ? `user:${opts.userId}` : `iph:${hashIp(clientIp(req))}`;
+
+  const local = memoryHit(`${identifier}:${route}`, config);
+  if (!local.allowed) return { ok: false, response: tooMany(config, local.resetAt) };
+
   try {
-    const identifier = await identify(req);
-    const { data, error } = await admin().rpc('check_rate_limit', {
+    const { data, error } = await createAdminClient().rpc('check_rate_limit', {
       p_identifier: identifier,
       p_route: route,
       p_limit: config.limit,
       p_window_seconds: config.windowSeconds,
     });
+    const row = Array.isArray(data) ? (data[0] as { allowed: boolean; reset_at: string } | undefined) : undefined;
+    if (error || !row) throw error || new Error('check_rate_limit returned no row');
 
-    if (error || !data || !data[0]) {
-      // Fail open on infra errors.
-      return { ok: true, remaining: config.limit, reset: 0 };
+    if (!row.allowed) return { ok: false, response: tooMany(config, new Date(row.reset_at).getTime()) };
+    return { ok: true };
+  } catch (e) {
+    console.error(`Rate limiter unavailable (${route}):`, e);
+    if (config.failClosed) {
+      return { ok: false, response: apiError(503, 'limiter_unavailable', 'This feature is temporarily unavailable. Please try again shortly.', 30) };
     }
-
-    const row = data[0] as { allowed: boolean; current_count: number; reset_at: string };
-    const resetMs = new Date(row.reset_at).getTime();
-    const remaining = Math.max(0, config.limit - row.current_count);
-
-    if (!row.allowed) {
-      const retryAfter = Math.max(1, Math.ceil((resetMs - Date.now()) / 1000));
-      return {
-        ok: false,
-        response: NextResponse.json(
-          { error: 'Rate limit exceeded. Please slow down and try again shortly.' },
-          {
-            status: 429,
-            headers: {
-              'Retry-After': String(retryAfter),
-              'X-RateLimit-Limit': String(config.limit),
-              'X-RateLimit-Remaining': '0',
-              'X-RateLimit-Reset': String(Math.ceil(resetMs / 1000)),
-            },
-          },
-        ),
-      };
-    }
-
-    return { ok: true, remaining, reset: resetMs };
-  } catch {
-    return { ok: true, remaining: config.limit, reset: 0 };
+    return { ok: true };
   }
 }

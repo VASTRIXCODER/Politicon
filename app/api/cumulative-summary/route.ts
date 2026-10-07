@@ -1,61 +1,41 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { createClient } from '@/lib/supabase/server';
+import { z } from 'zod';
 import { cumulativeSummary } from '@/lib/claude';
-import { UserProfile } from '@/types';
-import { mapDbProfile } from '@/lib/profile';
-import { rateLimit, RATE_LIMITS } from '@/lib/rateLimit';
+import { getRequestContext } from '@/lib/server/requestContext';
+import { readJson, apiError } from '@/lib/server/http';
+import { rateLimit } from '@/lib/rateLimit';
+import { checkAiBudget } from '@/lib/server/aiGuard';
+import { aiFailure } from '@/lib/server/aiErrors';
+import { loadPolicyLines } from '@/lib/server/analyses';
 
 export const dynamic = 'force-dynamic';
 export const maxDuration = 60;
 
-const DEFAULT_PROFILE: UserProfile = {
-  id: 'anonymous',
-  hasCompletedOnboarding: false,
-  country: 'United States',
-  state: 'Unknown',
-  city: '',
-  ageRange: '31_45',
-  educationStage: 'college_4yr',
-  employmentStatus: 'employed_full',
-  occupationCategory: 'business_finance',
-  incomeRange: '75k_100k',
-  filingStatus: 'single',
-  housingSituation: 'rent',
-  debtTypes: [],
-  hasDependents: false,
-  topFinancialConcerns: ['cost_of_living', 'retirement'],
-};
+const Body = z.object({
+  policyIds: z.array(z.string().min(1).max(80)).min(1).max(50),
+});
 
 export async function POST(req: NextRequest) {
+  const auth = await getRequestContext();
+  if (!auth.ok) return auth.response;
+  const { supabase, user, profile } = auth.ctx;
+
+  const body = await readJson(req, Body);
+  if (!body.ok) return body.response;
+
+  const loaded = await loadPolicyLines(supabase, user.id, { policyIds: body.data.policyIds });
+  if (!loaded.ok) return apiError(503, 'lookup_failed', 'Could not load your analyses. Please try again.');
+  if (loaded.lines.length === 0) return NextResponse.json({ summary: '' });
+
+  const limited = await rateLimit(req, 'cumulativeSummary', { userId: user.id });
+  if (!limited.ok) return limited.response;
+  const budget = await checkAiBudget('cumulative_summary', user.id);
+  if (!budget.ok) return budget.response;
+
   try {
-    const rl = await rateLimit(req, 'cumulativeSummary', RATE_LIMITS.cumulativeSummary);
-    if (!rl.ok) return rl.response;
-
-    const { items } = (await req.json()) as {
-      items: { title: string; category: string; annual: number }[];
-    };
-    if (!Array.isArray(items) || items.length === 0) {
-      return NextResponse.json({ summary: '' });
-    }
-
-    let profile: UserProfile = { ...DEFAULT_PROFILE };
-    try {
-      const supabase = createClient();
-      const { data: { user } } = await supabase.auth.getUser();
-      if (user) {
-        const { data: profileData } = await supabase
-          .from('user_profiles')
-          .select('*')
-          .eq('id', user.id)
-          .single();
-        if (profileData) profile = mapDbProfile(profileData, profile);
-      }
-    } catch { /* use default profile */ }
-
-    const summary = await cumulativeSummary(items.slice(0, 12), profile);
+    const summary = await cumulativeSummary(loaded.lines, profile, { feature: 'cumulative_summary', userId: user.id, usageId: budget.usageId });
     return NextResponse.json({ summary });
-  } catch (error) {
-    console.error('Cumulative summary error:', error);
-    return NextResponse.json({ summary: '' });
+  } catch (e) {
+    return aiFailure(e, 'Cumulative summary');
   }
 }

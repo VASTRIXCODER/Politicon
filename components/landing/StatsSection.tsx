@@ -11,24 +11,21 @@ const STATIC_STATS = [
 ];
 
 export default function StatsSection() {
-  const [userCount, setUserCount] = useState<number>(0);
+  const [userCount, setUserCount] = useState<number | null>(null);
 
   useEffect(() => {
     fetch('/api/user-count')
       .then(r => r.json())
-      .then(d => setUserCount(d.count ?? 0))
+      .then(d => setUserCount(typeof d.count === 'number' && d.count > 0 ? d.count : null))
       .catch(() => {});
   }, []);
 
+  // The live member count is only shown once it has loaded successfully.
   const stats = [
     ...STATIC_STATS,
-    {
-      value: userCount,
-      suffix: '+',
-      label: 'Members joined',
-      sublabel: 'Real accounts, live count',
-      prefix: '',
-    },
+    ...(userCount !== null
+      ? [{ value: userCount, suffix: '', label: 'Members joined', sublabel: 'Real accounts, live count', prefix: '' }]
+      : []),
   ];
 
   return (
@@ -38,7 +35,7 @@ export default function StatsSection() {
       <div className="absolute inset-x-0 h-px bottom-0 bg-gradient-to-r from-transparent via-secondary/20 to-transparent" />
 
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
-        <div className="grid grid-cols-2 lg:grid-cols-4 gap-y-12 gap-x-6 lg:gap-12">
+        <div className={`grid grid-cols-2 ${stats.length === 4 ? "lg:grid-cols-4" : "lg:grid-cols-3"} gap-y-12 gap-x-6 lg:gap-12`}>
           {stats.map((stat, i) => (
             <motion.div
               key={stat.label}

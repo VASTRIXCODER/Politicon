@@ -4,10 +4,12 @@ import { useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { ExternalLink, Loader2 } from 'lucide-react';
 import { createClient } from '@/lib/supabase/client';
+import { apiFetch } from '@/lib/api';
 
 interface ViewFullImpactButtonProps {
   policyId: string;
   policyTitle: string;
+  /** Display-only metadata; the server resolves policy details from the user's feed. */
   category?: string;
   description?: string;
   region?: string;
@@ -23,22 +25,20 @@ interface ViewFullImpactButtonProps {
 //   1. Look up an existing analysis for (user, policy_id) in analyzed_policies.
 //   2. If found -> navigate to /impact/<id> (no re-analysis).
 //   3. If missing -> POST /api/analyze (which upserts), then navigate.
-// All errors are swallowed to the console; the user never sees a raw error.
+//   4. If generation fails, show the reason under the button.
 export default function ViewFullImpactButton({
   policyId,
-  policyTitle,
-  category,
-  description,
-  region,
   variant = 'compact',
   label = 'View Full Impact',
 }: ViewFullImpactButtonProps) {
   const router = useRouter();
   const [loading, setLoading] = useState(false);
+  const [error, setError] = useState<string | null>(null);
 
   async function handleClick() {
     if (loading) return;
     setLoading(true);
+    setError(null);
     try {
       const target = `/impact/${encodeURIComponent(policyId)}`;
       const supabase = createClient();
@@ -68,35 +68,12 @@ export default function ViewFullImpactButton({
       }
 
       // No existing analysis -> generate it, then navigate.
-      const res = await fetch('/api/analyze', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          policy: {
-            id: policyId,
-            title: policyTitle,
-            summary: description || policyTitle,
-            description: description || policyTitle,
-            category: category || 'General',
-            status: 'proposed',
-            date: new Date().toISOString(),
-            source: 'Politicon',
-            sourceUrl: '',
-            governingBody: region || 'Federal',
-            region: region || 'Federal',
-            confidenceLevel: 'medium',
-            impacts: [],
-            assumptions: [],
-            tags: [],
-          },
-        }),
-      });
-      if (!res.ok) console.error('Analyze request failed with status', res.status);
-      await res.json().catch(() => null);
-      router.push(target);
+      const res = await apiFetch('/api/analyze', { body: { policyId } });
+      if (res.ok) router.push(target);
+      else setError(res.message);
     } catch (e) {
       console.error('View full impact error:', e);
-      router.push(`/impact/${encodeURIComponent(policyId)}`);
+      setError('Something went wrong. Please try again.');
     } finally {
       setLoading(false);
     }
@@ -110,9 +87,12 @@ export default function ViewFullImpactButton({
   const iconSize = variant === 'chat' ? 'w-3.5 h-3.5' : 'w-3 h-3';
 
   return (
-    <button onClick={handleClick} disabled={loading} className={styles[variant]}>
-      {loading ? <Loader2 className={`${iconSize} animate-spin`} /> : <ExternalLink className={iconSize} />}
-      {loading ? (variant === 'chat' ? 'Preparing analysis...' : 'Loading...') : label}
-    </button>
+    <span className="inline-flex flex-col gap-1">
+      <button onClick={handleClick} disabled={loading} className={styles[variant]}>
+        {loading ? <Loader2 className={`${iconSize} animate-spin`} /> : <ExternalLink className={iconSize} />}
+        {loading ? (variant === 'chat' ? 'Preparing analysis...' : 'Loading...') : label}
+      </button>
+      {error && <span role="alert" className="text-[11px] text-red-300">{error}</span>}
+    </span>
   );
 }
