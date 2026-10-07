@@ -1,61 +1,73 @@
-import { NextResponse } from 'next/server';
-import { createClient } from '@supabase/supabase-js';
+import { NextRequest, NextResponse } from 'next/server';
+import { createAdminClient } from '@/lib/supabase/admin';
+import { rateLimit } from '@/lib/rateLimit';
 
 export const dynamic = 'force-dynamic';
 
 type Check = { ok: boolean; detail?: string };
 
+const TIMEOUT_MS = 3000;
+// Latest migration the code depends on (see supabase/migrations).
+const EXPECTED_SCHEMA_VERSION = '20261007120000';
+
+async function probe(fn: (_signal: AbortSignal) => PromiseLike<{ error: { message?: string; code?: string } | null }>): Promise<Check> {
+  try {
+    const { error } = await fn(AbortSignal.timeout(TIMEOUT_MS));
+    return error ? { ok: false, detail: error.message || error.code } : { ok: true };
+  } catch (e) {
+    return { ok: false, detail: (e as Error).message };
+  }
+}
+
 /**
- * Deployment health check. Reports whether each dependency is configured and
- * reachable — never the secret values themselves.
+ * Deployment health check. Public callers get only { ok }; send the
+ * x-health-token header (HEALTHCHECK_TOKEN) for per-dependency details.
+ * Probes are read-only apart from one rate-limit counter in its own bucket.
  */
-export async function GET() {
+export async function GET(req: NextRequest) {
+  const limited = await rateLimit(req, 'health');
+  if (!limited.ok) return limited.response;
+
   const env = {
     NEXT_PUBLIC_SUPABASE_URL: !!process.env.NEXT_PUBLIC_SUPABASE_URL,
     NEXT_PUBLIC_SUPABASE_ANON_KEY: !!process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY,
     SUPABASE_SERVICE_ROLE_KEY: !!process.env.SUPABASE_SERVICE_ROLE_KEY,
     ANTHROPIC_API_KEY: !!process.env.ANTHROPIC_API_KEY,
+    RATE_LIMIT_SALT: !!process.env.RATE_LIMIT_SALT,
   };
 
   const checks: Record<string, Check> = {};
-
   if (env.NEXT_PUBLIC_SUPABASE_URL && env.SUPABASE_SERVICE_ROLE_KEY) {
-    const admin = createClient(
-      process.env.NEXT_PUBLIC_SUPABASE_URL!,
-      process.env.SUPABASE_SERVICE_ROLE_KEY!,
-    );
-
-    try {
-      const { error } = await admin
-        .from('user_profiles')
-        .select('*', { count: 'exact', head: true });
-      checks.database = error ? { ok: false, detail: error.message || error.code } : { ok: true };
-    } catch (e) {
-      checks.database = { ok: false, detail: (e as Error).message };
-    }
-
-    try {
-      const { error } = await admin.rpc('check_rate_limit', {
-        p_identifier: 'health',
-        p_route: 'health',
-        p_limit: 1000000,
-        p_window_seconds: 60,
-      });
-      checks.rateLimiter = error ? { ok: false, detail: error.message || error.code } : { ok: true };
-    } catch (e) {
-      checks.rateLimiter = { ok: false, detail: (e as Error).message };
-    }
+    const admin = createAdminClient();
+    [checks.database, checks.rateLimiter, checks.migrations] = await Promise.all([
+      probe((s) => admin.from('user_profiles').select('id', { head: true, count: 'exact' }).limit(1).abortSignal(s)),
+      // Exercises the real limiter function (a dedicated, generous bucket).
+      probe((s) =>
+        admin
+          .rpc('check_rate_limit', { p_identifier: 'health', p_route: 'health', p_limit: 1000000, p_window_seconds: 60 })
+          .abortSignal(s)
+      ),
+      // Confirms the security migration (AI budget functions, ledger) is applied.
+      (async (): Promise<Check> => {
+        try {
+          const { data, error } = await admin.rpc('schema_version').abortSignal(AbortSignal.timeout(TIMEOUT_MS));
+          if (error) return { ok: false, detail: error.message || error.code };
+          return String(data) >= EXPECTED_SCHEMA_VERSION
+            ? { ok: true }
+            : { ok: false, detail: `schema ${data}, expected ${EXPECTED_SCHEMA_VERSION}` };
+        } catch (e) {
+          return { ok: false, detail: (e as Error).message };
+        }
+      })(),
+    ]);
   }
-
   if (env.ANTHROPIC_API_KEY) {
     try {
       // Listing models validates the key without spending tokens.
       const res = await fetch('https://api.anthropic.com/v1/models?limit=1', {
-        headers: {
-          'x-api-key': process.env.ANTHROPIC_API_KEY!,
-          'anthropic-version': '2023-06-01',
-        },
+        headers: { 'x-api-key': process.env.ANTHROPIC_API_KEY!, 'anthropic-version': '2023-06-01' },
         cache: 'no-store',
+        signal: AbortSignal.timeout(TIMEOUT_MS),
       });
       checks.anthropic = res.ok ? { ok: true } : { ok: false, detail: `HTTP ${res.status}` };
     } catch (e) {
@@ -63,6 +75,13 @@ export async function GET() {
     }
   }
 
-  const ok = Object.values(env).every(Boolean) && Object.values(checks).every(c => c.ok);
-  return NextResponse.json({ ok, env, checks }, { status: ok ? 200 : 503 });
+  const required = [env.NEXT_PUBLIC_SUPABASE_URL, env.NEXT_PUBLIC_SUPABASE_ANON_KEY, env.SUPABASE_SERVICE_ROLE_KEY, env.ANTHROPIC_API_KEY];
+  const ok = required.every(Boolean) && Object.values(checks).every((c) => c.ok);
+
+  const token = process.env.HEALTHCHECK_TOKEN;
+  const authorized = !!token && req.headers.get('x-health-token') === token;
+  return NextResponse.json(authorized ? { ok, env, checks } : { ok }, {
+    status: ok ? 200 : 503,
+    headers: { 'Cache-Control': 'no-store' },
+  });
 }

@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect, useMemo, useCallback } from 'react';
+import { use, useState, useEffect, useMemo, useCallback } from 'react';
 import { useRouter } from 'next/navigation';
 import { motion } from 'framer-motion';
 import {
@@ -8,6 +8,7 @@ import {
   Home, Briefcase, Heart, PiggyBank, GraduationCap, Landmark, Waves, ShieldAlert,
   Target, Sparkles, Loader2,
 } from 'lucide-react';
+import { apiFetch } from '@/lib/api';
 import { createClient } from '@/lib/supabase/client';
 import { FullAnalysis, ImpactDirection } from '@/types';
 import { getStatusColor } from '@/lib/utils';
@@ -74,8 +75,8 @@ function StatRow({ label, value, positive }: { label: string; value: string; pos
   );
 }
 
-export default function PolicyDetailPage({ params }: { params: { policyId: string } }) {
-  const policyId = decodeURIComponent(params.policyId);
+export default function PolicyDetailPage({ params }: { params: Promise<{ policyId: string }> }) {
+  const policyId = decodeURIComponent(use(params).policyId);
   const router = useRouter();
 
   const [analysis, setAnalysis] = useState<FullAnalysis | null>(null);
@@ -85,6 +86,21 @@ export default function PolicyDetailPage({ params }: { params: { policyId: strin
   const [notFound, setNotFound] = useState(false);
   const [tab, setTab] = useState<Tab>('overview');
   const [analyzedAt, setAnalyzedAt] = useState<string | null>(null);
+  const [generateError, setGenerateError] = useState<string | null>(null);
+
+  async function generate() {
+    setGenerating(true);
+    setGenerateError(null);
+    const res = await apiFetch<{ analysis: FullAnalysis }>('/api/analyze', { body: { policyId } });
+    if (res.ok) {
+      setAnalysis(res.data.analysis);
+      setAnalyzedAt(new Date().toISOString());
+      setNotFound(false);
+    } else {
+      setGenerateError(res.message);
+    }
+    setGenerating(false);
+  }
 
   useEffect(() => {
     const supabase = createClient();
@@ -121,55 +137,8 @@ export default function PolicyDetailPage({ params }: { params: { policyId: strin
           }
         } catch { /* fall through to generate */ }
 
-        // 2) generate it — try to enrich metadata from the cached feed
-        if (cancelled) return;
-        setGenerating(true);
-
-        let meta: { title: string; description: string; category: string; region: string } = {
-          title: titleCase(policyId),
-          description: titleCase(policyId),
-          category: 'taxes',
-          region: 'Federal',
-        };
-        try {
-          const { data: feed } = await supabase
-            .from('user_policy_feed')
-            .select('policies')
-            .eq('user_id', user.id)
-            .maybeSingle();
-          if (feed?.policies && Array.isArray(feed.policies)) {
-            const match = feed.policies.find((p: { id?: string }) => p.id === policyId);
-            if (match) {
-              meta = {
-                title: match.title || meta.title,
-                description: match.summary || match.description || meta.description,
-                category: match.category || meta.category,
-                region: match.region || meta.region,
-              };
-            }
-          }
-        } catch { /* optional */ }
-
-        const res = await fetch('/api/analyze', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            policy: {
-              id: policyId, title: meta.title, summary: meta.description, description: meta.description,
-              category: meta.category, status: 'proposed', date: new Date().toISOString(),
-              source: 'Politicon', sourceUrl: '', governingBody: meta.region, region: meta.region,
-              confidenceLevel: 'medium', impacts: [], assumptions: [], tags: [],
-            },
-          }),
-        });
-        const data = await res.json().catch(() => null);
-        if (cancelled) return;
-        if (data?.analysis) {
-          setAnalysis(data.analysis as FullAnalysis);
-          setAnalyzedAt(new Date().toISOString());
-        } else {
-          setNotFound(true);
-        }
+        // 2) No analysis yet: the user starts generation explicitly (see generate()).
+        if (!cancelled) setNotFound(true);
       } catch (e) {
         console.error('Detail load error:', e);
         if (!cancelled) setNotFound(true);
@@ -210,11 +179,22 @@ export default function PolicyDetailPage({ params }: { params: { policyId: strin
           <div className="w-14 h-14 rounded-2xl bg-primary/10 border border-primary/20 flex items-center justify-center mx-auto mb-5">
             <Target className="w-7 h-7 text-primary" />
           </div>
-          <h1 className="font-display text-2xl font-bold text-text-primary mb-2">Analysis unavailable</h1>
-          <p className="text-sm text-text-muted mb-6">We couldn&apos;t load a full analysis for this policy. Try analyzing it again from your dashboard.</p>
-          <button onClick={() => router.push('/dashboard')} className="bg-primary/20 hover:bg-primary/30 border border-primary/20 text-primary px-5 py-3 rounded-xl text-sm font-medium transition-all">
-            Back to Dashboard
-          </button>
+          <h1 className="font-display text-2xl font-bold text-text-primary mb-2">No analysis yet</h1>
+          <p className="text-sm text-text-muted mb-6">
+            {generating
+              ? 'Compiling your full financial analysis. This can take up to a minute…'
+              : 'Generate a full, personalized analysis of this policy from your feed.'}
+          </p>
+          {generateError && <p role="alert" className="text-sm text-red-300 mb-6">{generateError}</p>}
+          <div className="flex flex-wrap items-center justify-center gap-3">
+            <button onClick={generate} disabled={generating} className="inline-flex items-center gap-2 bg-primary text-white px-5 py-3 rounded-xl text-sm font-medium transition-all disabled:opacity-60">
+              {generating && <Loader2 className="w-4 h-4 animate-spin" />}
+              {generating ? 'Generating…' : 'Generate analysis'}
+            </button>
+            <button onClick={() => router.push('/dashboard')} className="bg-primary/20 hover:bg-primary/30 border border-primary/20 text-primary px-5 py-3 rounded-xl text-sm font-medium transition-all">
+              Back to Dashboard
+            </button>
+          </div>
         </div>
       </Shell>
     );

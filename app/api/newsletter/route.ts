@@ -1,27 +1,26 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { createClient } from '@/lib/supabase/server';
-import { rateLimit, RATE_LIMITS } from '@/lib/rateLimit';
+import { z } from 'zod';
+import { createAdminClient } from '@/lib/supabase/admin';
+import { readJson, apiError } from '@/lib/server/http';
+import { rateLimit } from '@/lib/rateLimit';
+
+const Body = z.object({
+  email: z.string().trim().toLowerCase().max(254).email(),
+});
 
 export async function POST(req: NextRequest) {
-  try {
-    const rl = await rateLimit(req, 'newsletter', RATE_LIMITS.newsletter);
-    if (!rl.ok) return rl.response;
+  const limited = await rateLimit(req, 'newsletter');
+  if (!limited.ok) return limited.response;
 
-    const { email } = await req.json();
-    if (!email || !email.includes('@')) {
-      return NextResponse.json({ error: 'Valid email required' }, { status: 400 });
-    }
+  const body = await readJson(req, Body);
+  if (!body.ok) return apiError(400, 'invalid_email', 'Please enter a valid email address.');
 
-    const supabase = createClient();
-    const { error } = await supabase.from('newsletter_subscribers').upsert(
-      { email, subscribed_at: new Date().toISOString() },
-      { onConflict: 'email' }
-    );
-
-    if (error) throw error;
-    return NextResponse.json({ success: true });
-  } catch (error) {
+  const { error } = await createAdminClient()
+    .from('newsletter_subscribers')
+    .upsert({ email: body.data.email }, { onConflict: 'email', ignoreDuplicates: true });
+  if (error) {
     console.error('Newsletter error:', error);
-    return NextResponse.json({ error: 'Subscription failed.' }, { status: 500 });
+    return apiError(503, 'subscribe_failed', 'Subscription failed. Please try again later.');
   }
+  return NextResponse.json({ success: true });
 }
