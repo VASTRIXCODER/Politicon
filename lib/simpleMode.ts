@@ -1,11 +1,13 @@
 import { UserProfile } from '@/types';
+import { INCOME_MIDPOINTS, type IncomeRange } from '@/lib/profileOptions';
 
 /**
- * Estimate a dollar income midpoint from a profile's incomeRange string.
- * Handles formats like "75k_100k", "100k_150k", "under_30k", "over_250k".
+ * Representative household income for a profile's income bracket. Uses the
+ * shared bracket table, and falls back to parsing unfamiliar codes.
  */
 export function incomeMidpoint(profile?: UserProfile | null): number {
   const raw = profile?.incomeRange || '';
+  if (raw in INCOME_MIDPOINTS) return INCOME_MIDPOINTS[raw as IncomeRange];
   const nums = raw.match(/\d+/g)?.map((n) => parseInt(n, 10) * (/k/i.test(raw) ? 1000 : 1)) || [];
   if (nums.length >= 2) return Math.round((nums[0] + nums[1]) / 2);
   if (nums.length === 1) {

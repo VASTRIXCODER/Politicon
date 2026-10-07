@@ -26,6 +26,9 @@ export const RATE_LIMITS = {
   cumulativeSummary: { limit: 40,  windowSeconds: 3600, failClosed: true },
   newsletter:        { limit: 5,   windowSeconds: 3600, failClosed: false },
   accountDelete:     { limit: 5,   windowSeconds: 3600, failClosed: false },
+  profile:           { limit: 30,  windowSeconds: 3600, failClosed: false },
+  accountExport:     { limit: 5,   windowSeconds: 3600, failClosed: false },
+  analysisDelete:    { limit: 60,  windowSeconds: 3600, failClosed: false },
   userCount:         { limit: 120, windowSeconds: 60,   failClosed: false },
   health:            { limit: 60,  windowSeconds: 60,   failClosed: false },
 } as const satisfies Record<string, RateLimitConfig>;

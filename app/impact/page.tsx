@@ -15,45 +15,33 @@ import ViewFullImpactButton from '@/components/ViewFullImpactButton';
 import { CumulativeStackedBar, CumulativeProjectionLines } from '@/components/charts/Charts';
 import Link from 'next/link';
 
+/** One saved analysis, with just the parts of the structured result this page shows. */
 interface PolicyAnalysisRow {
   id: string;
   policy_id: string;
   policy_title: string;
-  analysis_text: string;
   dollar_impact: number;
   category: string;
   created_at: string;
+  summary: string | null;
+  timeline: { year1?: number; year3?: number; year5?: number } | null;
+  tradeoffs: { gains?: { label: string; value: number }[]; losses?: { label: string; value: number }[] } | null;
+  recommendations: { step: string; priority?: string }[] | null;
+  legacy: boolean | null;
 }
+
+const ROW_COLUMNS =
+  'id, policy_id, policy_title, category, created_at, dollar_impact:net_annual_impact, ' +
+  'summary:analysis->>plainEnglishSummary, timeline:analysis->timeline, tradeoffs:analysis->tradeoffs, ' +
+  'recommendations:analysis->recommendations, legacy:analysis->legacy';
+
+const signedUSD = (n: number) => `${n < 0 ? '−' : '+'}$${Math.abs(Math.round(n)).toLocaleString()}`;
 
 const methodology = [
   { q: 'How are dollar amounts calculated?', a: 'We combine publicly available policy data with your income bracket, filing status, location, and life situation. Calculations draw on CBO, IRS, and academic economic models with transparency into assumptions.' },
   { q: 'What does "net annual impact" mean?', a: 'The sum of all positive and negative policy effects across your selected policies, normalized to an annual dollar figure.' },
   { q: 'How confident are these estimates?', a: 'Each analysis is AI-generated for your specific profile. Proposed policies carry more uncertainty than enacted laws. Always verify with a professional for major decisions.' },
 ];
-
-const SECTION_HEADERS = ['IMMEDIATE EFFECTS', 'RIPPLE EFFECTS', 'DOLLAR BREAKDOWN', 'TRADE-OFFS', 'TRADEOFFS', 'PROJECTIONS', 'RECOMMENDATIONS'];
-
-function parseAnalysisSections(text: string): { header: string; content: string }[] {
-  if (!text) return [];
-  const sections: { header: string; content: string }[] = [];
-  const lines = text.split('\n');
-  let currentHeader = '';
-  let currentContent: string[] = [];
-  for (const line of lines) {
-    const upper = line.trim().toUpperCase().replace(/[^A-Z\s-]/g, '').trim();
-    const isHeader = SECTION_HEADERS.some(h => upper.includes(h));
-    if (isHeader && line.trim().length < 60) {
-      if (currentHeader) sections.push({ header: currentHeader, content: currentContent.join('\n').trim() });
-      currentHeader = line.trim().replace(/^#+\s*/, '').replace(/[*_]/g, '');
-      currentContent = [];
-    } else {
-      currentContent.push(line);
-    }
-  }
-  if (currentHeader) sections.push({ header: currentHeader, content: currentContent.join('\n').trim() });
-  if (sections.length === 0 && text.trim()) return [{ header: '', content: text.trim() }];
-  return sections;
-}
 
 function SkeletonCard() {
   return (
@@ -64,20 +52,49 @@ function SkeletonCard() {
   );
 }
 
-function AnalysisBody({ text, headingTag = 'h4' }: { text: string; headingTag?: 'h3' | 'h4' }) {
-  const sections = parseAnalysisSections(text);
-  if (sections.length === 1 && !sections[0].header) {
-    return <div className="text-sm text-text-muted leading-relaxed whitespace-pre-wrap">{sections[0].content}</div>;
-  }
+function AnalysisBody({ row, headingTag = 'h4' }: { row: PolicyAnalysisRow; headingTag?: 'h3' | 'h4' }) {
   const H = headingTag;
+  const heading = 'text-xs font-mono-data font-bold text-primary uppercase tracking-widest mb-2';
+  const t = row.timeline;
+  const gains = (row.tradeoffs?.gains || []).slice(0, 3);
+  const losses = (row.tradeoffs?.losses || []).slice(0, 3);
+  const recs = (row.recommendations || []).slice(0, 3);
   return (
     <div className="space-y-5">
-      {sections.map((section, i) => (
-        <div key={i}>
-          {section.header && <H className="text-xs font-mono-data font-bold text-primary uppercase tracking-widest mb-2">{section.header}</H>}
-          <div className="text-sm text-text-muted leading-relaxed whitespace-pre-wrap">{section.content}</div>
+      {row.summary && <p className="text-sm text-text-muted leading-relaxed">{row.summary}</p>}
+      {row.legacy && (
+        <p className="text-xs text-text-muted">This is a short summary from an earlier version. Open the full impact to generate the complete breakdown.</p>
+      )}
+      {t && (t.year1 !== undefined || t.year3 !== undefined || t.year5 !== undefined) && (
+        <div>
+          <H className={heading}>Projections</H>
+          <dl className="grid grid-cols-3 gap-3">
+            {([['1 year', t.year1], ['3 years', t.year3], ['5 years', t.year5]] as const).map(([label, v]) => (
+              <div key={label} className="rounded-xl bg-white/5 border border-white/10 px-3 py-2">
+                <dt className="text-[11px] text-text-muted">{label}</dt>
+                <dd className={`font-mono-data text-sm font-semibold ${(v ?? 0) < 0 ? 'text-red-400' : 'text-emerald-400'}`}>{v === undefined ? '—' : signedUSD(v)}</dd>
+              </div>
+            ))}
+          </dl>
         </div>
-      ))}
+      )}
+      {(gains.length > 0 || losses.length > 0) && (
+        <div>
+          <H className={heading}>Trade-offs</H>
+          <ul className="space-y-1.5 text-sm">
+            {gains.map((g, i) => <li key={`g${i}`} className="flex justify-between gap-3"><span className="text-text-muted">{g.label}</span><span className="font-mono-data text-emerald-400">{signedUSD(Math.abs(g.value))}</span></li>)}
+            {losses.map((l, i) => <li key={`l${i}`} className="flex justify-between gap-3"><span className="text-text-muted">{l.label}</span><span className="font-mono-data text-red-400">{signedUSD(-Math.abs(l.value))}</span></li>)}
+          </ul>
+        </div>
+      )}
+      {recs.length > 0 && (
+        <div>
+          <H className={heading}>Recommendations</H>
+          <ul className="list-disc pl-5 space-y-1 text-sm text-text-muted">
+            {recs.map((r, i) => <li key={i}>{r.step}</li>)}
+          </ul>
+        </div>
+      )}
     </div>
   );
 }
@@ -104,14 +121,14 @@ function ImpactContent() {
         if (!user) { setLoading(false); return; }
         try {
           const { data, error: dbErr } = await supabase
-            .from('policy_analyses')
-            .select('*')
+            .from('analyzed_policies')
+            .select(ROW_COLUMNS)
             .eq('user_id', user.id)
-            .order('created_at', { ascending: false });
+            .order('updated_at', { ascending: false });
           if (dbErr) {
-            if ((dbErr as { code?: string }).code !== '42P01') console.error('policy_analyses load error:', dbErr);
+            console.error('Analyses load error:', dbErr);
           } else {
-            const rows = data || [];
+            const rows = (data || []) as unknown as PolicyAnalysisRow[];
             setAnalyses(rows);
             setCheckedIds(new Set(rows.map(r => r.id)));
             if (policyParam) {
@@ -233,7 +250,7 @@ function ImpactContent() {
                       <ViewFullImpactButton policyId={selectedPolicy.policy_id} policyTitle={selectedPolicy.policy_title} category={selectedPolicy.category} variant="chat" />
                     </div>
                   </div>
-                  <AnalysisBody text={selectedPolicy.analysis_text} headingTag="h3" />
+                  <AnalysisBody row={selectedPolicy} headingTag="h3" />
                 </GlassCard>
               )}
 
@@ -287,7 +304,7 @@ function ImpactContent() {
 
                         {selectedPolicy?.id === analysis.id && (
                           <motion.div initial={{ opacity: 0, height: 0 }} animate={{ opacity: 1, height: 'auto' }} className="mt-2 glass rounded-2xl p-6 overflow-hidden">
-                            <AnalysisBody text={analysis.analysis_text} headingTag="h4" />
+                            <AnalysisBody row={analysis} headingTag="h4" />
                           </motion.div>
                         )}
                       </div>

@@ -11,13 +11,16 @@ export interface RequestContext {
   user: User;
   profile: UserProfile;
   simpleMode: boolean;
+  /** When the financial profile last changed; analyses older than this are stale. */
+  profileVersion: string | null;
 }
 
 // Columns the AI prompts actually use — nothing else is loaded or sent.
 const PROFILE_COLUMNS =
   'id, has_completed_onboarding, country, state, city, age_range, education_stage, employment_status, ' +
   'occupation_category, income_range, filing_status, housing_situation, debt_types, has_dependents, ' +
-  'top_financial_concerns, reading_mode';
+  'top_financial_concerns, reading_mode, dependents_count, dependent_age_bands, investments, home_value_band, ' +
+  'financial_updated_at';
 
 const EMPTY_PROFILE: UserProfile = {
   id: '',
@@ -77,5 +80,6 @@ export async function getRequestContext(
   }
 
   const simpleMode = row?.reading_mode === 'simple';
-  return { ok: true, ctx: { supabase, user, profile, simpleMode } };
+  const profileVersion = (row as { financial_updated_at?: string | null } | null)?.financial_updated_at ?? null;
+  return { ok: true, ctx: { supabase, user, profile, simpleMode, profileVersion } };
 }

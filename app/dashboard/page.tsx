@@ -143,11 +143,14 @@ function PolicyFeedCard({ policy, analyzed, onAnalyze, onAskAdvisor, analyzingId
   );
 }
 
+const RECENT_LIMIT = 12;
+
 export default function DashboardPage() {
   const router = useRouter();
   const [firstName, setFirstName] = useState('');
   const [state, setState] = useState('');
   const [analyses, setAnalyses] = useState<PolicyAnalysisRow[]>([]);
+  const [totals, setTotals] = useState<{ count: number; netAnnual: number } | null>(null);
   const [portfolioInsight, setPortfolioInsight] = useState('');
   const [loading, setLoading] = useState(true);
   const [insightLoading, setInsightLoading] = useState(false);
@@ -166,6 +169,14 @@ export default function DashboardPage() {
     setTimeout(() => setToast(null), 3500);
   }
 
+  // The list shows the latest few; totals always cover every analysis.
+  async function loadTotals() {
+    const supabase = createClient();
+    const { data } = await supabase.rpc('analysis_totals');
+    const row = Array.isArray(data) ? data[0] : data;
+    if (row) setTotals({ count: Number(row.analysis_count) || 0, netAnnual: Number(row.net_annual) || 0 });
+  }
+
   async function refetchAnalyses() {
     const supabase = createClient();
     const { data: { user } } = await supabase.auth.getUser();
@@ -174,9 +185,10 @@ export default function DashboardPage() {
       .from('policy_analyses')
       .select('*')
       .eq('user_id', user.id)
-      .order('created_at', { ascending: false })
-      .limit(12);
+      .order('updated_at', { ascending: false })
+      .limit(RECENT_LIMIT);
     if (data) setAnalyses(data);
+    loadTotals();
   }
 
   useEffect(() => {
@@ -207,8 +219,9 @@ export default function DashboardPage() {
             .from('policy_analyses')
             .select('*')
             .eq('user_id', user.id)
-            .order('created_at', { ascending: false })
-            .limit(12);
+            .order('updated_at', { ascending: false })
+            .limit(RECENT_LIMIT);
+          loadTotals();
 
           if (analysesErr) {
             if ((analysesErr as { code?: string }).code !== '42P01') console.error('policy_analyses load error:', analysesErr);
@@ -227,16 +240,23 @@ export default function DashboardPage() {
     load();
   }, []);
 
-  // Realtime: keep net impact + analyzed list live as analyses are saved
+  // Realtime: keep net impact + analyzed list live as this user's analyses change
   useEffect(() => {
     const supabase = createClient();
-    // Subscribe without a user filter first; filter by user_id in the callback
-    const channel = supabase
-      .channel('dashboard-analyses')
-      .on('postgres_changes', { event: '*', schema: 'public', table: 'policy_analyses' },
-        () => { refetchAnalyses(); })
-      .subscribe();
-    return () => { supabase.removeChannel(channel); };
+    let channel: ReturnType<typeof supabase.channel> | null = null;
+    let cancelled = false;
+    supabase.auth.getUser().then(({ data: { user } }) => {
+      if (!user || cancelled) return;
+      channel = supabase
+        .channel(`dashboard-analyses-${user.id}`)
+        .on('postgres_changes', { event: '*', schema: 'public', table: 'analyzed_policies', filter: `user_id=eq.${user.id}` },
+          () => { refetchAnalyses(); })
+        .subscribe();
+    });
+    return () => {
+      cancelled = true;
+      if (channel) supabase.removeChannel(channel);
+    };
   }, []);
 
   // The insight is optional and loads after the page is already usable.
@@ -291,7 +311,8 @@ export default function DashboardPage() {
     router.push(`/advisor?policyId=${encodeURIComponent(policy.id)}`);
   }
 
-  const netImpact = useMemo(() => analyses.reduce((sum, a) => sum + (a.dollar_impact || 0), 0), [analyses]);
+  const netImpact = totals?.netAnnual ?? analyses.reduce((sum, a) => sum + (a.dollar_impact || 0), 0);
+  const analysisCount = totals?.count ?? analyses.length;
   const analyzedIds = useMemo(() => new Set(analyses.map(a => a.policy_id)), [analyses]);
 
   return (
@@ -341,7 +362,7 @@ export default function DashboardPage() {
                     </div>
                   )}
                   <p className="text-text-muted text-sm mt-2">
-                    {analyses.length === 0 ? 'No policies analyzed yet' : `Across ${analyses.length} ${analyses.length === 1 ? 'policy' : 'policies'} analyzed`}
+                    {analysisCount === 0 ? 'No policies analyzed yet' : `Across ${analysisCount} ${analysisCount === 1 ? 'policy' : 'policies'} analyzed`}
                   </p>
                 </div>
                 <div className="flex flex-col gap-3">

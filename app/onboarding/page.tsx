@@ -1,48 +1,71 @@
 'use client';
 
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useCallback, useRef } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { useRouter } from 'next/navigation';
-import { ChevronRight, ChevronLeft, Check, Zap, MapPin, Briefcase, Home } from 'lucide-react';
+import { ChevronRight, ChevronLeft, Check, Zap, MapPin, User, Briefcase, Home } from 'lucide-react';
 import { createClient } from '@/lib/supabase/client';
+import { apiFetch } from '@/lib/api';
 import AmbientBackground from '@/components/landing/AmbientBackground';
+import {
+  AGE_RANGES, CONCERNS, DEBT_TYPES, DEPENDENT_AGE_BANDS, EDUCATION_LEVELS, EMPLOYMENT_STATUSES,
+  FILING_STATUSES, HOME_VALUE_BANDS, HOUSING_SITUATIONS, INCOME_RANGES, INVESTMENT_TYPES, MAX_CONCERNS,
+  MAX_DEPENDENTS, OCCUPATIONS, US_STATES, isHomeowner, validOnly as keepAll, validOrEmpty as keep,
+} from '@/lib/profileOptions';
+import { FinancialProfileSchema } from '@/lib/profileSchema';
 
-const usStates = ['Alabama','Alaska','Arizona','Arkansas','California','Colorado','Connecticut','Delaware','Florida','Georgia','Hawaii','Idaho','Illinois','Indiana','Iowa','Kansas','Kentucky','Louisiana','Maine','Maryland','Massachusetts','Michigan','Minnesota','Mississippi','Missouri','Montana','Nebraska','Nevada','New Hampshire','New Jersey','New Mexico','New York','North Carolina','North Dakota','Ohio','Oklahoma','Oregon','Pennsylvania','Rhode Island','South Carolina','South Dakota','Tennessee','Texas','Utah','Vermont','Virginia','Washington','West Virginia','Wisconsin','Wyoming'];
-const ageRanges = [{value:'under_18',label:'Under 18'},{value:'18_22',label:'18–22'},{value:'23_30',label:'23–30'},{value:'31_45',label:'31–45'},{value:'46_60',label:'46–60'},{value:'60_plus',label:'60+'}];
-const educationStages = [{value:'middle_high',label:'Middle / High school'},{value:'college_2yr',label:'College (2-year)'},{value:'college_4yr',label:'College (4-year)'},{value:'graduate',label:'Graduate / Professional'},{value:'not_enrolled',label:'Not currently enrolled'}];
-const employmentStatuses = [{value:'student',label:'Student'},{value:'employed_full',label:'Employed full-time'},{value:'employed_part',label:'Employed part-time'},{value:'self_employed',label:'Self-employed'},{value:'unemployed',label:'Unemployed'},{value:'retired',label:'Retired'}];
-const occupationCategories = [{value:'tech',label:'Tech / Engineering'},{value:'healthcare',label:'Healthcare'},{value:'education',label:'Education'},{value:'service_retail',label:'Service / Retail'},{value:'manufacturing',label:'Manufacturing'},{value:'business_finance',label:'Business / Finance'},{value:'creative_media',label:'Creative / Media'},{value:'public_sector',label:'Public sector'},{value:'other',label:'Other'},{value:'not_applicable',label:'Not applicable'}];
-const incomeRanges = [{value:'under_25k',label:'Under $25,000'},{value:'25k_50k',label:'$25,000 – $50,000'},{value:'50k_75k',label:'$50,000 – $75,000'},{value:'75k_100k',label:'$75,000 – $100,000'},{value:'100k_plus',label:'$100,000+'}];
-const filingStatuses = [{value:'single',label:'Single'},{value:'married_joint',label:'Married filing jointly'},{value:'married_separate',label:'Married filing separately'},{value:'head_of_household',label:'Head of household'},{value:'prefer_not',label:'Prefer not to say'}];
-const housingSituations = [{value:'rent',label:'Rent'},{value:'own',label:'Own'},{value:'family',label:'Live with family'},{value:'campus',label:'Campus housing'},{value:'other',label:'Other'}];
-const debtTypes = [{value:'student_loans',label:'Student loans'},{value:'credit_card',label:'Credit card debt'},{value:'auto_loans',label:'Auto loans'},{value:'mortgage',label:'Mortgage'},{value:'none',label:'None'}];
-const topFinancialConcernOptions = [{value:'cost_of_living',label:'Rising cost of living'},{value:'healthcare',label:'Healthcare expenses'},{value:'student_debt',label:'Student loan debt'},{value:'job_security',label:'Job security'},{value:'housing',label:'Housing affordability'},{value:'retirement',label:'Saving for retirement'},{value:'childcare',label:'Childcare costs'},{value:'taxes',label:'Tax burden'},{value:'inflation',label:'Inflation impact'}];
+interface Draft {
+  state: string;
+  city: string;
+  ageRange: string;
+  educationStage: string;
+  employmentStatus: string;
+  occupationCategory: string;
+  incomeRange: string;
+  filingStatus: string;
+  housingSituation: string;
+  homeValueBand: string;
+  debtTypes: string[];
+  hasDependents: boolean | null;
+  dependentsCount: number;
+  dependentAgeBands: string[];
+  topFinancialConcerns: string[];
+  investments: string;
+}
 
-const stages = [
-  { id: 'location', label: 'Location', icon: MapPin },
-  { id: 'finances', label: 'Finances', icon: Briefcase },
-  { id: 'life', label: 'Life Situation', icon: Home },
+const EMPTY: Draft = {
+  state: '', city: '', ageRange: '', educationStage: '', employmentStatus: '', occupationCategory: '',
+  incomeRange: '', filingStatus: '', housingSituation: '', homeValueBand: '', debtTypes: [],
+  hasDependents: null, dependentsCount: 1, dependentAgeBands: [], topFinancialConcerns: [], investments: '',
+};
+
+const STAGES = [
+  { label: 'Location', icon: MapPin, steps: [0, 1] },
+  { label: 'About you', icon: User, steps: [2, 3, 4, 5] },
+  { label: 'Finances', icon: Briefcase, steps: [6, 7, 8, 9] },
+  { label: 'Household', icon: Home, steps: [10, 11, 12] },
 ];
+const TOTAL_STEPS = 13;
 
-const TOTAL_STEPS = 11;
+const draftKey = (userId: string) => `politicon:onboarding-draft:${userId}`;
 
 function OptionButton({ label, selected, onClick }: { label: string; selected: boolean; onClick: () => void }) {
   return (
-    <button onClick={onClick} className={`w-full text-left px-5 py-4 rounded-2xl border text-sm transition-all ${
-      selected ? 'bg-primary/15 border-primary/40 text-text-primary' : 'glass border-white/8 text-text-muted hover:text-text-primary hover:border-white/16'
+    <button type="button" onClick={onClick} aria-pressed={selected} className={`w-full text-left px-5 py-4 rounded-2xl border text-sm transition-all ${
+      selected ? 'bg-primary/15 border-primary/40 text-text-primary' : 'glass border-white/10 text-text-muted hover:text-text-primary hover:border-white/20'
     }`}>
-      <div className="flex items-center justify-between">
+      <div className="flex items-center justify-between gap-3">
         <span>{label}</span>
-        {selected && <Check className="w-4 h-4 text-primary" />}
+        {selected && <Check className="w-4 h-4 text-primary flex-shrink-0" />}
       </div>
     </button>
   );
 }
 
-function MultiOptionButton({ label, selected, onClick }: { label: string; selected: boolean; onClick: () => void }) {
+function MultiOptionButton({ label, selected, disabled, onClick }: { label: string; selected: boolean; disabled?: boolean; onClick: () => void }) {
   return (
-    <button onClick={onClick} className={`text-left px-4 py-3 rounded-xl border text-sm transition-all ${
-      selected ? 'bg-primary/15 border-primary/40 text-text-primary' : 'glass border-white/8 text-text-muted hover:text-text-primary hover:border-white/16'
+    <button type="button" onClick={onClick} aria-pressed={selected} disabled={disabled} className={`text-left px-4 py-3 rounded-xl border text-sm transition-all disabled:opacity-40 disabled:cursor-not-allowed ${
+      selected ? 'bg-primary/15 border-primary/40 text-text-primary' : 'glass border-white/10 text-text-muted hover:text-text-primary hover:border-white/20'
     }`}>
       <div className="flex items-center gap-2">
         <div className={`w-4 h-4 rounded border flex items-center justify-center flex-shrink-0 ${
@@ -54,218 +77,311 @@ function MultiOptionButton({ label, selected, onClick }: { label: string; select
   );
 }
 
+function Question({ title, hint, children }: { title: string; hint?: string; children: React.ReactNode }) {
+  return (
+    <motion.div initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: -20 }} transition={{ duration: 0.25 }}>
+      <h1 className={`font-display text-2xl sm:text-3xl font-bold text-text-primary ${hint ? 'mb-2' : 'mb-8'}`}>{title}</h1>
+      {hint && <p className="text-sm text-text-muted mb-6">{hint}</p>}
+      {children}
+    </motion.div>
+  );
+}
+
 export default function OnboardingPage() {
   const router = useRouter();
-  const supabase = createClient();
+  const [supabase] = useState(() => createClient());
+  const [userId, setUserId] = useState<string | null>(null);
   const [step, setStep] = useState(0);
-  const [showConfetti, setShowConfetti] = useState(false);
+  const [p, setP] = useState<Draft>(EMPTY);
+  const [showDone, setShowDone] = useState(false);
   const [saving, setSaving] = useState(false);
   const [saveError, setSaveError] = useState('');
-  const [authChecked, setAuthChecked] = useState(false);
+  // Drafts are only written once the user has actually changed an answer.
+  const dirty = useRef(false);
 
-  // Guard: onboarding requires an active session.
+  // Load the session, then prefill from a saved draft or the existing profile.
   useEffect(() => {
-    supabase.auth.getUser().then(({ data: { user } }) => {
-      if (!user) {
-        router.replace('/auth/signin');
-      } else {
-        setAuthChecked(true);
+    let cancelled = false;
+    (async () => {
+      const { data: { user } } = await supabase.auth.getUser();
+      if (!user) { router.replace('/auth/signin?next=/onboarding'); return; }
+
+      let next: Draft = EMPTY;
+      const { data: row } = await supabase.from('user_profiles').select('*').eq('id', user.id).maybeSingle();
+      if (row) {
+        next = {
+          state: US_STATES.includes(row.state) ? row.state : '',
+          city: row.city || '',
+          ageRange: keep(AGE_RANGES, row.age_range),
+          educationStage: keep(EDUCATION_LEVELS, row.education_stage),
+          employmentStatus: keep(EMPLOYMENT_STATUSES, row.employment_status),
+          occupationCategory: keep(OCCUPATIONS, row.occupation_category),
+          incomeRange: keep(INCOME_RANGES, row.income_range),
+          filingStatus: keep(FILING_STATUSES, row.filing_status),
+          housingSituation: keep(HOUSING_SITUATIONS, row.housing_situation),
+          homeValueBand: keep(HOME_VALUE_BANDS, row.home_value_band),
+          debtTypes: keepAll(DEBT_TYPES, row.debt_types),
+          hasDependents: row.dependents_count === null || row.dependents_count === undefined ? null : row.dependents_count > 0,
+          dependentsCount: row.dependents_count > 0 ? row.dependents_count : 1,
+          dependentAgeBands: keepAll(DEPENDENT_AGE_BANDS, row.dependent_age_bands),
+          topFinancialConcerns: keepAll(CONCERNS, row.top_financial_concerns).slice(0, MAX_CONCERNS),
+          investments: keep(INVESTMENT_TYPES, row.investments),
+        };
       }
+      try {
+        const saved = localStorage.getItem(draftKey(user.id));
+        if (saved) {
+          const draft = JSON.parse(saved) as { savedAt?: string; answers?: Partial<Draft> };
+          // A profile saved since the draft (e.g. from Settings) wins over the draft.
+          const serverNewer = row?.financial_updated_at && draft.savedAt && new Date(row.financial_updated_at) > new Date(draft.savedAt);
+          if (draft.answers && !serverNewer) next = { ...next, ...draft.answers };
+          if (serverNewer) localStorage.removeItem(draftKey(user.id));
+        }
+      } catch { /* storage unavailable or corrupt draft */ }
+
+      if (cancelled) return;
+      setUserId(user.id);
+      setP(next);
+    })();
+    return () => { cancelled = true; };
+  }, [router, supabase]);
+
+  // Save a draft after every change so a refresh doesn't lose answers.
+  useEffect(() => {
+    if (!userId || !dirty.current) return;
+    try {
+      localStorage.setItem(draftKey(userId), JSON.stringify({ savedAt: new Date().toISOString(), answers: p }));
+    } catch { /* storage unavailable */ }
+  }, [p, userId]);
+
+  const set = <K extends keyof Draft>(key: K, value: Draft[K]) => {
+    dirty.current = true;
+    setP(prev => ({ ...prev, [key]: value }));
+  };
+
+  const toggle = (key: 'debtTypes' | 'topFinancialConcerns' | 'dependentAgeBands', value: string) => {
+    dirty.current = true;
+    setP(prev => {
+      const list = prev[key];
+      if (list.includes(value)) return { ...prev, [key]: list.filter(v => v !== value) };
+      if (key === 'debtTypes') {
+        // "No debt" is exclusive with every other choice.
+        return { ...prev, debtTypes: value === 'none' ? ['none'] : [...list.filter(v => v !== 'none'), value] };
+      }
+      if (key === 'topFinancialConcerns' && list.length >= MAX_CONCERNS) return prev;
+      return { ...prev, [key]: [...list, value] };
     });
-  }, [router, supabase.auth]);
-  const [profile, setProfile] = useState({
-    state: '', city: '', country: 'United States', ageRange: '', educationStage: '',
-    employmentStatus: '', occupationCategory: '', incomeRange: '', filingStatus: '',
-    housingSituation: '', debtTypes: [] as string[], hasDependents: false, topFinancialConcerns: [] as string[],
-  });
-
-  const currentStage = step < 4 ? 0 : step < 9 ? 1 : 2;
-  const progress = ((step + 1) / TOTAL_STEPS) * 100;
-
-  const toggleMulti = (key: 'debtTypes' | 'topFinancialConcerns', value: string) => {
-    setProfile(prev => ({
-      ...prev,
-      [key]: prev[key].includes(value) ? prev[key].filter(v => v !== value) : [...prev[key], value],
-    }));
   };
 
-  const canAdvance = () => {
-    const checks: boolean[] = [
-      !!profile.state, !!profile.city, !!profile.ageRange, !!profile.educationStage,
-      !!profile.employmentStatus, !!profile.occupationCategory, !!profile.incomeRange,
-      !!profile.filingStatus, !!profile.housingSituation, profile.debtTypes.length > 0,
-      profile.topFinancialConcerns.length > 0,
-    ];
-    return checks[step] ?? true;
-  };
+  const canAdvance = useCallback((): boolean => {
+    switch (step) {
+      case 0: return !!p.state;
+      case 1: return true; // city is optional
+      case 2: return !!p.ageRange;
+      case 3: return !!p.educationStage;
+      case 4: return !!p.employmentStatus;
+      case 5: return !!p.occupationCategory;
+      case 6: return !!p.incomeRange;
+      case 7: return !!p.filingStatus;
+      case 8: return !!p.housingSituation;
+      case 9: return p.debtTypes.length > 0;
+      case 10: return p.hasDependents === false || (p.hasDependents === true && p.dependentsCount > 0);
+      case 11: return p.topFinancialConcerns.length > 0;
+      default: return true; // optional final step
+    }
+  }, [step, p]);
 
   const handleComplete = async () => {
-    setSaving(true);
     setSaveError('');
-    try {
-      const { data: { user }, error: userErr } = await supabase.auth.getUser();
-      if (userErr || !user) {
-        setSaveError('Your session expired. Please sign in again.');
-        setSaving(false);
-        return;
-      }
-
-      const { error } = await supabase.from('user_profiles').upsert({
-        id: user.id,
-        email: user.email,
-        has_completed_onboarding: true,
-        country: profile.country,
-        state: profile.state,
-        city: profile.city,
-        age_range: profile.ageRange,
-        education_stage: profile.educationStage,
-        employment_status: profile.employmentStatus,
-        occupation_category: profile.occupationCategory,
-        income_range: profile.incomeRange,
-        filing_status: profile.filingStatus,
-        housing_situation: profile.housingSituation,
-        debt_types: profile.debtTypes,
-        has_dependents: profile.hasDependents,
-        top_financial_concerns: profile.topFinancialConcerns,
-        updated_at: new Date().toISOString(),
-      }, { onConflict: 'id' });
-
-      if (error) {
-        console.error('Profile save error:', error);
-        setSaveError(`Could not save your profile: ${error.message}. Please try again.`);
-        setSaving(false);
-        return;
-      }
-
-      // Verify it actually persisted before celebrating.
-      const { data: check } = await supabase
-        .from('user_profiles')
-        .select('has_completed_onboarding')
-        .eq('id', user.id)
-        .single();
-      if (!check?.has_completed_onboarding) {
-        setSaveError('Your profile did not save. Please check your connection and try again.');
-        setSaving(false);
-        return;
-      }
-    } catch (e) {
-      console.error('Profile save failed:', e);
-      setSaveError('Something went wrong saving your profile. Please try again.');
+    const parsed = FinancialProfileSchema.safeParse({
+      state: p.state,
+      city: p.city,
+      ageRange: p.ageRange,
+      educationStage: p.educationStage,
+      employmentStatus: p.employmentStatus,
+      occupationCategory: p.occupationCategory,
+      incomeRange: p.incomeRange,
+      filingStatus: p.filingStatus,
+      housingSituation: p.housingSituation,
+      debtTypes: p.debtTypes,
+      hasDependents: !!p.hasDependents,
+      dependentsCount: p.hasDependents ? p.dependentsCount : 0,
+      dependentAgeBands: p.hasDependents ? p.dependentAgeBands : [],
+      topFinancialConcerns: p.topFinancialConcerns,
+      investments: p.investments || null,
+      homeValueBand: isHomeowner(p.housingSituation) && p.homeValueBand ? p.homeValueBand : null,
+    });
+    if (!parsed.success) {
+      setSaveError('Some answers are missing. Please go back and check each step.');
+      return;
+    }
+    setSaving(true);
+    const res = await apiFetch('/api/profile', { method: 'PUT', body: { profile: parsed.data } });
+    if (!res.ok) {
+      setSaveError(res.status === 401 ? 'Your session expired. Please sign in again.' : res.message);
       setSaving(false);
       return;
     }
-    setShowConfetti(true);
-    setTimeout(() => router.push('/dashboard'), 2200);
+    try { if (userId) localStorage.removeItem(draftKey(userId)); } catch { /* storage unavailable */ }
+    setShowDone(true);
+    setTimeout(() => router.push('/dashboard'), 1600);
+  };
+
+  const next = () => {
+    if (!canAdvance()) return;
+    if (step < TOTAL_STEPS - 1) setStep(s => s + 1);
+    else handleComplete();
+  };
+
+  const onKeyDown = (e: React.KeyboardEvent) => {
+    if (e.key === 'Enter' && !e.nativeEvent.isComposing && (e.target as HTMLElement).tagName !== 'BUTTON') {
+      e.preventDefault();
+      next();
+    }
   };
 
   const questions = [
-    <motion.div key="state" initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: -20 }} transition={{ duration: 0.3 }}>
-      <p className="font-display text-2xl sm:text-3xl font-bold text-text-primary mb-8">What state do you live in?</p>
-      <select value={profile.state} onChange={e => setProfile(p => ({ ...p, state: e.target.value }))} className="input-glass w-full px-4 py-4 text-sm">
-        <option value="">Select your state...</option>
-        {usStates.map(s => <option key={s} value={s}>{s}</option>)}
+    <Question key="state" title="What state do you live in?">
+      <label htmlFor="state" className="sr-only">State</label>
+      <select id="state" value={p.state} onChange={e => set('state', e.target.value)} className="input-glass w-full px-4 py-4 text-base sm:text-sm">
+        <option value="">Select your state…</option>
+        {US_STATES.map(s => <option key={s} value={s}>{s}</option>)}
       </select>
-    </motion.div>,
+    </Question>,
 
-    <motion.div key="city" initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: -20 }} transition={{ duration: 0.3 }}>
-      <p className="font-display text-2xl sm:text-3xl font-bold text-text-primary mb-8">What city or county?</p>
-      <input type="text" placeholder="e.g. San Francisco, Cook County..." value={profile.city} onChange={e => setProfile(p => ({ ...p, city: e.target.value }))} className="input-glass w-full px-4 py-4 text-sm" autoFocus />
-      <p className="text-xs text-text-muted mt-3">Used for local policies and cost-of-living adjustments.</p>
-    </motion.div>,
+    <Question key="city" title="What city or county?" hint="Optional. Helps with local taxes and cost of living.">
+      <label htmlFor="city" className="sr-only">City or county</label>
+      <input id="city" type="text" maxLength={100} placeholder="e.g. Columbus, Cook County…" value={p.city}
+        onChange={e => set('city', e.target.value)} className="input-glass w-full px-4 py-4 text-base sm:text-sm" autoFocus />
+    </Question>,
 
-    <motion.div key="age" initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: -20 }} transition={{ duration: 0.3 }}>
-      <p className="font-display text-2xl sm:text-3xl font-bold text-text-primary mb-8">Which age range are you in?</p>
+    <Question key="age" title="Which age range are you in?">
       <div className="grid grid-cols-2 sm:grid-cols-3 gap-3">
-        {ageRanges.map(opt => <OptionButton key={opt.value} label={opt.label} selected={profile.ageRange === opt.value} onClick={() => setProfile(p => ({ ...p, ageRange: opt.value }))} />)}
+        {AGE_RANGES.map(o => <OptionButton key={o.value} label={o.label} selected={p.ageRange === o.value} onClick={() => set('ageRange', o.value)} />)}
       </div>
-    </motion.div>,
+    </Question>,
 
-    <motion.div key="edu" initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: -20 }} transition={{ duration: 0.3 }}>
-      <p className="font-display text-2xl sm:text-3xl font-bold text-text-primary mb-8">Current education stage?</p>
+    <Question key="edu" title="Highest education completed?">
       <div className="space-y-2">
-        {educationStages.map(opt => <OptionButton key={opt.value} label={opt.label} selected={profile.educationStage === opt.value} onClick={() => setProfile(p => ({ ...p, educationStage: opt.value }))} />)}
+        {EDUCATION_LEVELS.map(o => <OptionButton key={o.value} label={o.label} selected={p.educationStage === o.value} onClick={() => set('educationStage', o.value)} />)}
       </div>
-    </motion.div>,
+    </Question>,
 
-    <motion.div key="emp" initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: -20 }} transition={{ duration: 0.3 }}>
-      <p className="font-display text-2xl sm:text-3xl font-bold text-text-primary mb-8">Employment situation?</p>
+    <Question key="emp" title="What's your work situation?">
       <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-        {employmentStatuses.map(opt => <OptionButton key={opt.value} label={opt.label} selected={profile.employmentStatus === opt.value} onClick={() => setProfile(p => ({ ...p, employmentStatus: opt.value }))} />)}
+        {EMPLOYMENT_STATUSES.map(o => <OptionButton key={o.value} label={o.label} selected={p.employmentStatus === o.value} onClick={() => set('employmentStatus', o.value)} />)}
       </div>
-    </motion.div>,
+    </Question>,
 
-    <motion.div key="occ" initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: -20 }} transition={{ duration: 0.3 }}>
-      <p className="font-display text-2xl sm:text-3xl font-bold text-text-primary mb-8">What field do you work in?</p>
+    <Question key="occ" title="What field do you work in?" hint="If you're not working, pick the field you last worked in, or “Not working right now”.">
       <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-        {occupationCategories.map(opt => <OptionButton key={opt.value} label={opt.label} selected={profile.occupationCategory === opt.value} onClick={() => setProfile(p => ({ ...p, occupationCategory: opt.value }))} />)}
+        {OCCUPATIONS.map(o => <OptionButton key={o.value} label={o.label} selected={p.occupationCategory === o.value} onClick={() => set('occupationCategory', o.value)} />)}
       </div>
-    </motion.div>,
+    </Question>,
 
-    <motion.div key="income" initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: -20 }} transition={{ duration: 0.3 }}>
-      <p className="font-display text-2xl sm:text-3xl font-bold text-text-primary mb-8">Approximate household income?</p>
+    <Question key="income" title="Approximate household income?" hint="We only ever use the range, never an exact number.">
       <div className="space-y-2">
-        {incomeRanges.map(opt => <OptionButton key={opt.value} label={opt.label} selected={profile.incomeRange === opt.value} onClick={() => setProfile(p => ({ ...p, incomeRange: opt.value }))} />)}
+        {INCOME_RANGES.map(o => <OptionButton key={o.value} label={o.label} selected={p.incomeRange === o.value} onClick={() => set('incomeRange', o.value)} />)}
       </div>
-      <p className="text-xs text-text-muted mt-3">Your exact income stays private. We use ranges only.</p>
-    </motion.div>,
+    </Question>,
 
-    <motion.div key="filing" initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: -20 }} transition={{ duration: 0.3 }}>
-      <p className="font-display text-2xl sm:text-3xl font-bold text-text-primary mb-8">Tax filing status?</p>
+    <Question key="filing" title="How do you file taxes?">
       <div className="space-y-2">
-        {filingStatuses.map(opt => <OptionButton key={opt.value} label={opt.label} selected={profile.filingStatus === opt.value} onClick={() => setProfile(p => ({ ...p, filingStatus: opt.value }))} />)}
+        {FILING_STATUSES.map(o => <OptionButton key={o.value} label={o.label} selected={p.filingStatus === o.value} onClick={() => set('filingStatus', o.value)} />)}
       </div>
-    </motion.div>,
+    </Question>,
 
-    <motion.div key="housing" initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: -20 }} transition={{ duration: 0.3 }}>
-      <p className="font-display text-2xl sm:text-3xl font-bold text-text-primary mb-8">Current housing situation?</p>
-      <div className="grid grid-cols-2 gap-3">
-        {housingSituations.map(opt => <OptionButton key={opt.value} label={opt.label} selected={profile.housingSituation === opt.value} onClick={() => setProfile(p => ({ ...p, housingSituation: opt.value }))} />)}
-      </div>
-    </motion.div>,
-
-    <motion.div key="debts" initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: -20 }} transition={{ duration: 0.3 }}>
-      <p className="font-display text-2xl sm:text-3xl font-bold text-text-primary mb-8">What types of debt do you have?</p>
-      <div className="grid grid-cols-2 gap-3">
-        {debtTypes.map(opt => <MultiOptionButton key={opt.value} label={opt.label} selected={profile.debtTypes.includes(opt.value)} onClick={() => toggleMulti('debtTypes', opt.value)} />)}
-      </div>
-    </motion.div>,
-
-    <motion.div key="concerns" initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: -20 }} transition={{ duration: 0.3 }}>
-      <p className="font-display text-2xl sm:text-3xl font-bold text-text-primary mb-2">Top financial concerns?</p>
-      <p className="text-xs text-text-muted mb-6">Select up to 3</p>
+    <Question key="housing" title="What's your housing situation?">
       <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-        {topFinancialConcernOptions.map(opt => (
-          <MultiOptionButton key={opt.value} label={opt.label} selected={profile.topFinancialConcerns.includes(opt.value)}
-            onClick={() => {
-              if (!profile.topFinancialConcerns.includes(opt.value) && profile.topFinancialConcerns.length >= 3) return;
-              toggleMulti('topFinancialConcerns', opt.value);
-            }}
-          />
-        ))}
+        {HOUSING_SITUATIONS.map(o => <OptionButton key={o.value} label={o.label} selected={p.housingSituation === o.value} onClick={() => set('housingSituation', o.value)} />)}
       </div>
-    </motion.div>,
-  ];
-
-  if (!authChecked) {
-    return (
-      <div className="min-h-screen relative flex items-center justify-center">
-        <AmbientBackground />
-        <div className="relative z-10 flex flex-col items-center gap-4">
-          <div className="w-10 h-10 rounded-2xl bg-primary/20 border border-primary/20 flex items-center justify-center">
-            <Zap className="w-5 h-5 text-primary" />
-          </div>
-          <div className="flex gap-1">
-            {[0,1,2].map(i => (
-              <div key={i} className="w-2 h-2 rounded-full bg-primary animate-pulse" style={{ animationDelay: `${i * 0.15}s` }} />
+      {isHomeowner(p.housingSituation) && (
+        <div className="mt-8">
+          <p className="text-sm font-medium text-text-primary mb-1">Roughly what is your home worth?</p>
+          <p className="text-xs text-text-muted mb-3">Optional. Used for property-value effects.</p>
+          <div className="grid grid-cols-2 gap-3">
+            {HOME_VALUE_BANDS.map(o => (
+              <OptionButton key={o.value} label={o.label} selected={p.homeValueBand === o.value}
+                onClick={() => set('homeValueBand', p.homeValueBand === o.value ? '' : o.value)} />
             ))}
           </div>
+        </div>
+      )}
+    </Question>,
+
+    <Question key="debts" title="What kinds of debt do you have?" hint="Select all that apply.">
+      <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+        {DEBT_TYPES.map(o => <MultiOptionButton key={o.value} label={o.label} selected={p.debtTypes.includes(o.value)} onClick={() => toggle('debtTypes', o.value)} />)}
+      </div>
+    </Question>,
+
+    <Question key="dependents" title="Do you have children or other dependents?" hint="Dependents change tax credits, childcare and education costs.">
+      <div className="grid grid-cols-2 gap-3">
+        <OptionButton label="Yes" selected={p.hasDependents === true} onClick={() => set('hasDependents', true)} />
+        <OptionButton label="No" selected={p.hasDependents === false} onClick={() => set('hasDependents', false)} />
+      </div>
+      {p.hasDependents && (
+        <div className="mt-8 space-y-6">
+          <div>
+            <label htmlFor="dependents-count" className="block text-sm font-medium text-text-primary mb-2">How many?</label>
+            <select id="dependents-count" value={p.dependentsCount} onChange={e => set('dependentsCount', Number(e.target.value))}
+              className="input-glass w-full sm:w-40 px-4 py-3 text-base sm:text-sm">
+              {Array.from({ length: MAX_DEPENDENTS }, (_, i) => i + 1).map(n => <option key={n} value={n}>{n}{n === MAX_DEPENDENTS ? '+' : ''}</option>)}
+            </select>
+          </div>
+          <div>
+            <p className="text-sm font-medium text-text-primary mb-1">Their ages</p>
+            <p className="text-xs text-text-muted mb-3">Optional. Select all that apply.</p>
+            <div className="grid grid-cols-2 gap-3">
+              {DEPENDENT_AGE_BANDS.map(o => <MultiOptionButton key={o.value} label={o.label} selected={p.dependentAgeBands.includes(o.value)} onClick={() => toggle('dependentAgeBands', o.value)} />)}
+            </div>
+          </div>
+        </div>
+      )}
+    </Question>,
+
+    <Question key="concerns" title="What are your top financial concerns?" hint={`Pick up to ${MAX_CONCERNS}.`}>
+      <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+        {CONCERNS.map(o => {
+          const selected = p.topFinancialConcerns.includes(o.value);
+          return (
+            <MultiOptionButton key={o.value} label={o.label} selected={selected}
+              disabled={!selected && p.topFinancialConcerns.length >= MAX_CONCERNS}
+              onClick={() => toggle('topFinancialConcerns', o.value)} />
+          );
+        })}
+      </div>
+    </Question>,
+
+    <Question key="investments" title="Do you have investments?" hint="Optional. Helps estimate how market moves affect you. You can skip this.">
+      <div className="space-y-2">
+        {INVESTMENT_TYPES.map(o => (
+          <OptionButton key={o.value} label={o.label} selected={p.investments === o.value}
+            onClick={() => set('investments', p.investments === o.value ? '' : o.value)} />
+        ))}
+      </div>
+    </Question>,
+  ];
+
+  if (!userId) {
+    return (
+      <div className="min-h-screen relative flex items-center justify-center" aria-busy="true">
+        <AmbientBackground />
+        <div className="relative z-10 flex gap-1" aria-label="Loading">
+          {[0, 1, 2].map(i => (
+            <div key={i} className="w-2 h-2 rounded-full bg-primary animate-pulse" style={{ animationDelay: `${i * 0.15}s` }} />
+          ))}
         </div>
       </div>
     );
   }
 
+  const currentStage = STAGES.findIndex(s => s.steps.includes(step));
+  const progress = ((step + 1) / TOTAL_STEPS) * 100;
+  const isLast = step === TOTAL_STEPS - 1;
+
   return (
-    <div className="min-h-screen relative flex flex-col">
+    <div className="min-h-screen relative flex flex-col" onKeyDown={onKeyDown}>
       <AmbientBackground />
       <div className="relative z-10 flex-1 flex flex-col max-w-2xl mx-auto w-full px-4 py-8">
         <div className="flex items-center gap-2 mb-10">
@@ -275,31 +391,28 @@ export default function OnboardingPage() {
           <span className="font-display font-semibold text-lg">Politi<span className="text-primary">con</span></span>
         </div>
 
-        {/* Progress */}
         <div className="mb-10">
           <div className="flex items-center justify-between mb-3">
-            <div className="flex items-center gap-4">
-              {stages.map((stage, i) => {
+            <ol className="flex items-center gap-3 sm:gap-4">
+              {STAGES.map((stage, i) => {
                 const Icon = stage.icon;
                 const isActive = i === currentStage;
                 const isDone = i < currentStage;
                 return (
-                  <div key={stage.id} className="flex items-center gap-2">
+                  <li key={stage.label} className="flex items-center gap-2" aria-current={isActive ? 'step' : undefined}>
                     <div className={`w-7 h-7 rounded-full border flex items-center justify-center transition-all ${
                       isDone ? 'bg-primary border-primary' : isActive ? 'border-primary bg-primary/20' : 'border-white/20 bg-white/5'
                     }`}>
                       {isDone ? <Check className="w-3.5 h-3.5 text-white" /> : <Icon className={`w-3.5 h-3.5 ${isActive ? 'text-primary' : 'text-text-muted'}`} />}
                     </div>
-                    <span className={`text-xs font-medium hidden sm:block ${
-                      isActive ? 'text-text-primary' : isDone ? 'text-primary' : 'text-text-muted'
-                    }`}>{stage.label}</span>
-                  </div>
+                    <span className={`text-xs font-medium hidden sm:block ${isActive ? 'text-text-primary' : isDone ? 'text-primary' : 'text-text-muted'}`}>{stage.label}</span>
+                  </li>
                 );
               })}
-            </div>
-            <span className="text-xs text-text-muted font-mono-data">{step + 1}/{TOTAL_STEPS}</span>
+            </ol>
+            <span className="text-xs text-text-muted font-mono-data">Step {step + 1} of {TOTAL_STEPS}</span>
           </div>
-          <div className="h-1.5 bg-white/6 rounded-full overflow-hidden">
+          <div className="h-1.5 bg-white/5 rounded-full overflow-hidden" role="progressbar" aria-valuemin={1} aria-valuemax={TOTAL_STEPS} aria-valuenow={step + 1}>
             <motion.div className="h-full rounded-full bg-primary" animate={{ width: `${progress}%` }} transition={{ duration: 0.4, ease: 'easeOut' }} />
           </div>
         </div>
@@ -308,43 +421,31 @@ export default function OnboardingPage() {
           <AnimatePresence mode="wait">{questions[step]}</AnimatePresence>
         </div>
 
-        <div className="flex items-center justify-between mt-10 pt-6 border-t border-white/8">
-          <button onClick={() => setStep(s => Math.max(0, s - 1))} disabled={step === 0}
+        <div className="flex items-center justify-between mt-10 pt-6 border-t border-white/10">
+          <button type="button" onClick={() => setStep(s => Math.max(0, s - 1))} disabled={step === 0}
             className="flex items-center gap-2 text-sm text-text-muted hover:text-text-primary transition-colors disabled:opacity-30 disabled:cursor-not-allowed">
             <ChevronLeft className="w-4 h-4" /> Back
           </button>
-          {step < TOTAL_STEPS - 1 ? (
-            <button onClick={() => setStep(s => s + 1)} disabled={!canAdvance()}
-              className="flex items-center gap-2 bg-primary hover:bg-primary/90 disabled:opacity-40 disabled:cursor-not-allowed text-white px-6 py-3 rounded-xl text-sm font-medium transition-all">
-              Continue <ChevronRight className="w-4 h-4" />
-            </button>
-          ) : (
-            <button onClick={handleComplete} disabled={!canAdvance() || saving}
-              className="flex items-center gap-2 bg-primary hover:bg-primary/90 disabled:opacity-40 text-white px-6 py-3 rounded-xl text-sm font-medium transition-all">
-              {saving ? 'Saving...' : 'See my impact'} <ChevronRight className="w-4 h-4" />
-            </button>
-          )}
+          <button type="button" onClick={next} disabled={!canAdvance() || saving}
+            className="flex items-center gap-2 bg-primary hover:bg-primary/90 disabled:opacity-40 disabled:cursor-not-allowed text-white px-6 py-3 rounded-xl text-sm font-medium transition-all">
+            {isLast ? (saving ? 'Saving…' : p.investments ? 'See my impact' : 'Skip and see my impact') : step === 1 && !p.city ? 'Skip' : 'Continue'}
+            <ChevronRight className="w-4 h-4" />
+          </button>
         </div>
-        {saveError && (
-          <p className="mt-4 text-sm text-red-400 text-center">{saveError}</p>
-        )}
+        {saveError && <p role="alert" className="mt-4 text-sm text-red-400 text-center">{saveError}</p>}
       </div>
 
       <AnimatePresence>
-        {showConfetti && (
+        {showDone && (
           <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}
-            className="fixed inset-0 z-50 flex items-center justify-center bg-base/80 backdrop-blur-sm">
-            <motion.div initial={{ scale: 0.8, opacity: 0 }} animate={{ scale: 1, opacity: 1 }} transition={{ type: 'spring', stiffness: 300, damping: 20 }}
-              className="glass-strong rounded-3xl p-12 text-center">
-              <div className="text-5xl mb-4">🎉</div>
-              <h2 className="font-display text-3xl font-bold text-text-primary mb-2">Profile complete!</h2>
-              <p className="text-text-muted">Analyzing policies for your situation...</p>
-              <div className="mt-6 flex justify-center gap-1">
-                {[...Array(3)].map((_, i) => (
-                  <motion.div key={i} className="w-2 h-2 rounded-full bg-primary"
-                    animate={{ scale: [1, 1.4, 1] }} transition={{ duration: 0.6, delay: i * 0.15, repeat: Infinity }} />
-                ))}
+            className="fixed inset-0 z-50 flex items-center justify-center bg-base/80 backdrop-blur-sm px-4" role="status">
+            <motion.div initial={{ scale: 0.9, opacity: 0 }} animate={{ scale: 1, opacity: 1 }} transition={{ type: 'spring', stiffness: 300, damping: 22 }}
+              className="glass-strong rounded-3xl p-10 sm:p-12 text-center">
+              <div className="w-14 h-14 rounded-2xl bg-primary/20 border border-primary/30 flex items-center justify-center mx-auto mb-5">
+                <Check className="w-7 h-7 text-primary" />
               </div>
+              <h2 className="font-display text-3xl font-bold text-text-primary mb-2">Profile saved</h2>
+              <p className="text-text-muted">Building your personalized policy feed…</p>
             </motion.div>
           </motion.div>
         )}

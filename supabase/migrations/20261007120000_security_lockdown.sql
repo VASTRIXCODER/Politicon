@@ -12,7 +12,7 @@
 -- ---------------------------------------------------------------------------
 -- 1. Lock down tables only the server should touch
 -- ---------------------------------------------------------------------------
--- Same definition as 20260626_rate_limits.sql, in case that was never applied.
+-- Same definition as 20260626000000_rate_limits.sql, in case that was never applied.
 create table if not exists public.rate_limits (
   id           text primary key,
   identifier   text        not null,

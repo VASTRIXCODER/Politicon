@@ -24,8 +24,10 @@ create table if not exists chat_sessions (
 alter table policy_analyses enable row level security;
 alter table chat_sessions enable row level security;
 
+drop policy if exists "Users can manage their own analyses" on policy_analyses;
 create policy "Users can manage their own analyses" on policy_analyses
   for all using (auth.uid() = user_id);
 
+drop policy if exists "Users can manage their own chat sessions" on chat_sessions;
 create policy "Users can manage their own chat sessions" on chat_sessions
   for all using (auth.uid() = user_id);
