@@ -2,9 +2,9 @@ import 'server-only';
 import type { NextResponse } from 'next/server';
 import { createAdminClient } from '@/lib/supabase/admin';
 import { apiError } from '@/lib/server/http';
-import { AI_MODEL } from '@/lib/server/aiConfig';
+import { AI_MODEL, modelPrice, type AiFeature } from '@/lib/server/aiConfig';
 
-export type AiFeature = 'analyze' | 'feed' | 'advisor' | 'advisor_policy' | 'insight' | 'cumulative_summary';
+export type { AiFeature };
 
 /** Per-user rolling-24h call caps. Override with AI_DAILY_LIMIT_<FEATURE>. */
 const DEFAULT_DAILY_LIMITS: Record<AiFeature, number> = {
@@ -70,13 +70,6 @@ export async function checkAiBudget(
   }
 }
 
-// Dollars per million tokens. Override with AI_PRICE_INPUT_PER_MTOK / AI_PRICE_OUTPUT_PER_MTOK.
-function price(kind: 'input' | 'output'): number {
-  const v = Number(process.env[kind === 'input' ? 'AI_PRICE_INPUT_PER_MTOK' : 'AI_PRICE_OUTPUT_PER_MTOK']);
-  if (Number.isFinite(v) && v > 0) return v;
-  return kind === 'input' ? 3 : 15;
-}
-
 export interface AiUsageRecord {
   /** Row reserved by checkAiBudget. */
   usageId: number;
@@ -98,7 +91,7 @@ export async function recordAiUsage(r: AiUsageRecord): Promise<void> {
   const cacheRead = r.cacheReadTokens || 0;
   const cacheWrite = r.cacheWriteTokens || 0;
   const cost =
-    ((r.inputTokens + cacheWrite * 1.25 + cacheRead * 0.1) * price('input') + r.outputTokens * price('output')) / 1_000_000;
+    ((r.inputTokens + cacheWrite * 1.25 + cacheRead * 0.1) * modelPrice(r.model).input + r.outputTokens * modelPrice(r.model).output) / 1_000_000;
   try {
     const { error } = await createAdminClient().from('ai_usage').update({
       model: r.model,

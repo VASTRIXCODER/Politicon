@@ -213,3 +213,38 @@ begin
     raise exception 'profile email not synced';
   end if;
 end $$;
+
+-- Background jobs: placeholder rows stay out of lists and totals; the insight
+-- cache is server-written and readable only by its owner.
+insert into public.analyzed_policies (user_id, policy_id, analysis, generation_status, generation_started_at)
+values ('11111111-1111-1111-1111-111111111111', 'us-hr-2', '{}', 'pending', now());
+
+begin;
+set local role authenticated;
+select set_config('request.jwt.claim.sub', '11111111-1111-1111-1111-111111111111', true) \g /dev/null
+do $$ begin
+  if exists (select 1 from public.policy_analyses where policy_id = 'us-hr-2') then
+    raise exception 'pending placeholder shows in the analyses list';
+  end if;
+  if (select analysis_count from public.analysis_totals()) <> 1 then
+    raise exception 'pending placeholder counted in totals';
+  end if;
+  if not exists (select 1 from public.analyzed_policies where policy_id = 'us-hr-2' and generation_status = 'pending') then
+    raise exception 'owner cannot see their pending job';
+  end if;
+end $$;
+commit;
+
+do $$
+declare
+  a constant text := '11111111-1111-1111-1111-111111111111';
+begin
+  perform pg_temp.denied('authenticated', a, format($q$insert into public.ai_insights (user_id, cache_key, insight) values (%L, 'k', 'x')$q$, a));
+  perform pg_temp.denied('authenticated', a, $q$update public.analyzed_policies set generation_status = 'ready'$q$);
+  perform pg_temp.denied('anon', null, 'select * from public.ai_insights');
+  begin
+    update public.analyzed_policies set generation_status = 'done' where policy_id = 'us-hr-2';
+    raise exception 'invalid generation_status accepted';
+  exception when check_violation then null;
+  end;
+end $$;

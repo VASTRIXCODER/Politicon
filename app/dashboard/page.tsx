@@ -10,6 +10,7 @@ import { timeAgo } from '@/lib/utils';
 import GlassCard from '@/components/ui/GlassCard';
 import Badge from '@/components/ui/Badge';
 import AnimatedCounter from '@/components/ui/AnimatedCounter';
+import { requestAnalysis } from '@/lib/analysisClient';
 import { apiFetch } from '@/lib/api';
 import ViewFullImpactButton from '@/components/ViewFullImpactButton';
 import Navbar from '@/components/layout/Navbar';
@@ -143,6 +144,8 @@ function PolicyFeedCard({ policy, analyzed, onAnalyze, onAskAdvisor, analyzingId
   );
 }
 
+const FEED_POLL_MS = 5000;
+const FEED_POLL_ATTEMPTS = 60; // ~5 minutes
 const RECENT_LIMIT = 12;
 
 export default function DashboardPage() {
@@ -267,24 +270,35 @@ export default function DashboardPage() {
     setInsightLoading(false);
   }
 
+  // Feeds are built in the background: a 202 means one is being generated, so
+  // keep showing whatever we have and check back until it's ready.
   async function loadFeed(refresh = false, attempt = 0) {
-    if (refresh) setFeedRefreshing(true); else setFeedLoading(true);
-    setFeedError(null);
+    if (attempt === 0) {
+      if (refresh) setFeedRefreshing(true); else setFeedLoading(true);
+      setFeedError(null);
+    }
     const res = await apiFetch<{ policies?: FeedPolicy[]; updatedAt?: string; generating?: boolean }>(
       '/api/policies/feed',
-      refresh ? { method: 'POST' } : {},
+      refresh && attempt === 0 ? { method: 'POST' } : {},
     );
-    // 202: another request is already building this user's feed — check back shortly.
     if (res.ok && res.status === 202) {
-      if (attempt < 12) { setTimeout(() => loadFeed(false, attempt + 1), 5000); return; }
-      setFeedError('Your feed is taking longer than usual. Please try again in a minute.');
+      if (Array.isArray(res.data.policies) && res.data.policies.length > 0) {
+        setFeedPolicies(res.data.policies);
+        setFeedLoading(false);
+      }
+      setFeedRefreshing(true);
+      if (attempt < FEED_POLL_ATTEMPTS) {
+        setTimeout(() => loadFeed(false, attempt + 1), FEED_POLL_MS);
+        return;
+      }
+      setFeedError('Your feed is taking longer than usual. Please check back in a few minutes.');
     } else if (res.ok) {
       setFeedPolicies(Array.isArray(res.data.policies) ? res.data.policies : []);
       if (res.data.updatedAt) setFeedUpdatedAt(res.data.updatedAt);
     } else if (res.code === 'needs_onboarding') {
       setNeedsOnboarding(true);
-    } else if (refresh) {
-      // Keep the previous feed on a failed refresh.
+    } else if (refresh || feedPolicies.length > 0) {
+      // Keep the current feed when a refresh can't start.
       showToast(res.message, 'error');
     } else {
       setFeedError(res.message);
@@ -297,7 +311,8 @@ export default function DashboardPage() {
 
   async function handleAnalyze(policy: FeedPolicy) {
     setAnalyzingId(policy.id);
-    const res = await apiFetch('/api/analyze', { body: { policyId: policy.id } });
+    // Analyses run in the background; this resolves when the job finishes.
+    const res = await requestAnalysis(policy.id);
     if (res.ok) {
       showToast(`Analysis complete for "${policy.title}"`);
       await refetchAnalyses();

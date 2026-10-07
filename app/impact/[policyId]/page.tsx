@@ -1,6 +1,6 @@
 'use client';
 
-import { use, useState, useEffect, useMemo, useCallback } from 'react';
+import { use, useState, useEffect, useMemo, useCallback, useRef } from 'react';
 import { useRouter } from 'next/navigation';
 import { motion } from 'framer-motion';
 import {
@@ -10,9 +10,11 @@ import {
   Trash2,
 } from 'lucide-react';
 import { EMPLOYMENT_STATUSES, FILING_STATUSES, HOUSING_SITUATIONS, INCOME_RANGES, labelOf } from '@/lib/profileOptions';
+import { requestAnalysis } from '@/lib/analysisClient';
+import { coerceFullAnalysis } from '@/lib/analysisSchema';
 import { apiFetch } from '@/lib/api';
 import { createClient } from '@/lib/supabase/client';
-import { FullAnalysis, ImpactDirection } from '@/types';
+import { FullAnalysis, ImpactDirection, Policy } from '@/types';
 import { getStatusColor } from '@/lib/utils';
 import GlassCard from '@/components/ui/GlassCard';
 import Badge from '@/components/ui/Badge';
@@ -59,6 +61,27 @@ interface ProfileSnapshot {
   housingSituation?: string;
   employmentStatus?: string;
   dependentsCount?: number | null;
+}
+
+/** Minimal policy metadata for normalizing a stored analysis. */
+function policyFromAnalysis(policyId: string, a: Partial<FullAnalysis>): Policy {
+  return {
+    id: policyId,
+    title: a.policyTitle || policyId,
+    summary: a.plainEnglishSummary || '',
+    description: a.plainEnglishSummary || '',
+    category: a.category || 'taxes',
+    status: 'proposed',
+    date: '',
+    source: '',
+    sourceUrl: '',
+    governingBody: a.billNumber || '',
+    region: 'Federal',
+    confidenceLevel: 'medium',
+    impacts: [],
+    assumptions: [],
+    tags: [],
+  };
 }
 
 function snapshotFromRow(row: Record<string, unknown>): ProfileSnapshot {
@@ -111,20 +134,23 @@ export default function PolicyDetailPage({ params }: { params: Promise<{ policyI
     else window.alert(res.message);
   }
 
+  const generationAbort = useRef<AbortController | null>(null);
+  useEffect(() => () => generationAbort.current?.abort(), []);
+
   async function generate(force = false) {
+    generationAbort.current?.abort();
+    generationAbort.current = new AbortController();
     setGenerating(true);
     setGenerateError(null);
-    const res = await apiFetch<{ analysis: FullAnalysis; profileSnapshot?: ProfileSnapshot | null }>(
-      '/api/analyze', { body: { policyId, ...(force ? { force: true } : {}) } },
-    );
+    const res = await requestAnalysis(policyId, { force, signal: generationAbort.current?.signal });
     if (res.ok) {
-      setAnalysis(res.data.analysis);
-      if (res.data.profileSnapshot) setProfile(res.data.profileSnapshot);
+      setAnalysis(coerceFullAnalysis(res.analysis as unknown as Record<string, unknown>, policyFromAnalysis(policyId, res.analysis)));
+      if (res.profileSnapshot) setProfile(res.profileSnapshot as ProfileSnapshot);
       setAnalyzedAt(new Date().toISOString());
       setNotFound(false);
       setStale(false);
       setLegacy(false);
-    } else {
+    } else if (res.message !== 'Cancelled.') {
       setGenerateError(res.message);
     }
     setGenerating(false);
@@ -133,6 +159,9 @@ export default function PolicyDetailPage({ params }: { params: Promise<{ policyI
   useEffect(() => {
     const supabase = createClient();
     let cancelled = false;
+
+    // A generation already running (started from the dashboard or another tab) is followed, not restarted.
+    let followRunningJob = false;
 
     async function load() {
       try {
@@ -147,7 +176,7 @@ export default function PolicyDetailPage({ params }: { params: Promise<{ policyI
             .maybeSingle(),
           supabase
             .from('analyzed_policies')
-            .select('analysis, updated_at, profile_snapshot, profile_version')
+            .select('analysis, updated_at, profile_snapshot, profile_version, policy_title, category, generation_status, generation_started_at, generation_error')
             .eq('user_id', user.id)
             .eq('policy_id', policyId)
             .maybeSingle(),
@@ -156,11 +185,19 @@ export default function PolicyDetailPage({ params }: { params: Promise<{ policyI
         if (rowError) throw rowError;
 
         const stored = row?.analysis as (FullAnalysis & { legacy?: boolean }) | undefined;
+        const jobRunning = row?.generation_status === 'pending' && !!row.generation_started_at
+          && Date.now() - new Date(row.generation_started_at).getTime() < 6 * 60 * 1000;
+        if (row?.generation_status === 'failed' && row.generation_error) setGenerateError(row.generation_error);
+
         if (stored && stored.legacy) {
           // Summary-only analysis from before the full breakdown existed.
           setLegacy(true);
+          followRunningJob = jobRunning;
         } else if (stored && Object.keys(stored).length > 0) {
-          setAnalysis(stored);
+          // Normalize on read so older analyses render with the current UI.
+          setAnalysis(coerceFullAnalysis(stored as unknown as Record<string, unknown>, {
+            ...policyFromAnalysis(policyId, stored), title: row!.policy_title || stored.policyTitle || policyId,
+          }));
           setAnalyzedAt(row!.updated_at);
           // Show the profile the analysis was actually based on.
           setProfile((row!.profile_snapshot as ProfileSnapshot | null) || (prof ? snapshotFromRow(prof) : null));
@@ -168,10 +205,15 @@ export default function PolicyDetailPage({ params }: { params: Promise<{ policyI
             && (!row!.profile_version || new Date(row!.profile_version) < new Date(prof.financial_updated_at));
           setStale(!!profileChanged);
           setLoading(false);
+          if (jobRunning) setGenerating(true); // a re-analysis is in progress
+          followRunningJob = jobRunning;
           return;
+        } else {
+          followRunningJob = jobRunning;
         }
 
-        // 2) No analysis yet: the user starts generation explicitly (see generate()).
+        // 2) No analysis yet: the user starts generation explicitly (see generate()),
+        //    unless one is already running, which we follow.
         if (!cancelled) setNotFound(true);
       } catch (e) {
         console.error('Detail load error:', e);
@@ -181,8 +223,12 @@ export default function PolicyDetailPage({ params }: { params: Promise<{ policyI
       }
     }
 
-    load();
+    load().then(() => {
+      if (followRunningJob && !cancelled) generate(false);
+    });
     return () => { cancelled = true; };
+    // Loads once per policy; generate() only reads policyId and state setters.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [policyId]);
 
   // ----- loading / generating / not-found states -----

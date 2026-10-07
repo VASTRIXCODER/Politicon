@@ -1,24 +1,41 @@
-import { NextRequest, NextResponse } from 'next/server';
+import { NextRequest, NextResponse, after } from 'next/server';
 import { z } from 'zod';
-import { analyzePolicyFull } from '@/lib/claude';
-import { FullAnalysis, UserProfile } from '@/types';
-import { AI_MODEL } from '@/lib/server/aiConfig';
-import { ANALYSIS_PROMPT_VERSION, ANALYSIS_SCHEMA_VERSION } from '@/lib/claude';
+import { analyzePolicyFull, ANALYSIS_PROMPT_VERSION, ANALYSIS_SCHEMA_VERSION } from '@/lib/claude';
+import type { Policy, UserProfile } from '@/types';
 import { getRequestContext } from '@/lib/server/requestContext';
 import { readJson, apiError } from '@/lib/server/http';
 import { rateLimit } from '@/lib/rateLimit';
 import { checkAiBudget } from '@/lib/server/aiGuard';
-import { aiFailure } from '@/lib/server/aiErrors';
+import { describeAiError } from '@/lib/server/aiErrors';
 import { resolvePolicy } from '@/lib/server/policies';
 import { createAdminClient } from '@/lib/supabase/admin';
+import { AI_MODEL } from '@/lib/server/aiConfig';
 
 export const dynamic = 'force-dynamic';
-export const maxDuration = 60;
+// The generation runs after the response is sent (see after() below).
+export const maxDuration = 300;
+
+/** A pending job older than this is treated as failed (the worker died). */
+const STALE_PENDING_MS = 6 * 60 * 1000;
+/** The generation is abandoned shortly before the function's time limit. */
+const GENERATION_TIMEOUT_MS = 270 * 1000;
 
 const Body = z.object({
   policyId: z.string().min(1).max(80),
   force: z.boolean().optional(),
 });
+
+interface ExistingRow {
+  analysis: Record<string, unknown> | null;
+  net_annual_impact: number | null;
+  net_monthly_impact: number | null;
+  profile_snapshot: unknown;
+  generation_status: 'pending' | 'ready' | 'failed';
+  generation_started_at: string | null;
+}
+
+const hasResult = (row: ExistingRow | null) =>
+  !!row?.analysis && Object.keys(row.analysis).length > 0 && !(row.analysis as { legacy?: boolean }).legacy;
 
 /** The profile fields an analysis was based on, shown as "Based on your profile". */
 function profileSnapshot(p: UserProfile) {
@@ -33,10 +50,15 @@ function profileSnapshot(p: UserProfile) {
   };
 }
 
+/**
+ * Generate (or regenerate) a full analysis. Returns 200 with a stored result,
+ * or 202 when a generation is running in the background; the client then
+ * follows the row's generation_status.
+ */
 export async function POST(req: NextRequest) {
   const auth = await getRequestContext();
   if (!auth.ok) return auth.response;
-  const { supabase, user, profile } = auth.ctx;
+  const { supabase, user, profile, profileVersion } = auth.ctx;
 
   const body = await readJson(req, Body);
   if (!body.ok) return body.response;
@@ -44,74 +66,125 @@ export async function POST(req: NextRequest) {
   const policy = await resolvePolicy(supabase, user.id, body.data.policyId);
   if (!policy) return apiError(404, 'policy_not_found', 'That policy is not in your feed. Refresh your feed and try again.');
 
+  const { data } = await supabase
+    .from('analyzed_policies')
+    .select('analysis, net_annual_impact, net_monthly_impact, profile_snapshot, generation_status, generation_started_at')
+    .eq('user_id', user.id)
+    .eq('policy_id', policy.id)
+    .maybeSingle();
+  const existing = data as ExistingRow | null;
+
+  const running =
+    existing?.generation_status === 'pending' &&
+    !!existing.generation_started_at &&
+    Date.now() - new Date(existing.generation_started_at).getTime() < STALE_PENDING_MS;
+  if (running) return NextResponse.json({ status: 'pending' }, { status: 202 });
+
   // Re-use an existing analysis unless the caller explicitly asks to regenerate.
-  if (!body.data.force) {
-    const { data: existing } = await supabase
-      .from('analyzed_policies')
-      .select('analysis, net_annual_impact, net_monthly_impact, profile_snapshot')
-      .eq('user_id', user.id)
-      .eq('policy_id', policy.id)
-      .maybeSingle();
-    // Legacy rows (summary text only, from before the structured analysis) are regenerated.
-    const stored = existing?.analysis as { legacy?: boolean } | null | undefined;
-    if (existing && stored && Object.keys(stored).length > 0 && !stored.legacy) {
-      return NextResponse.json({
-        analysis: existing.analysis,
-        netAnnual: existing.net_annual_impact,
-        netMonthly: existing.net_monthly_impact,
-        profileSnapshot: existing.profile_snapshot,
-        cached: true,
-      });
-    }
+  if (!body.data.force && existing && hasResult(existing)) {
+    return NextResponse.json({
+      status: 'ready',
+      analysis: existing.analysis,
+      netAnnual: existing.net_annual_impact,
+      netMonthly: existing.net_monthly_impact,
+      profileSnapshot: existing.profile_snapshot,
+      cached: true,
+    });
   }
 
   const limited = await rateLimit(req, 'analyze', { userId: user.id });
   if (!limited.ok) return limited.response;
-  const budget = await checkAiBudget('analyze', user.id);
-  if (!budget.ok) return budget.response;
 
-  let analysis: FullAnalysis;
-  try {
-    analysis = await analyzePolicyFull(policy, profile, { feature: 'analyze', userId: user.id, usageId: budget.usageId });
-  } catch (e) {
-    return aiFailure(e, 'Policy analysis');
-  }
-
-  // Only a validated analysis is ever written, so a failure never overwrites a good row.
+  // Claim the job atomically so two clicks can't start two generations.
+  const admin = createAdminClient();
   const now = new Date().toISOString();
-  const snapshot = profileSnapshot(profile);
-  const { error: saveError } = await createAdminClient().from('analyzed_policies').upsert(
-    {
+  let claimed = false;
+  if (!existing) {
+    const { error } = await admin.from('analyzed_policies').insert({
       user_id: user.id,
       policy_id: policy.id,
       policy_title: policy.title,
-      bill_number: analysis.billNumber,
-      status: analysis.status,
-      category: analysis.category,
-      direction: analysis.direction,
-      confidence_score: analysis.confidenceScore,
-      net_annual_impact: analysis.netAnnualImpact,
-      net_monthly_impact: analysis.netMonthlyImpact,
-      analysis,
-      model: AI_MODEL,
-      prompt_version: ANALYSIS_PROMPT_VERSION,
-      schema_version: ANALYSIS_SCHEMA_VERSION,
-      profile_snapshot: snapshot,
-      profile_version: auth.ctx.profileVersion,
-      updated_at: now,
-    },
-    { onConflict: 'user_id,policy_id' }
-  );
-  if (saveError) {
-    console.error('analyzed_policies upsert error:', saveError);
-    return apiError(500, 'save_failed', 'The analysis was generated but could not be saved. Please try again.');
+      category: policy.category,
+      status: policy.status,
+      analysis: {},
+      generation_status: 'pending',
+      generation_started_at: now,
+    });
+    claimed = !error;
+  } else {
+    const staleBefore = new Date(Date.now() - STALE_PENDING_MS).toISOString();
+    const { data: rows } = await admin
+      .from('analyzed_policies')
+      .update({ generation_status: 'pending', generation_started_at: now, generation_error: null })
+      .eq('user_id', user.id)
+      .eq('policy_id', policy.id)
+      .or(`generation_status.neq.pending,generation_started_at.lt.${staleBefore},generation_started_at.is.null`)
+      .select('id');
+    claimed = !!rows && rows.length > 0;
+  }
+  if (!claimed) return NextResponse.json({ status: 'pending' }, { status: 202 });
+
+  const budget = await checkAiBudget('analyze', user.id);
+  if (!budget.ok) {
+    // Release the claim: drop a fresh placeholder, or put the old result back on display.
+    if (!existing) {
+      await admin.from('analyzed_policies').delete().eq('user_id', user.id).eq('policy_id', policy.id).eq('generation_status', 'pending');
+    } else {
+      await admin
+        .from('analyzed_policies')
+        .update({ generation_status: hasResult(existing) ? 'ready' : 'failed', generation_started_at: existing.generation_started_at })
+        .eq('user_id', user.id)
+        .eq('policy_id', policy.id);
+    }
+    return budget.response;
   }
 
-  return NextResponse.json({
-    analysis,
-    netAnnual: analysis.netAnnualImpact,
-    netMonthly: analysis.netMonthlyImpact,
-    profileSnapshot: snapshot,
-    cached: false,
-  });
+  const meta = { feature: 'analyze' as const, userId: user.id, usageId: budget.usageId };
+  after(() => runAnalysis(policy, profile, meta, profileVersion));
+
+  return NextResponse.json({ status: 'pending' }, { status: 202 });
+}
+
+/** Background worker: generate, then write the result or the failure onto the row. */
+async function runAnalysis(
+  policy: Policy,
+  profile: UserProfile,
+  meta: { feature: 'analyze'; userId: string; usageId: number },
+  profileVersion: string | null,
+) {
+  const admin = createAdminClient();
+  const match = (q: ReturnType<ReturnType<typeof admin.from>['update']>) =>
+    q.eq('user_id', meta.userId).eq('policy_id', policy.id);
+
+  try {
+    const analysis = await analyzePolicyFull(policy, profile, meta, AbortSignal.timeout(GENERATION_TIMEOUT_MS));
+    // Only a validated analysis is ever written, so a failure never overwrites a good row.
+    const { error } = await match(
+      admin.from('analyzed_policies').update({
+        policy_title: policy.title,
+        bill_number: analysis.billNumber,
+        status: analysis.status,
+        category: analysis.category,
+        direction: analysis.direction,
+        confidence_score: analysis.confidenceScore,
+        net_annual_impact: analysis.netAnnualImpact,
+        net_monthly_impact: analysis.netMonthlyImpact,
+        analysis,
+        model: AI_MODEL,
+        prompt_version: ANALYSIS_PROMPT_VERSION,
+        schema_version: ANALYSIS_SCHEMA_VERSION,
+        profile_snapshot: profileSnapshot(profile),
+        profile_version: profileVersion,
+        generation_status: 'ready',
+        generation_error: null,
+        updated_at: new Date().toISOString(),
+      }),
+    );
+    if (error) throw error;
+  } catch (e) {
+    console.error('Background analysis failed:', e);
+    const { message } = describeAiError(e);
+    // Keeps any previous analysis in place; only the job status changes.
+    await match(admin.from('analyzed_policies').update({ generation_status: 'failed', generation_error: message }));
+  }
 }

@@ -228,10 +228,14 @@ function AdvisorInner() {
   useEffect(() => {
     async function loadFeed() {
       setFeedLoading(true);
-      // 202 means the feed is still being built — check back a few times.
-      for (let attempt = 0; attempt < 12; attempt++) {
+      // 202 means the feed is being built in the background — show what we have and check back.
+      for (let attempt = 0; attempt < 60; attempt++) {
         const res = await apiFetch<{ policies?: DiscoveredPolicy[] }>('/api/policies/feed');
         if (res.ok && res.status === 202) {
+          if (Array.isArray(res.data.policies) && res.data.policies.length > 0) {
+            setFeed(res.data.policies);
+            setFeedLoading(false);
+          }
           await new Promise(r => setTimeout(r, 5000));
           continue;
         }

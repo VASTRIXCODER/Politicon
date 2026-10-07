@@ -24,7 +24,7 @@ interface ViewFullImpactButtonProps {
 // On click:
 //   1. Look up an existing analysis for (user, policy_id) in analyzed_policies.
 //   2. If found -> navigate to /impact/<id> (no re-analysis).
-//   3. If missing -> POST /api/analyze (which upserts), then navigate.
+//   3. If missing -> start a background analysis, then navigate.
 //   4. If generation fails, show the reason under the button.
 export default function ViewFullImpactButton({
   policyId,
@@ -67,7 +67,8 @@ export default function ViewFullImpactButton({
         console.error('View full impact lookup error:', e);
       }
 
-      // No existing analysis -> generate it, then navigate.
+      // No existing analysis -> start one (it runs in the background) and open
+      // the detail page, which shows progress until it's ready.
       const res = await apiFetch('/api/analyze', { body: { policyId } });
       if (res.ok) router.push(target);
       else setError(res.message);
