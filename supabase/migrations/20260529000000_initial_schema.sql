@@ -1,5 +1,5 @@
 -- Enable UUID extension
-extension if not exists "uuid-ossp";
+create extension if not exists "uuid-ossp";
 
 -- User profiles table
 create table if not exists public.user_profiles (
@@ -70,15 +70,19 @@ alter table public.user_profiles enable row level security;
 alter table public.tracked_policies enable row level security;
 alter table public.policy_alerts enable row level security;
 
+drop policy if exists "Users can view own profile" on public.user_profiles;
 create policy "Users can view own profile" on public.user_profiles
   for select using (auth.uid() = id);
 
+drop policy if exists "Users can update own profile" on public.user_profiles;
 create policy "Users can update own profile" on public.user_profiles
   for all using (auth.uid() = id);
 
+drop policy if exists "Users can manage own tracked policies" on public.tracked_policies;
 create policy "Users can manage own tracked policies" on public.tracked_policies
   for all using (auth.uid() = user_id);
 
+drop policy if exists "Users can view own alerts" on public.policy_alerts;
 create policy "Users can view own alerts" on public.policy_alerts
   for all using (auth.uid() = user_id);
 

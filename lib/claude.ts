@@ -8,6 +8,12 @@ import {
   ImpactDirection,
 } from '@/types';
 import { incomeMidpoint } from '@/lib/simpleMode';
+import { canonicalPolicyId } from '@/lib/policyId';
+import {
+  AGE_RANGES, CONCERNS, DEBT_TYPES, DEPENDENT_AGE_BANDS, EDUCATION_LEVELS, EMPLOYMENT_STATUSES,
+  FILING_STATUSES, HOME_VALUE_BANDS, HOUSING_SITUATIONS, INCOME_RANGES, INVESTMENT_TYPES, OCCUPATIONS,
+  isHomeowner, isRenter, labelOf,
+} from '@/lib/profileOptions';
 import { recordAiUsage, type AiFeature } from '@/lib/server/aiGuard';
 import { AI_MODEL } from '@/lib/server/aiConfig';
 
@@ -17,6 +23,11 @@ const MODEL = AI_MODEL;
 
 // Legacy alias kept so existing imports (`FeedPolicy`) keep compiling.
 export type FeedPolicy = DiscoveredPolicy;
+
+/** Bump when the analysis prompt changes meaningfully (stored with each analysis). */
+export const ANALYSIS_PROMPT_VERSION = '2026-10-07';
+/** Bump when the FullAnalysis shape changes; older rows get a "re-analyze" prompt. */
+export const ANALYSIS_SCHEMA_VERSION = 2;
 
 /** Who a Claude call is for — used for the usage ledger and budget. */
 export interface CallMeta {
@@ -45,9 +56,6 @@ function fence(text: string, max = 2000): string {
 // ---------------------------------------------------------------------------
 // Helpers
 // ---------------------------------------------------------------------------
-function slugify(s: string): string {
-  return s.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '').slice(0, 60);
-}
 
 /** Coerce any model value to a finite number (handles "$1,200", "-3.5%", etc.). */
 function num(v: unknown, fallback = 0): number {
@@ -89,33 +97,50 @@ function extractJson(raw: string): unknown {
   return JSON.parse(text);
 }
 
+function describeDependents(profile: UserProfile): string {
+  const count = profile.dependentsCount;
+  if (count === null || count === undefined) {
+    return profile.hasDependents
+      ? 'Yes (number not provided) — model child-related credits and costs conservatively'
+      : 'Unknown — the user has not said; do not assume children, and note this as an assumption if it matters';
+  }
+  if (count === 0) return 'None — do NOT invent dependent-related benefits';
+  const bands = (profile.dependentAgeBands || []).map((b) => labelOf(DEPENDENT_AGE_BANDS, b)).join(', ');
+  return `${count} dependent${count === 1 ? '' : 's'}${bands ? ` (ages: ${bands})` : ''} — model child tax credits, childcare and education effects for these ages`;
+}
+
 function buildUserContext(profile: UserProfile): string {
   const income = incomeMidpoint(profile);
   const monthlyGross = Math.round(income / 12);
   // Rough disposable anchor: take-home after an assumed blended 22% effective rate.
   const monthlyTakeHome = Math.round((income * 0.78) / 12);
-  const isHomeowner = /own|mortgage|buy/i.test(profile.housingSituation || '');
-  const isRenter = /rent/i.test(profile.housingSituation || '');
-  const hasKids = !!profile.hasDependents;
-  const debts = profile.debtTypes?.length ? profile.debtTypes.join(', ') : 'None reported';
+  const owner = isHomeowner(profile.housingSituation);
+  const renter = isRenter(profile.housingSituation);
+  const debts = (profile.debtTypes || []).filter((d) => d !== 'none');
+  const debtText = debts.length ? debts.map((d) => labelOf(DEBT_TYPES, d)).join(', ') : 'None reported';
+  const occupation = labelOf(OCCUPATIONS, profile.occupationCategory);
+  const extras = [
+    profile.investments ? `- Investments: ${labelOf(INVESTMENT_TYPES, profile.investments)}` : '',
+    owner && profile.homeValueBand ? `- Home value: ${labelOf(HOME_VALUE_BANDS, profile.homeValueBand)}` : '',
+  ].filter(Boolean).join('\n');
 
   return `User Financial Profile:
-- Location: ${profile.city || 'Unknown city'}, ${profile.state}, ${profile.country}
-- Age Range: ${profile.ageRange}
-- Education: ${profile.educationStage}
-- Employment: ${profile.employmentStatus} — ${profile.occupationCategory}
-- Income Range: ${profile.incomeRange}
-- Filing Status: ${profile.filingStatus}
-- Housing: ${profile.housingSituation}${isHomeowner ? ' (HOMEOWNER — model property value, mortgage rate and equity effects)' : isRenter ? ' (RENTER — model rent burden and affordability, NOT property equity)' : ''}
-- Debt Types: ${debts}
-- Dependents: ${hasKids ? 'Yes — model child tax credits, childcare and education effects' : 'No — do NOT invent dependent-related benefits'}
-- Top Financial Concerns: ${profile.topFinancialConcerns?.join(', ') || 'General financial health'}
+- Location: ${profile.city ? `${profile.city}, ` : ''}${profile.state}, ${profile.country}
+- Age range: ${labelOf(AGE_RANGES, profile.ageRange)}
+- Education: ${labelOf(EDUCATION_LEVELS, profile.educationStage)}
+- Employment: ${labelOf(EMPLOYMENT_STATUSES, profile.employmentStatus)} — ${occupation}
+- Household income: ${labelOf(INCOME_RANGES, profile.incomeRange)}
+- Tax filing status: ${labelOf(FILING_STATUSES, profile.filingStatus)}
+- Housing: ${labelOf(HOUSING_SITUATIONS, profile.housingSituation)}${owner ? ' (HOMEOWNER — model property value, mortgage rate and equity effects)' : renter ? ' (RENTER — model rent burden and affordability, NOT property equity)' : ''}
+- Debts: ${debtText}
+- Dependents: ${describeDependents(profile)}
+- Top financial concerns: ${(profile.topFinancialConcerns || []).map((c) => labelOf(CONCERNS, c)).join(', ') || 'General financial health'}${extras ? `\n${extras}` : ''}
 
 DERIVED DOLLAR ANCHORS (use these to ground every estimate — never produce a number that contradicts them):
-- Estimated gross income: ~$${income.toLocaleString()}/yr (~$${monthlyGross.toLocaleString()}/mo gross)
+- Estimated gross household income: ~$${income.toLocaleString()}/yr (~$${monthlyGross.toLocaleString()}/mo gross)
 - Estimated take-home: ~$${monthlyTakeHome.toLocaleString()}/mo after taxes
 - Scale all impacts to THIS income: a "1% of income" effect ≈ $${Math.round(income * 0.01).toLocaleString()}/yr for this user. A figure that would be trivial for a high earner may be significant here, and vice-versa.
-- Tie every percentage you cite to a concrete dollar figure at this income level. Tie every macro/sector effect back to ${profile.state} and the ${profile.occupationCategory} field specifically.`;
+- Tie every percentage you cite to a concrete dollar figure at this income level. Tie every macro/sector effect back to ${profile.state} and the ${occupation} field specifically.`;
 }
 
 /** Pull the concatenated text out of a message (skips thinking blocks). */
@@ -227,10 +252,10 @@ Reason about which policies genuinely intersect THIS user's income bracket, stat
         const summary = str(p.summary || p.description);
         const reasons = Array.isArray(p.reasons) ? p.reasons.map((r) => str(r)).filter(Boolean).slice(0, 3) : [];
         return {
-          id: slugify(title),
+          id: canonicalPolicyId({ billNumber: str(p.billNumber), region: str(p.region, 'Federal'), title }),
           title,
           billNumber: str(p.billNumber),
-          status: str(p.status, 'proposed').toLowerCase(),
+          status: policyStatus(p.status),
           category: str(p.category, 'taxes'),
           relevanceScore: score,
           relevance: score >= 70 ? 'High' : score >= 40 ? 'Medium' : 'Low',
@@ -365,6 +390,20 @@ function enumOf<T extends string>(v: unknown, allowed: readonly T[], fallback: T
   return (allowed as readonly string[]).includes(s) ? (s as T) : fallback;
 }
 
+const POLICY_STATUSES = ['proposed', 'passed', 'enacted', 'repealed', 'rejected'] as const;
+
+/** Map the model's free-text status ("signed into law", "introduced", …) onto the stored set. */
+export function policyStatus(v: unknown, fallback?: string): (typeof POLICY_STATUSES)[number] {
+  const s = str(v).toLowerCase();
+  if ((POLICY_STATUSES as readonly string[]).includes(s)) return s as (typeof POLICY_STATUSES)[number];
+  if (/sign|law|effect|enact/.test(s)) return 'enacted';
+  if (/repeal|overturn|struck/.test(s)) return 'repealed';
+  if (/fail|reject|veto|dead/.test(s)) return 'rejected';
+  if (/pass/.test(s)) return 'passed';
+  const f = (fallback || '').toLowerCase();
+  return (POLICY_STATUSES as readonly string[]).includes(f) ? (f as (typeof POLICY_STATUSES)[number]) : 'proposed';
+}
+
 function clamp100(v: unknown): number {
   return Math.max(0, Math.min(100, Math.round(num(v))));
 }
@@ -436,7 +475,7 @@ export function coerceFullAnalysis(p: Record<string, unknown>, policy: Policy): 
     policyId: policy.id,
     policyTitle: policy.title,
     billNumber: str(p.billNumber, policy.governingBody && /\b(H\.?R\.?|S\.?)\s*\d/i.test(policy.governingBody) ? policy.governingBody : ''),
-    status: str(p.status, policy.status || 'proposed').toLowerCase(),
+    status: policyStatus(p.status, policy.status),
     category: policy.category || 'taxes',
     confidenceScore: score,
     direction: dir(p.direction !== undefined ? p.direction : netAnnual > 0 ? 'positive' : netAnnual < 0 ? 'negative' : 'neutral'),

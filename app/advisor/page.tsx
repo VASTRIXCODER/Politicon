@@ -5,7 +5,7 @@ import { motion, AnimatePresence } from 'framer-motion';
 import { useSearchParams } from 'next/navigation';
 import {
   Send, Zap, DollarSign, Home, Heart, GraduationCap, Briefcase, Plus, MessageSquare,
-  Clock, ChevronLeft, ChevronRight, Loader2, TrendingUp, TrendingDown, Minus, Sparkles, X,
+  Clock, ChevronLeft, Trash2, ChevronRight, Loader2, TrendingUp, TrendingDown, Minus, Sparkles, X,
 } from 'lucide-react';
 import { createClient } from '@/lib/supabase/client';
 import { ChatMessage, DiscoveredPolicy } from '@/types';
@@ -353,6 +353,14 @@ function AdvisorInner() {
     setMessages(session.messages.length > 0 ? session.messages : [{ ...INITIAL_MESSAGE, timestamp: new Date() }]);
   };
 
+  const deleteSession = async (id: string) => {
+    if (!window.confirm('Delete this conversation? This can’t be undone.')) return;
+    const { error } = await createClient().from('chat_sessions').delete().eq('id', id);
+    if (error) { window.alert('Could not delete the conversation. Please try again.'); return; }
+    setSessions(prev => prev.filter(s => s.id !== id));
+    if (activeSessionId === id) newChat();
+  };
+
   const newChat = () => {
     setActiveSessionId(null);
     setMessages([{ ...INITIAL_MESSAGE, timestamp: new Date() }]);
@@ -396,16 +404,24 @@ function AdvisorInner() {
                     </div>
                   ) : (
                     sessions.map(session => (
-                      <button key={session.id} onClick={() => loadSession(session)}
-                        className={`w-full text-left p-3 rounded-xl mb-1 transition-all ${
-                          activeSessionId === session.id ? 'bg-primary/15 border border-primary/20' : 'hover:bg-white/5 border border-transparent'
-                        }`}>
-                        <p className="text-xs font-medium text-text-primary truncate">{session.title}</p>
-                        <div className="flex items-center gap-1 mt-1">
-                          <Clock className="w-2.5 h-2.5 text-text-muted" />
-                          <span className="text-[10px] text-text-muted">{new Date(session.created_at).toLocaleDateString()}</span>
-                        </div>
-                      </button>
+                      <div key={session.id} className={`group relative mb-1 rounded-xl transition-all ${
+                        activeSessionId === session.id ? 'bg-primary/15 border border-primary/20' : 'hover:bg-white/5 border border-transparent'
+                      }`}>
+                        <button onClick={() => loadSession(session)} className="w-full text-left p-3 pr-9">
+                          <p className="text-xs font-medium text-text-primary truncate">{session.title}</p>
+                          <div className="flex items-center gap-1 mt-1">
+                            <Clock className="w-2.5 h-2.5 text-text-muted" />
+                            <span className="text-[10px] text-text-muted">{new Date(session.created_at).toLocaleDateString()}</span>
+                          </div>
+                        </button>
+                        <button
+                          onClick={() => deleteSession(session.id)}
+                          aria-label={`Delete conversation “${session.title}”`}
+                          className="absolute right-2 top-1/2 -translate-y-1/2 p-1.5 rounded-lg text-text-muted opacity-60 sm:opacity-0 group-hover:opacity-100 focus:opacity-100 hover:text-red-300 hover:bg-red-500/10 transition-all"
+                        >
+                          <Trash2 className="w-3.5 h-3.5" />
+                        </button>
+                      </div>
                     ))
                   )}
                 </div>

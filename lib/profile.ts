@@ -20,6 +20,10 @@ export interface ProfileRow {
   has_dependents?: boolean | null;
   top_financial_concerns?: string[] | null;
   reading_mode?: string | null;
+  dependents_count?: number | null;
+  dependent_age_bands?: string[] | null;
+  investments?: string | null;
+  home_value_band?: string | null;
 }
 
 /**
@@ -29,7 +33,9 @@ export interface ProfileRow {
  */
 export function mapDbProfile(row: ProfileRow | null | undefined, base: UserProfile): UserProfile {
   if (!row) return base;
-  const pick = <T>(v: T | null | undefined, fallback: T): T => (v === null || v === undefined ? fallback : v);
+  // null, undefined and empty strings all mean "not provided".
+  const pick = <T>(v: T | null | undefined, fallback: T): T =>
+    v === null || v === undefined || (v as unknown) === '' ? fallback : v;
   return {
     ...base,
     id: row.id || base.id,
@@ -48,6 +54,10 @@ export function mapDbProfile(row: ProfileRow | null | undefined, base: UserProfi
     housingSituation: pick(row.housing_situation, base.housingSituation),
     debtTypes: pick(row.debt_types, base.debtTypes),
     hasDependents: pick(row.has_dependents, base.hasDependents),
+    dependentsCount: row.dependents_count ?? base.dependentsCount ?? null,
+    dependentAgeBands: pick(row.dependent_age_bands, base.dependentAgeBands ?? []),
     topFinancialConcerns: pick(row.top_financial_concerns, base.topFinancialConcerns),
+    investments: row.investments ?? base.investments ?? null,
+    homeValueBand: row.home_value_band ?? base.homeValueBand ?? null,
   };
 }

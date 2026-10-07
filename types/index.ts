@@ -21,7 +21,14 @@ export interface UserProfile {
   housingSituation: string;
   debtTypes: string[];
   hasDependents: boolean;
+  /** null = never asked (older profiles). */
+  dependentsCount?: number | null;
+  dependentAgeBands?: string[];
   topFinancialConcerns: string[];
+
+  // Optional detail that sharpens estimates.
+  investments?: string | null;
+  homeValueBand?: string | null;
 }
 
 export interface PolicyImpact {

@@ -5,8 +5,20 @@ import { safeNextPath } from '@/lib/safeNext';
 const PROTECTED_ROUTES = ['/dashboard', '/policies', '/advisor', '/impact', '/settings', '/onboarding'];
 const AUTH_ROUTES = ['/auth/signin', '/auth/signup'];
 const AUTH_TIMEOUT_MS = 3000;
+const ONBOARDED_COOKIE = 'pc_onboarded';
 
-const isProtected = (path: string) => PROTECTED_ROUTES.some((r) => path === r || path.startsWith(`${r}/`));
+function withTimeout<T>(p: PromiseLike<T>): Promise<T> {
+  return Promise.race([
+    Promise.resolve(p),
+    new Promise<never>((_, reject) => setTimeout(() => reject(new Error('timeout')), AUTH_TIMEOUT_MS)),
+  ]);
+}
+
+// App pages that only make sense once the financial profile is complete.
+const NEEDS_PROFILE = ['/dashboard', '/policies', '/advisor', '/impact'];
+
+const matches = (routes: string[], path: string) => routes.some((r) => path === r || path.startsWith(`${r}/`));
+const isProtected = (path: string) => matches(PROTECTED_ROUTES, path);
 
 export async function middleware(request: NextRequest) {
   const pathname = request.nextUrl.pathname;
@@ -39,10 +51,7 @@ export async function middleware(request: NextRequest) {
 
   let user = null;
   try {
-    const result = await Promise.race([
-      supabase.auth.getUser(),
-      new Promise<never>((_, reject) => setTimeout(() => reject(new Error('auth timeout')), AUTH_TIMEOUT_MS)),
-    ]);
+    const result = await withTimeout(supabase.auth.getUser());
     user = result.data.user;
   } catch (e) {
     // If auth can't be checked, don't bounce signed-in users to the sign-in
@@ -55,6 +64,28 @@ export async function middleware(request: NextRequest) {
     const url = new URL('/auth/signin', request.url);
     url.searchParams.set('next', `${pathname}${request.nextUrl.search}`);
     return redirectTo(url);
+  }
+
+  // Signed-in users who haven't finished onboarding are sent there first, so
+  // no page ever shows numbers for an incomplete profile. Once confirmed, a
+  // cookie bound to the user id skips this lookup on later navigations (the
+  // API still enforces it on every AI call).
+  if (user && matches(NEEDS_PROFILE, pathname) && request.cookies.get(ONBOARDED_COOKIE)?.value !== user.id) {
+    try {
+      const { data: profile, error } = await withTimeout(
+        supabase.from('user_profiles').select('has_completed_onboarding').eq('id', user.id).maybeSingle(),
+      );
+      if (!error && !profile?.has_completed_onboarding) {
+        return redirectTo(new URL('/onboarding', request.url));
+      }
+      if (!error && profile?.has_completed_onboarding) {
+        response.cookies.set(ONBOARDED_COOKIE, user.id, {
+          httpOnly: true, sameSite: 'lax', secure: true, path: '/', maxAge: 60 * 60 * 24 * 30,
+        });
+      }
+    } catch (e) {
+      console.error('Middleware onboarding check failed:', e);
+    }
   }
 
   if (user && AUTH_ROUTES.includes(pathname)) {

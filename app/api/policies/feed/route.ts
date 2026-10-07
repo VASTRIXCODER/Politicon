@@ -6,6 +6,7 @@ import { rateLimit } from '@/lib/rateLimit';
 import { checkAiBudget } from '@/lib/server/aiGuard';
 import { aiFailure } from '@/lib/server/aiErrors';
 import { createAdminClient } from '@/lib/supabase/admin';
+import { reconcilePolicyIds } from '@/lib/policyId';
 
 export const dynamic = 'force-dynamic';
 export const maxDuration = 60;
@@ -76,7 +77,13 @@ async function generate(req: NextRequest, ctx: RequestContext, row: FeedRow | nu
   }
 
   try {
-    const policies = await discoverPolicyFeed(ctx.profile, { feature: 'feed', userId, usageId: budget.usageId });
+    const generated = await discoverPolicyFeed(ctx.profile, { feature: 'feed', userId, usageId: budget.usageId });
+    // Keep ids stable against analyses the user already has.
+    const { data: analyzed } = await ctx.supabase
+      .from('analyzed_policies')
+      .select('policy_id, policy_title, bill_number')
+      .eq('user_id', userId);
+    const policies = reconcilePolicyIds(generated, analyzed || []);
     const updatedAt = new Date().toISOString();
     await admin
       .from('user_policy_feed')

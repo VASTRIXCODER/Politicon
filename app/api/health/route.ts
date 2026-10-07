@@ -8,7 +8,7 @@ type Check = { ok: boolean; detail?: string };
 
 const TIMEOUT_MS = 3000;
 // Latest migration the code depends on (see supabase/migrations).
-const EXPECTED_SCHEMA_VERSION = '20261007120000';
+const EXPECTED_SCHEMA_VERSION = '20261007150000';
 
 async function probe(fn: (_signal: AbortSignal) => PromiseLike<{ error: { message?: string; code?: string } | null }>): Promise<Check> {
   try {
@@ -47,7 +47,7 @@ export async function GET(req: NextRequest) {
           .rpc('check_rate_limit', { p_identifier: 'health', p_route: 'health', p_limit: 1000000, p_window_seconds: 60 })
           .abortSignal(s)
       ),
-      // Confirms the security migration (AI budget functions, ledger) is applied.
+      // Confirms every migration this code depends on has been applied.
       (async (): Promise<Check> => {
         try {
           const { data, error } = await admin.rpc('schema_version').abortSignal(AbortSignal.timeout(TIMEOUT_MS));

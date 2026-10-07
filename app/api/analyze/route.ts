@@ -1,7 +1,9 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { z } from 'zod';
 import { analyzePolicyFull } from '@/lib/claude';
-import { FullAnalysis } from '@/types';
+import { FullAnalysis, UserProfile } from '@/types';
+import { AI_MODEL } from '@/lib/server/aiConfig';
+import { ANALYSIS_PROMPT_VERSION, ANALYSIS_SCHEMA_VERSION } from '@/lib/claude';
 import { getRequestContext } from '@/lib/server/requestContext';
 import { readJson, apiError } from '@/lib/server/http';
 import { rateLimit } from '@/lib/rateLimit';
@@ -18,42 +20,17 @@ const Body = z.object({
   force: z.boolean().optional(),
 });
 
-const money = (n: number) => `${n >= 0 ? '+' : '-'}$${Math.abs(Math.round(n)).toLocaleString()}`;
-
-/** Render the structured analysis into the legacy section format consumed by the list views. */
-function renderAnalysisText(a: FullAnalysis): string {
-  const lines: string[] = [];
-  lines.push(a.plainEnglishSummary, '');
-  lines.push('IMMEDIATE EFFECTS');
-  lines.push(`- Monthly budget impact: ${money(a.immediate.monthlyBudgetImpact)}/mo`);
-  lines.push(`- Annual budget impact: ${money(a.immediate.annualBudgetImpact)}/yr`);
-  lines.push(`- Take-home per paycheck: ${money(a.immediate.takeHomePerPaycheck)}`);
-  lines.push(`- Effective tax rate change: ${a.immediate.effectiveTaxRateChange >= 0 ? '+' : ''}${a.immediate.effectiveTaxRateChange}%`);
-  lines.push('');
-  lines.push('RIPPLE EFFECTS');
-  lines.push(`- Inflation impact: ${a.ripple.inflationImpactPct >= 0 ? '+' : ''}${a.ripple.inflationImpactPct}%`);
-  lines.push(`- Cost of living: ${money(a.ripple.costOfLivingChange)}/yr`);
-  lines.push(`- Purchasing power: ${money(a.ripple.purchasingPowerChange)}/yr`);
-  if (a.ripple.interestRateEffect) lines.push(`- ${a.ripple.interestRateEffect}`);
-  lines.push('');
-  lines.push('DOLLAR BREAKDOWN');
-  for (const [k, v] of Object.entries(a.categoryImpacts)) {
-    if (v !== 0) lines.push(`- ${k.charAt(0).toUpperCase() + k.slice(1)}: ${money(v)}/yr`);
-  }
-  lines.push('');
-  lines.push('TRADE-OFFS');
-  for (const g of a.tradeoffs.gains) lines.push(`- Gain: ${g.label} (${money(g.value)})`);
-  for (const l of a.tradeoffs.losses) lines.push(`- Loss: ${l.label} (${money(l.value)})`);
-  if (a.tradeoffs.netAssessment) lines.push(a.tradeoffs.netAssessment);
-  lines.push('');
-  lines.push('PROJECTIONS');
-  lines.push(`- 1 year: ${money(a.timeline.year1)}`);
-  lines.push(`- 3 years: ${money(a.timeline.year3)}`);
-  lines.push(`- 5 years: ${money(a.timeline.year5)}`);
-  lines.push('');
-  lines.push('RECOMMENDATIONS');
-  for (const r of a.recommendations) lines.push(`- [${r.priority}] ${r.step}`);
-  return lines.join('\n');
+/** The profile fields an analysis was based on, shown as "Based on your profile". */
+function profileSnapshot(p: UserProfile) {
+  return {
+    state: p.state,
+    incomeRange: p.incomeRange,
+    filingStatus: p.filingStatus,
+    housingSituation: p.housingSituation,
+    employmentStatus: p.employmentStatus,
+    dependentsCount: p.dependentsCount ?? null,
+    debtTypes: p.debtTypes,
+  };
 }
 
 export async function POST(req: NextRequest) {
@@ -71,15 +48,18 @@ export async function POST(req: NextRequest) {
   if (!body.data.force) {
     const { data: existing } = await supabase
       .from('analyzed_policies')
-      .select('analysis, net_annual_impact, net_monthly_impact')
+      .select('analysis, net_annual_impact, net_monthly_impact, profile_snapshot')
       .eq('user_id', user.id)
       .eq('policy_id', policy.id)
       .maybeSingle();
-    if (existing?.analysis && Object.keys(existing.analysis).length > 0) {
+    // Legacy rows (summary text only, from before the structured analysis) are regenerated.
+    const stored = existing?.analysis as { legacy?: boolean } | null | undefined;
+    if (existing && stored && Object.keys(stored).length > 0 && !stored.legacy) {
       return NextResponse.json({
         analysis: existing.analysis,
         netAnnual: existing.net_annual_impact,
         netMonthly: existing.net_monthly_impact,
+        profileSnapshot: existing.profile_snapshot,
         cached: true,
       });
     }
@@ -98,9 +78,9 @@ export async function POST(req: NextRequest) {
   }
 
   // Only a validated analysis is ever written, so a failure never overwrites a good row.
-  const admin = createAdminClient();
   const now = new Date().toISOString();
-  const { error: apErr } = await admin.from('analyzed_policies').upsert(
+  const snapshot = profileSnapshot(profile);
+  const { error: saveError } = await createAdminClient().from('analyzed_policies').upsert(
     {
       user_id: user.id,
       policy_id: policy.id,
@@ -113,30 +93,25 @@ export async function POST(req: NextRequest) {
       net_annual_impact: analysis.netAnnualImpact,
       net_monthly_impact: analysis.netMonthlyImpact,
       analysis,
+      model: AI_MODEL,
+      prompt_version: ANALYSIS_PROMPT_VERSION,
+      schema_version: ANALYSIS_SCHEMA_VERSION,
+      profile_snapshot: snapshot,
+      profile_version: auth.ctx.profileVersion,
       updated_at: now,
     },
     { onConflict: 'user_id,policy_id' }
   );
-  if (apErr) console.error('analyzed_policies upsert error:', apErr);
-  // Lightweight mirror for the dashboard list + realtime (consolidated in a later migration).
-  const { error: paErr } = await admin.from('policy_analyses').upsert(
-    {
-      user_id: user.id,
-      policy_id: policy.id,
-      policy_title: policy.title,
-      analysis_text: renderAnalysisText(analysis),
-      dollar_impact: analysis.netAnnualImpact,
-      category: policy.category,
-      updated_at: now,
-    },
-    { onConflict: 'user_id,policy_id' }
-  );
-  if (paErr) console.error('policy_analyses upsert error:', paErr);
+  if (saveError) {
+    console.error('analyzed_policies upsert error:', saveError);
+    return apiError(500, 'save_failed', 'The analysis was generated but could not be saved. Please try again.');
+  }
 
   return NextResponse.json({
     analysis,
     netAnnual: analysis.netAnnualImpact,
     netMonthly: analysis.netMonthlyImpact,
+    profileSnapshot: snapshot,
     cached: false,
   });
 }

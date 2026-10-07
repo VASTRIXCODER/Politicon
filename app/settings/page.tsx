@@ -3,114 +3,24 @@
 import { useState, useEffect, useCallback } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { useRouter } from 'next/navigation';
+import Link from 'next/link';
 import {
   User, MapPin, Briefcase, DollarSign, Shield, Bell,
   Eye, Zap, ChevronRight, Check, AlertTriangle, X,
   Lock, Trash2, RefreshCw, Save, ArrowLeft, BookOpen
 } from 'lucide-react';
+import {
+  AGE_RANGES, CONCERNS, DEBT_TYPES, DEPENDENT_AGE_BANDS, EDUCATION_LEVELS, EMPLOYMENT_STATUSES,
+  FILING_STATUSES, HOME_VALUE_BANDS, HOUSING_SITUATIONS, INCOME_RANGES, INVESTMENT_TYPES, MAX_CONCERNS,
+  MAX_DEPENDENTS, OCCUPATIONS, US_STATES, isHomeowner, validOnly, validOrEmpty,
+} from '@/lib/profileOptions';
+import { FinancialProfileSchema } from '@/lib/profileSchema';
 import { apiFetch } from '@/lib/api';
 import { createClient } from '@/lib/supabase/client';
 import AmbientBackground from '@/components/landing/AmbientBackground';
 import { useReadingMode } from '@/components/providers/ReadingModeProvider';
 
 // ─── constants ───────────────────────────────────────────────────────────────
-
-const US_STATES = [
-  'Alabama','Alaska','Arizona','Arkansas','California','Colorado','Connecticut',
-  'Delaware','District of Columbia','Florida','Georgia','Hawaii','Idaho','Illinois',
-  'Indiana','Iowa','Kansas','Kentucky','Louisiana','Maine','Maryland','Massachusetts',
-  'Michigan','Minnesota','Mississippi','Missouri','Montana','Nebraska','Nevada',
-  'New Hampshire','New Jersey','New Mexico','New York','North Carolina','North Dakota',
-  'Ohio','Oklahoma','Oregon','Pennsylvania','Rhode Island','South Carolina',
-  'South Dakota','Tennessee','Texas','Utah','Vermont','Virginia','Washington',
-  'West Virginia','Wisconsin','Wyoming',
-];
-
-const AGE_RANGES = [
-  { value: '18_25', label: '18–25' },
-  { value: '26_30', label: '26–30' },
-  { value: '31_45', label: '31–45' },
-  { value: '46_55', label: '46–55' },
-  { value: '56_65', label: '56–65' },
-  { value: '65_plus', label: '65+' },
-];
-const EDUCATION = [
-  { value: 'high_school', label: 'High School / GED' },
-  { value: 'some_college', label: 'Some College' },
-  { value: 'college_2yr', label: "Associate's Degree" },
-  { value: 'college_4yr', label: "Bachelor's Degree" },
-  { value: 'graduate', label: 'Graduate Degree' },
-  { value: 'professional', label: 'Professional Degree (JD/MD)' },
-  { value: 'doctorate', label: 'Doctorate' },
-];
-const EMPLOYMENT = [
-  { value: 'employed_full', label: 'Employed Full-Time' },
-  { value: 'employed_part', label: 'Employed Part-Time' },
-  { value: 'self_employed', label: 'Self-Employed / Freelance' },
-  { value: 'unemployed', label: 'Unemployed / Seeking Work' },
-  { value: 'student', label: 'Student' },
-  { value: 'retired', label: 'Retired' },
-  { value: 'disabled', label: 'Unable to Work' },
-];
-const OCCUPATION = [
-  { value: 'tech_software', label: 'Technology / Software' },
-  { value: 'healthcare_medical', label: 'Healthcare / Medical' },
-  { value: 'education_teaching', label: 'Education / Teaching' },
-  { value: 'business_finance', label: 'Business / Finance' },
-  { value: 'legal', label: 'Legal' },
-  { value: 'arts_entertainment', label: 'Arts / Entertainment' },
-  { value: 'construction_trades', label: 'Construction / Trades' },
-  { value: 'retail_service', label: 'Retail / Service' },
-  { value: 'government_military', label: 'Government / Military' },
-  { value: 'agriculture', label: 'Agriculture' },
-  { value: 'manufacturing', label: 'Manufacturing' },
-  { value: 'other', label: 'Other' },
-];
-const INCOME = [
-  { value: 'under_30k', label: 'Under $30,000' },
-  { value: '30k_50k', label: '$30,000 – $50,000' },
-  { value: '50k_75k', label: '$50,000 – $75,000' },
-  { value: '75k_100k', label: '$75,000 – $100,000' },
-  { value: '100k_150k', label: '$100,000 – $150,000' },
-  { value: '150k_250k', label: '$150,000 – $250,000' },
-  { value: 'over_250k', label: 'Over $250,000' },
-];
-const FILING = [
-  { value: 'single', label: 'Single' },
-  { value: 'married_joint', label: 'Married Filing Jointly' },
-  { value: 'married_separate', label: 'Married Filing Separately' },
-  { value: 'head_household', label: 'Head of Household' },
-  { value: 'qualifying_widow', label: 'Qualifying Widow(er)' },
-];
-const HOUSING = [
-  { value: 'own_outright', label: 'Own Outright (No Mortgage)' },
-  { value: 'own_mortgage', label: 'Own with Mortgage' },
-  { value: 'rent', label: 'Renting' },
-  { value: 'rent_assisted', label: 'Renting with Assistance' },
-  { value: 'live_with_family', label: 'Living with Family' },
-  { value: 'other', label: 'Other' },
-];
-const DEBT_TYPES = [
-  { value: 'mortgage', label: 'Mortgage' },
-  { value: 'student_loans', label: 'Student Loans' },
-  { value: 'auto_loan', label: 'Auto Loan' },
-  { value: 'credit_card', label: 'Credit Card Debt' },
-  { value: 'medical', label: 'Medical Debt' },
-  { value: 'personal_loan', label: 'Personal Loan' },
-  { value: 'business_loan', label: 'Business Loan' },
-];
-const CONCERNS = [
-  { value: 'cost_of_living', label: 'Cost of Living' },
-  { value: 'retirement', label: 'Retirement Security' },
-  { value: 'healthcare_costs', label: 'Healthcare Costs' },
-  { value: 'housing_costs', label: 'Housing Costs' },
-  { value: 'student_debt', label: 'Student Debt' },
-  { value: 'job_security', label: 'Job Security' },
-  { value: 'taxes', label: 'Tax Burden' },
-  { value: 'inflation', label: 'Inflation' },
-  { value: 'savings', label: 'Building Savings' },
-  { value: 'investment', label: 'Investment Returns' },
-];
 
 const TABS = [
   { id: 'profile', label: 'Profile', icon: User },
@@ -125,9 +35,9 @@ function FieldLabel({ children }: { children: React.ReactNode }) {
   return <label className="block text-xs font-semibold text-text-muted uppercase tracking-wider mb-2">{children}</label>;
 }
 
-function SelectField({ value, onChange, options, disabled }: {
+function SelectField({ value, onChange, options, disabled, placeholder = '— Select —' }: {
   value: string; onChange: (v: string) => void;
-  options: { value: string; label: string }[]; disabled?: boolean;
+  options: readonly { value: string; label: string }[]; disabled?: boolean; placeholder?: string;
 }) {
   return (
     <select
@@ -136,14 +46,14 @@ function SelectField({ value, onChange, options, disabled }: {
       disabled={disabled}
       className="input-glass w-full px-4 py-3 text-sm rounded-xl bg-surface/60 border border-white/10 text-text-primary focus:border-primary/50 focus:outline-none disabled:opacity-50 disabled:cursor-not-allowed"
     >
-      <option value="">— Select —</option>
+      <option value="">{placeholder}</option>
       {options.map(o => <option key={o.value} value={o.value}>{o.label}</option>)}
     </select>
   );
 }
 
 function MultiChip({ options, selected, onChange, max }: {
-  options: { value: string; label: string }[];
+  options: readonly { value: string; label: string }[];
   selected: string[]; onChange: (v: string[]) => void; max?: number;
 }) {
   const toggle = (val: string) => {
@@ -215,6 +125,8 @@ export default function SettingsPage() {
 
   // Profile state
   const [email, setEmail] = useState('');
+  const [newEmail, setNewEmail] = useState('');
+  const [emailLoading, setEmailLoading] = useState(false);
   // OAuth-only accounts have no password to confirm with.
   const [hasPassword, setHasPassword] = useState(true);
   const [firstName, setFirstName] = useState('');
@@ -231,6 +143,10 @@ export default function SettingsPage() {
   const [housingSituation, setHousingSituation] = useState('');
   const [debtTypes, setDebtTypes] = useState<string[]>([]);
   const [hasDependents, setHasDependents] = useState(false);
+  const [dependentsCount, setDependentsCount] = useState(1);
+  const [dependentAgeBands, setDependentAgeBands] = useState<string[]>([]);
+  const [investments, setInvestments] = useState('');
+  const [homeValueBand, setHomeValueBand] = useState('');
   const [topFinancialConcerns, setTopFinancialConcerns] = useState<string[]>([]);
 
   // Security state
@@ -259,18 +175,23 @@ export default function SettingsPage() {
     const { data } = await supabase.from('user_profiles').select('*').eq('id', user.id).single();
     if (data) {
       setFirstName(data.first_name || firstName);
+      // Anything outside the current vocabulary shows as blank so it gets re-picked.
       setCity(data.city || '');
-      setState(data.state || '');
-      setAgeRange(data.age_range || '');
-      setEducationStage(data.education_stage || '');
-      setEmploymentStatus(data.employment_status || '');
-      setOccupationCategory(data.occupation_category || '');
-      setIncomeRange(data.income_range || '');
-      setFilingStatus(data.filing_status || '');
-      setHousingSituation(data.housing_situation || '');
-      setDebtTypes(data.debt_types || []);
-      setHasDependents(data.has_dependents || false);
-      setTopFinancialConcerns(data.top_financial_concerns || []);
+      setState(US_STATES.includes(data.state) ? data.state : '');
+      setAgeRange(validOrEmpty(AGE_RANGES, data.age_range));
+      setEducationStage(validOrEmpty(EDUCATION_LEVELS, data.education_stage));
+      setEmploymentStatus(validOrEmpty(EMPLOYMENT_STATUSES, data.employment_status));
+      setOccupationCategory(validOrEmpty(OCCUPATIONS, data.occupation_category));
+      setIncomeRange(validOrEmpty(INCOME_RANGES, data.income_range));
+      setFilingStatus(validOrEmpty(FILING_STATUSES, data.filing_status));
+      setHousingSituation(validOrEmpty(HOUSING_SITUATIONS, data.housing_situation));
+      setHomeValueBand(validOrEmpty(HOME_VALUE_BANDS, data.home_value_band));
+      setDebtTypes(validOnly(DEBT_TYPES, data.debt_types));
+      setHasDependents((data.dependents_count ?? (data.has_dependents ? 1 : 0)) > 0);
+      setDependentsCount(data.dependents_count > 0 ? data.dependents_count : 1);
+      setDependentAgeBands(validOnly(DEPENDENT_AGE_BANDS, data.dependent_age_bands));
+      setTopFinancialConcerns(validOnly(CONCERNS, data.top_financial_concerns).slice(0, MAX_CONCERNS));
+      setInvestments(validOrEmpty(INVESTMENT_TYPES, data.investments));
     }
     setLoading(false);
   }, []); // eslint-disable-line react-hooks/exhaustive-deps
@@ -296,32 +217,41 @@ export default function SettingsPage() {
 
   // ── save financial profile ───────────────────────────────────────────────
   const saveFinancial = async () => {
-    setSaving(true);
-    try {
-      const { data: { user } } = await supabase.auth.getUser();
-      if (!user) throw new Error('Not authenticated');
-      const { error } = await supabase.from('user_profiles').update({
-        city,
-        state,
-        age_range: ageRange,
-        education_stage: educationStage,
-        employment_status: employmentStatus,
-        occupation_category: occupationCategory,
-        income_range: incomeRange,
-        filing_status: filingStatus,
-        housing_situation: housingSituation,
-        debt_types: debtTypes,
-        has_dependents: hasDependents,
-        top_financial_concerns: topFinancialConcerns,
-        updated_at: new Date().toISOString(),
-      }).eq('id', user.id);
-      if (error) throw error;
-      showToast('Financial profile updated — AI analysis will reflect your new data', 'success');
-    } catch {
-      showToast('Failed to save financial profile', 'error');
-    } finally {
-      setSaving(false);
+    const parsed = FinancialProfileSchema.safeParse({
+      state, city, ageRange, educationStage, employmentStatus, occupationCategory, incomeRange,
+      filingStatus, housingSituation, debtTypes, hasDependents,
+      dependentsCount: hasDependents ? dependentsCount : 0,
+      dependentAgeBands: hasDependents ? dependentAgeBands : [],
+      topFinancialConcerns,
+      investments: investments || null,
+      homeValueBand: isHomeowner(housingSituation) && homeValueBand ? homeValueBand : null,
+    });
+    if (!parsed.success) {
+      showToast('Please answer every required field before saving.', 'error');
+      return;
     }
+    setSaving(true);
+    const res = await apiFetch('/api/profile', { method: 'PUT', body: { profile: parsed.data } });
+    setSaving(false);
+    showToast(
+      res.ok ? 'Saved. Your policy feed will rebuild from your updated profile.' : res.message,
+      res.ok ? 'success' : 'error',
+    );
+  };
+
+  // ── change email ─────────────────────────────────────────────────────────
+  const changeEmail = async () => {
+    const next = newEmail.trim();
+    if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(next)) { showToast('Enter a valid email address', 'error'); return; }
+    setEmailLoading(true);
+    const { error } = await supabase.auth.updateUser(
+      { email: next },
+      { emailRedirectTo: `${window.location.origin}/auth/callback?next=/settings` },
+    );
+    setEmailLoading(false);
+    if (error) { showToast(error.message, 'error'); return; }
+    setNewEmail('');
+    showToast(`Check ${next} for a confirmation link to finish the change.`, 'success');
   };
 
   // ── change password ──────────────────────────────────────────────────────
@@ -479,18 +409,32 @@ export default function SettingsPage() {
                             className="input-glass w-full px-4 py-3 text-sm rounded-xl"
                           />
                         </div>
-                        <div>
-                          <FieldLabel>Email Address</FieldLabel>
-                          <input
-                            type="email"
-                            value={email}
-                            disabled
-                            className="input-glass w-full px-4 py-3 text-sm rounded-xl opacity-50 cursor-not-allowed"
-                          />
-                          <p className="text-xs text-text-muted mt-1.5">Email cannot be changed here</p>
-                        </div>
                       </div>
                       <SaveButton onClick={saveProfile} loading={saving} />
+                    </SectionCard>
+
+                    <SectionCard title="Email Address" subtitle={`Currently ${email}`}>
+                      <div className="flex flex-col sm:flex-row gap-3">
+                        <label htmlFor="new-email" className="sr-only">New email address</label>
+                        <input
+                          id="new-email"
+                          type="email"
+                          autoComplete="email"
+                          value={newEmail}
+                          onChange={e => setNewEmail(e.target.value)}
+                          placeholder="New email address"
+                          className="input-glass flex-1 px-4 py-3 text-sm rounded-xl"
+                        />
+                        <button
+                          type="button"
+                          onClick={changeEmail}
+                          disabled={emailLoading || !newEmail.trim() || newEmail.trim().toLowerCase() === email.toLowerCase()}
+                          className="px-5 py-3 rounded-xl bg-primary/20 border border-primary/30 text-primary text-sm font-medium hover:bg-primary/30 transition-all disabled:opacity-40"
+                        >
+                          {emailLoading ? 'Sending…' : 'Change email'}
+                        </button>
+                      </div>
+                      <p className="text-xs text-text-muted mt-2">We&apos;ll email a confirmation link. Your email changes once you confirm it.</p>
                     </SectionCard>
 
                     <InfoCard
@@ -520,6 +464,7 @@ export default function SettingsPage() {
                           <FieldLabel>City (optional)</FieldLabel>
                           <input
                             type="text"
+                            maxLength={100}
                             value={city}
                             onChange={e => setCity(e.target.value)}
                             placeholder="e.g. Austin"
@@ -537,7 +482,7 @@ export default function SettingsPage() {
                         </div>
                         <div>
                           <FieldLabel>Education Level</FieldLabel>
-                          <SelectField value={educationStage} onChange={setEducationStage} options={EDUCATION} />
+                          <SelectField value={educationStage} onChange={setEducationStage} options={EDUCATION_LEVELS} />
                         </div>
                       </div>
                     </SectionCard>
@@ -546,19 +491,19 @@ export default function SettingsPage() {
                       <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                         <div>
                           <FieldLabel>Employment Status</FieldLabel>
-                          <SelectField value={employmentStatus} onChange={setEmploymentStatus} options={EMPLOYMENT} />
+                          <SelectField value={employmentStatus} onChange={setEmploymentStatus} options={EMPLOYMENT_STATUSES} />
                         </div>
                         <div>
                           <FieldLabel>Occupation Category</FieldLabel>
-                          <SelectField value={occupationCategory} onChange={setOccupationCategory} options={OCCUPATION} />
+                          <SelectField value={occupationCategory} onChange={setOccupationCategory} options={OCCUPATIONS} />
                         </div>
                         <div>
                           <FieldLabel>Annual Household Income</FieldLabel>
-                          <SelectField value={incomeRange} onChange={setIncomeRange} options={INCOME} />
+                          <SelectField value={incomeRange} onChange={setIncomeRange} options={INCOME_RANGES} />
                         </div>
                         <div>
                           <FieldLabel>Tax Filing Status</FieldLabel>
-                          <SelectField value={filingStatus} onChange={setFilingStatus} options={FILING} />
+                          <SelectField value={filingStatus} onChange={setFilingStatus} options={FILING_STATUSES} />
                         </div>
                       </div>
                     </SectionCard>
@@ -567,11 +512,21 @@ export default function SettingsPage() {
                       <div className="space-y-5">
                         <div>
                           <FieldLabel>Housing Situation</FieldLabel>
-                          <SelectField value={housingSituation} onChange={setHousingSituation} options={HOUSING} />
+                          <SelectField value={housingSituation} onChange={setHousingSituation} options={HOUSING_SITUATIONS} />
                         </div>
+                        {isHomeowner(housingSituation) && (
+                          <div>
+                            <FieldLabel>Home Value (optional)</FieldLabel>
+                            <SelectField value={homeValueBand} onChange={setHomeValueBand} options={HOME_VALUE_BANDS} placeholder="Prefer not to say" />
+                          </div>
+                        )}
                         <div>
                           <FieldLabel>Debt Types (select all that apply)</FieldLabel>
-                          <MultiChip options={DEBT_TYPES} selected={debtTypes} onChange={setDebtTypes} />
+                          <MultiChip options={DEBT_TYPES} selected={debtTypes} onChange={next => {
+                            // "No debt" is exclusive with every other choice.
+                            const added = next.find(v => !debtTypes.includes(v));
+                            setDebtTypes(added === 'none' ? ['none'] : next.filter(v => v !== 'none'));
+                          }} />
                         </div>
                         <div>
                           <FieldLabel>Dependents</FieldLabel>
@@ -592,10 +547,27 @@ export default function SettingsPage() {
                               </button>
                             ))}
                           </div>
+                          {hasDependents && (
+                            <div className="mt-4 grid grid-cols-1 sm:grid-cols-2 gap-4">
+                              <div>
+                                <FieldLabel>How many</FieldLabel>
+                                <SelectField value={String(dependentsCount)} onChange={v => setDependentsCount(Number(v) || 1)}
+                                  options={Array.from({ length: MAX_DEPENDENTS }, (_, i) => ({ value: String(i + 1), label: String(i + 1) }))} />
+                              </div>
+                              <div>
+                                <FieldLabel>Ages (optional)</FieldLabel>
+                                <MultiChip options={DEPENDENT_AGE_BANDS} selected={dependentAgeBands} onChange={setDependentAgeBands} />
+                              </div>
+                            </div>
+                          )}
                         </div>
                         <div>
-                          <FieldLabel>Top Financial Concerns (up to 5)</FieldLabel>
-                          <MultiChip options={CONCERNS} selected={topFinancialConcerns} onChange={setTopFinancialConcerns} max={5} />
+                          <FieldLabel>Top Financial Concerns (up to {MAX_CONCERNS})</FieldLabel>
+                          <MultiChip options={CONCERNS} selected={topFinancialConcerns} onChange={setTopFinancialConcerns} max={MAX_CONCERNS} />
+                        </div>
+                        <div>
+                          <FieldLabel>Investments (optional)</FieldLabel>
+                          <SelectField value={investments} onChange={setInvestments} options={INVESTMENT_TYPES} placeholder="Prefer not to say" />
                         </div>
                       </div>
                     </SectionCard>
@@ -739,6 +711,19 @@ export default function SettingsPage() {
                         {signOutOthersLoading && <RefreshCw className="w-4 h-4 animate-spin" />}
                         Sign out all other devices
                       </button>
+                    </SectionCard>
+
+                    <SectionCard title="Your Data" subtitle="Download everything Politicon stores about you">
+                      <div className="flex flex-col sm:flex-row sm:items-center gap-3">
+                        <a
+                          href="/api/account/export"
+                          download
+                          className="inline-flex items-center justify-center gap-2 px-5 py-2.5 rounded-xl bg-white/5 border border-white/10 text-text-primary text-sm font-medium hover:bg-white/10 transition-all"
+                        >
+                          Download my data (JSON)
+                        </a>
+                        <Link href="/privacy" className="text-sm text-primary hover:underline underline-offset-2">How we use your data</Link>
+                      </div>
                     </SectionCard>
 
                     {/* Danger Zone */}

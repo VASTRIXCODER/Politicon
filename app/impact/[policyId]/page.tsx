@@ -7,7 +7,9 @@ import {
   ArrowLeft, TrendingUp, TrendingDown, Minus, Check, ChevronDown, ExternalLink,
   Home, Briefcase, Heart, PiggyBank, GraduationCap, Landmark, Waves, ShieldAlert,
   Target, Sparkles, Loader2,
+  Trash2,
 } from 'lucide-react';
+import { EMPLOYMENT_STATUSES, FILING_STATUSES, HOUSING_SITUATIONS, INCOME_RANGES, labelOf } from '@/lib/profileOptions';
 import { apiFetch } from '@/lib/api';
 import { createClient } from '@/lib/supabase/client';
 import { FullAnalysis, ImpactDirection } from '@/types';
@@ -49,13 +51,25 @@ function simpleSummary(a: FullAnalysis, section: string): string | undefined {
   return a.simple?.sectionSummaries?.find((s) => s.section === section)?.text;
 }
 
+/** The profile fields an analysis was based on (stored with it as profile_snapshot). */
 interface ProfileSnapshot {
-  income_range?: string;
   state?: string;
-  filing_status?: string;
-  housing_situation?: string;
-  employment_status?: string;
-  has_dependents?: boolean;
+  incomeRange?: string;
+  filingStatus?: string;
+  housingSituation?: string;
+  employmentStatus?: string;
+  dependentsCount?: number | null;
+}
+
+function snapshotFromRow(row: Record<string, unknown>): ProfileSnapshot {
+  return {
+    state: row.state as string,
+    incomeRange: row.income_range as string,
+    filingStatus: row.filing_status as string,
+    housingSituation: row.housing_situation as string,
+    employmentStatus: row.employment_status as string,
+    dependentsCount: (row.dependents_count as number | null) ?? null,
+  };
 }
 
 function DirIcon({ d, className = 'w-5 h-5' }: { d: ImpactDirection; className?: string }) {
@@ -87,15 +101,29 @@ export default function PolicyDetailPage({ params }: { params: Promise<{ policyI
   const [tab, setTab] = useState<Tab>('overview');
   const [analyzedAt, setAnalyzedAt] = useState<string | null>(null);
   const [generateError, setGenerateError] = useState<string | null>(null);
+  const [stale, setStale] = useState(false);
+  const [legacy, setLegacy] = useState(false);
 
-  async function generate() {
+  async function deleteAnalysis() {
+    if (!window.confirm('Delete this analysis? It will be removed from your totals.')) return;
+    const res = await apiFetch(`/api/analyses/${encodeURIComponent(policyId)}`, { method: 'DELETE' });
+    if (res.ok) router.push('/impact');
+    else window.alert(res.message);
+  }
+
+  async function generate(force = false) {
     setGenerating(true);
     setGenerateError(null);
-    const res = await apiFetch<{ analysis: FullAnalysis }>('/api/analyze', { body: { policyId } });
+    const res = await apiFetch<{ analysis: FullAnalysis; profileSnapshot?: ProfileSnapshot | null }>(
+      '/api/analyze', { body: { policyId, ...(force ? { force: true } : {}) } },
+    );
     if (res.ok) {
       setAnalysis(res.data.analysis);
+      if (res.data.profileSnapshot) setProfile(res.data.profileSnapshot);
       setAnalyzedAt(new Date().toISOString());
       setNotFound(false);
+      setStale(false);
+      setLegacy(false);
     } else {
       setGenerateError(res.message);
     }
@@ -111,31 +139,37 @@ export default function PolicyDetailPage({ params }: { params: Promise<{ policyI
         const { data: { user } } = await supabase.auth.getUser();
         if (!user) { setNotFound(true); setLoading(false); return; }
 
-        // profile snapshot (best-effort)
-        try {
-          const { data: prof } = await supabase
+        const [{ data: prof }, { data: row, error: rowError }] = await Promise.all([
+          supabase
             .from('user_profiles')
-            .select('income_range, state, filing_status, housing_situation, employment_status, has_dependents')
+            .select('income_range, state, filing_status, housing_situation, employment_status, dependents_count, financial_updated_at')
             .eq('id', user.id)
-            .single();
-          if (prof && !cancelled) setProfile(prof);
-        } catch { /* optional */ }
-
-        // 1) existing rich analysis?
-        try {
-          const { data: row } = await supabase
+            .maybeSingle(),
+          supabase
             .from('analyzed_policies')
-            .select('analysis, updated_at')
+            .select('analysis, updated_at, profile_snapshot, profile_version')
             .eq('user_id', user.id)
             .eq('policy_id', policyId)
-            .maybeSingle();
-          if (row?.analysis && !cancelled) {
-            setAnalysis(row.analysis as FullAnalysis);
-            setAnalyzedAt(row.updated_at);
-            setLoading(false);
-            return;
-          }
-        } catch { /* fall through to generate */ }
+            .maybeSingle(),
+        ]);
+        if (cancelled) return;
+        if (rowError) throw rowError;
+
+        const stored = row?.analysis as (FullAnalysis & { legacy?: boolean }) | undefined;
+        if (stored && stored.legacy) {
+          // Summary-only analysis from before the full breakdown existed.
+          setLegacy(true);
+        } else if (stored && Object.keys(stored).length > 0) {
+          setAnalysis(stored);
+          setAnalyzedAt(row!.updated_at);
+          // Show the profile the analysis was actually based on.
+          setProfile((row!.profile_snapshot as ProfileSnapshot | null) || (prof ? snapshotFromRow(prof) : null));
+          const profileChanged = prof?.financial_updated_at
+            && (!row!.profile_version || new Date(row!.profile_version) < new Date(prof.financial_updated_at));
+          setStale(!!profileChanged);
+          setLoading(false);
+          return;
+        }
 
         // 2) No analysis yet: the user starts generation explicitly (see generate()).
         if (!cancelled) setNotFound(true);
@@ -179,17 +213,19 @@ export default function PolicyDetailPage({ params }: { params: Promise<{ policyI
           <div className="w-14 h-14 rounded-2xl bg-primary/10 border border-primary/20 flex items-center justify-center mx-auto mb-5">
             <Target className="w-7 h-7 text-primary" />
           </div>
-          <h1 className="font-display text-2xl font-bold text-text-primary mb-2">No analysis yet</h1>
+          <h1 className="font-display text-2xl font-bold text-text-primary mb-2">{legacy ? 'Update this analysis' : 'No analysis yet'}</h1>
           <p className="text-sm text-text-muted mb-6">
             {generating
               ? 'Compiling your full financial analysis. This can take up to a minute…'
-              : 'Generate a full, personalized analysis of this policy from your feed.'}
+              : legacy
+                ? 'This is a short summary from an earlier version of Politicon. Generate the full breakdown to see every chart and section.'
+                : 'Generate a full, personalized analysis of this policy from your feed.'}
           </p>
           {generateError && <p role="alert" className="text-sm text-red-300 mb-6">{generateError}</p>}
           <div className="flex flex-wrap items-center justify-center gap-3">
-            <button onClick={generate} disabled={generating} className="inline-flex items-center gap-2 bg-primary text-white px-5 py-3 rounded-xl text-sm font-medium transition-all disabled:opacity-60">
+            <button onClick={() => generate(legacy)} disabled={generating} className="inline-flex items-center gap-2 bg-primary text-white px-5 py-3 rounded-xl text-sm font-medium transition-all disabled:opacity-60">
               {generating && <Loader2 className="w-4 h-4 animate-spin" />}
-              {generating ? 'Generating…' : 'Generate analysis'}
+              {generating ? 'Generating…' : legacy ? 'Generate full analysis' : 'Generate analysis'}
             </button>
             <button onClick={() => router.push('/dashboard')} className="bg-primary/20 hover:bg-primary/30 border border-primary/20 text-primary px-5 py-3 rounded-xl text-sm font-medium transition-all">
               Back to Dashboard
@@ -200,7 +236,13 @@ export default function PolicyDetailPage({ params }: { params: Promise<{ policyI
     );
   }
 
-  return <DetailView analysis={analysis} profile={profile} analyzedAt={analyzedAt} tab={tab} setTab={setTab} onBack={() => router.back()} />;
+  return (
+    <DetailView
+      analysis={analysis} profile={profile} analyzedAt={analyzedAt} tab={tab} setTab={setTab} onBack={() => router.back()}
+      stale={stale} reanalyzing={generating} reanalyzeError={generateError} onReanalyze={() => generate(true)}
+      onDelete={deleteAnalysis}
+    />
+  );
 }
 
 function Shell({ children }: { children: React.ReactNode }) {
@@ -219,13 +261,14 @@ function Shell({ children }: { children: React.ReactNode }) {
 // DETAIL VIEW
 // ===========================================================================
 function DetailView({
-  analysis: a, profile, analyzedAt, tab, setTab, onBack,
+  analysis: a, profile, analyzedAt, tab, setTab, onBack, stale, reanalyzing, reanalyzeError, onReanalyze, onDelete,
 }: {
   analysis: FullAnalysis; profile: ProfileSnapshot | null; analyzedAt: string | null;
   tab: Tab; setTab: (_t: Tab) => void; onBack: () => void;
+  stale: boolean; reanalyzing: boolean; reanalyzeError: string | null; onReanalyze: () => void; onDelete: () => void;
 }) {
   const { simple } = useReadingMode();
-  const income = useMemo(() => incomeMidpoint({ incomeRange: profile?.income_range || '' } as Parameters<typeof incomeMidpoint>[0]), [profile]);
+  const income = useMemo(() => incomeMidpoint({ incomeRange: profile?.incomeRange || '' } as Parameters<typeof incomeMidpoint>[0]), [profile]);
 
   const categoryBars = useMemo(
     () => Object.entries(a.categoryImpacts)
@@ -236,13 +279,14 @@ function DetailView({
 
   const profileChips = useMemo(() => {
     if (!profile) return [];
+    const deps = profile.dependentsCount;
     return [
-      profile.income_range && titleCase(profile.income_range).replace(/k/gi, 'K'),
+      profile.incomeRange && labelOf(INCOME_RANGES, profile.incomeRange),
       profile.state,
-      profile.filing_status && titleCase(profile.filing_status),
-      profile.housing_situation && titleCase(profile.housing_situation),
-      profile.employment_status && titleCase(profile.employment_status),
-      profile.has_dependents ? 'Has dependents' : undefined,
+      profile.filingStatus && labelOf(FILING_STATUSES, profile.filingStatus),
+      profile.housingSituation && labelOf(HOUSING_SITUATIONS, profile.housingSituation),
+      profile.employmentStatus && labelOf(EMPLOYMENT_STATUSES, profile.employmentStatus),
+      deps ? `${deps} dependent${deps === 1 ? '' : 's'}` : undefined,
     ].filter(Boolean) as string[];
   }, [profile]);
 
@@ -253,7 +297,16 @@ function DetailView({
           <button onClick={onBack} className="inline-flex items-center gap-2 text-text-muted hover:text-text-primary transition-colors group text-sm">
             <ArrowLeft className="w-4 h-4 group-hover:-translate-x-1 transition-transform" /> Back
           </button>
-          <ReadingModeToggle />
+          <div className="flex items-center gap-2">
+            <button
+              onClick={onDelete}
+              aria-label="Delete this analysis"
+              className="p-2 rounded-xl text-text-muted hover:text-red-300 hover:bg-red-500/10 border border-transparent hover:border-red-500/20 transition-all"
+            >
+              <Trash2 className="w-4 h-4" />
+            </button>
+            <ReadingModeToggle />
+          </div>
         </div>
 
         {/* Header */}
@@ -271,6 +324,20 @@ function DetailView({
             <p className="text-xs text-text-muted mt-2">Last analyzed {new Date(analyzedAt).toLocaleString()}</p>
           )}
         </motion.div>
+
+        {stale && (
+          <div role="status" className="mb-6 flex flex-col sm:flex-row sm:items-center justify-between gap-3 rounded-2xl border border-gold/30 bg-gold/10 px-5 py-4">
+            <p className="text-sm text-text-primary">
+              Your financial profile changed after this analysis was made, so these numbers may be out of date.
+              {reanalyzeError && <span className="block text-red-300 mt-1">{reanalyzeError}</span>}
+            </p>
+            <button onClick={onReanalyze} disabled={reanalyzing}
+              className="inline-flex items-center justify-center gap-2 whitespace-nowrap bg-gold/20 hover:bg-gold/30 border border-gold/30 text-gold px-4 py-2 rounded-xl text-sm font-medium transition-all disabled:opacity-60">
+              {reanalyzing && <Loader2 className="w-4 h-4 animate-spin" />}
+              {reanalyzing ? 'Re-analyzing…' : 'Re-analyze with my current profile'}
+            </button>
+          </div>
+        )}
 
         {/* Hero impact card */}
         <motion.div initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.5, delay: 0.05 }}

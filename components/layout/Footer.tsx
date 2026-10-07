@@ -1,5 +1,6 @@
 import Link from 'next/link';
-import { Zap, Twitter, Github, Linkedin } from 'lucide-react';
+import { Zap } from 'lucide-react';
+import { SUPPORT_EMAIL } from '@/lib/legal';
 
 const footerLinks = {
   Product: [
@@ -8,16 +9,12 @@ const footerLinks = {
     { label: 'AI Advisor', href: '/advisor' },
     { label: 'Impact Dashboard', href: '/impact' },
   ],
-  Company: [
-    { label: 'About', href: '/about' },
-    { label: 'Blog', href: '/blog' },
-    { label: 'Careers', href: '/careers' },
-    { label: 'Press', href: '/press' },
+  Support: [
+    { label: 'Contact us', href: `mailto:${SUPPORT_EMAIL}` },
   ],
   Legal: [
     { label: 'Privacy Policy', href: '/privacy' },
     { label: 'Terms of Service', href: '/terms' },
-    { label: 'Cookie Policy', href: '/cookies' },
     { label: 'Disclaimer', href: '/disclaimer' },
   ],
 };
@@ -40,11 +37,6 @@ export default function Footer() {
             <p className="text-text-muted text-sm leading-relaxed max-w-xs">
               Non-partisan AI that translates government policies into your personal dollar impact. Not political opinion — just the answer.
             </p>
-            <div className="flex items-center gap-4 mt-6">
-              <a href="#" className="text-text-muted hover:text-primary transition-colors"><Twitter className="w-4 h-4" /></a>
-              <a href="#" className="text-text-muted hover:text-primary transition-colors"><Github className="w-4 h-4" /></a>
-              <a href="#" className="text-text-muted hover:text-primary transition-colors"><Linkedin className="w-4 h-4" /></a>
-            </div>
           </div>
 
           {/* Links */}
