@@ -10,7 +10,7 @@ const steps = [
     icon: User,
     title: 'Build your profile',
     subtitle: 'Takes 30 seconds',
-    description: 'Tell us your income bracket, location, housing situation, debts, and life stage. Your data stays private and powers every analysis.',
+    description: 'Tell us your income bracket, location, housing situation, debts, and life stage. We use ranges, not exact figures. Only those ranges (never your name or email) are sent to our AI provider to generate your analyses, and you can export or delete your data anytime.',
     color: '#7B61FF',
     details: ['Income & employment', 'Location & state taxes', 'Housing & debt situation', 'Family & dependents'],
   },

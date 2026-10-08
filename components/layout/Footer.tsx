@@ -6,7 +6,7 @@ const footerLinks = {
   Product: [
     { label: 'How It Works', href: '/#how-it-works' },
     { label: 'Policy Explorer', href: '/explorer' },
-    { label: 'AI Advisor', href: '/advisor' },
+    { label: 'AI Policy Guide', href: '/advisor' },
     { label: 'Impact Dashboard', href: '/impact' },
   ],
   Support: [

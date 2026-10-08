@@ -12,6 +12,7 @@ import Navbar from '@/components/layout/Navbar';
 import AmbientBackground from '@/components/landing/AmbientBackground';
 import { apiFetch } from '@/lib/api';
 import ViewFullImpactButton from '@/components/ViewFullImpactButton';
+import AiDisclaimer from '@/components/ui/AiDisclaimer';
 import { CumulativeStackedBar, CumulativeProjectionLines } from '@/components/charts/Charts';
 import Link from 'next/link';
 
@@ -40,9 +41,22 @@ const ROW_COLUMNS =
 const signedUSD = (n: number) => `${n < 0 ? '−' : '+'}$${Math.abs(Math.round(n)).toLocaleString()}`;
 
 const methodology = [
-  { q: 'How are dollar amounts calculated?', a: 'We combine publicly available policy data with your income bracket, filing status, location, and life situation. Calculations draw on CBO, IRS, and academic economic models with transparency into assumptions.' },
-  { q: 'What does "net annual impact" mean?', a: 'The sum of all positive and negative policy effects across your selected policies, normalized to an annual dollar figure.' },
-  { q: 'How confident are these estimates?', a: 'Each analysis is AI-generated for your specific profile. Proposed policies carry more uncertainty than enacted laws. Always verify with a professional for major decisions.' },
+  {
+    q: 'Where do the policies come from?',
+    a: 'Federal bills and laws come from Congress.gov, the official source for legislation, and state bills from Open States, which tracks every state legislature. Each policy shows its latest official action and links to the record. If those sources are unavailable, a policy may be suggested by the AI instead and is clearly marked as not verified.',
+  },
+  {
+    q: 'How are dollar amounts estimated?',
+    a: "An AI model (Anthropic's Claude) reads the policy's official summary and status and applies them to the ranges in your profile: income bracket, state, filing status, housing, debts and dependents. It shows the assumptions it made. These are educational estimates, not a tax calculation or professional advice.",
+  },
+  {
+    q: 'What does "net annual impact" mean?',
+    a: 'The sum of the estimated gains and costs across the policies you have selected, expressed per year. Gains are positive; costs are negative.',
+  },
+  {
+    q: 'How confident are these estimates?',
+    a: 'Each analysis has a confidence score. Proposed bills are less certain than enacted laws, and estimates depend on details a bill may not specify yet. Check the official record, and talk to a qualified professional (for example a CPA or a free IRS VITA clinic) before making major decisions.',
+  },
 ];
 
 function SkeletonCard() {
@@ -91,7 +105,7 @@ function AnalysisBody({ row, headingTag = 'h4' }: { row: PolicyAnalysisRow; head
       )}
       {recs.length > 0 && (
         <div>
-          <H className={heading}>Recommendations</H>
+          <H className={heading}>Things to consider</H>
           <ul className="list-disc pl-5 space-y-1 text-sm text-text-muted">
             {recs.map((r, i) => <li key={i}>{r.step}</li>)}
           </ul>
@@ -267,7 +281,7 @@ function ImpactContent() {
                   <p className="text-sm text-text-muted mb-6 max-w-sm mx-auto">Browse the policy feed on your dashboard to get started.</p>
                   <div className="flex gap-3 justify-center">
                     <Link href="/dashboard"><button className="bg-primary/20 hover:bg-primary/30 border border-primary/20 text-primary px-5 py-3 rounded-xl text-sm font-medium transition-all">Go to Dashboard</button></Link>
-                    <Link href="/advisor"><button className="glass hover:border-white/16 text-text-muted px-5 py-3 rounded-xl text-sm transition-all">Ask Advisor</button></Link>
+                    <Link href="/advisor"><button className="glass hover:border-white/16 text-text-muted px-5 py-3 rounded-xl text-sm transition-all">Ask the Policy Guide</button></Link>
                   </div>
                 </GlassCard>
               ) : (
@@ -450,7 +464,10 @@ function ImpactContent() {
                           <Loader2 className="w-4 h-4 animate-spin text-primary" /> Generating combined outlook…
                         </div>
                       ) : cumSummary ? (
-                        <p className="text-sm text-text-muted leading-relaxed">{cumSummary}</p>
+                        <>
+                          <p className="text-sm text-text-muted leading-relaxed">{cumSummary}</p>
+                          <AiDisclaimer className="mt-3" />
+                        </>
                       ) : (
                         <p className="text-sm text-text-muted">Adjust your selection to generate a combined outlook.</p>
                       )}

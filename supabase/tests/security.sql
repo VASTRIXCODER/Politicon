@@ -277,3 +277,52 @@ begin
   if exists (select 1 from public.ai_usage where pending) then raise exception 'abandoned reservation not closed'; end if;
   if (select sum(cost_usd) from public.ai_usage) < 0.80 then raise exception 'abandoned reservation lost its cost'; end if;
 end $$;
+
+-- Legislation cache is server-only; feedback is insert/read-own.
+do $$
+declare
+  a constant text := '11111111-1111-1111-1111-111111111111';
+  b constant text := '22222222-2222-2222-2222-222222222222';
+begin
+  perform pg_temp.denied('authenticated', a, 'select * from public.legislation_cache');
+  perform pg_temp.denied('anon', null, $q$insert into public.legislation_cache (key, items) values ('federal', '[]')$q$);
+  perform pg_temp.allowed('authenticated', a, format($q$insert into public.ai_feedback (user_id, target_type, target_id, rating) values (%L, 'analysis', 'us-hr-1', 'down')$q$, a));
+  perform pg_temp.denied('authenticated', a, format($q$insert into public.ai_feedback (user_id, target_type, target_id, rating) values (%L, 'analysis', 'us-hr-1', 'down')$q$, b));
+  perform pg_temp.denied('authenticated', a, $q$update public.ai_feedback set rating = 'up'$q$);
+  perform pg_temp.denied('authenticated', a, $q$delete from public.ai_feedback$q$);
+  perform pg_temp.denied('anon', null, 'select * from public.ai_feedback');
+end $$;
+
+begin;
+set local role authenticated;
+select set_config('request.jwt.claim.sub', '22222222-2222-2222-2222-222222222222', true) \g /dev/null
+do $$ begin
+  if exists (select 1 from public.ai_feedback) then raise exception 'feedback visible to another user'; end if;
+end $$;
+commit;
+
+-- Feed dismissal is server-only and removes just the one policy.
+do $$
+declare
+  a constant uuid := '11111111-1111-1111-1111-111111111111';
+  b constant uuid := '22222222-2222-2222-2222-222222222222';
+begin
+  perform pg_temp.denied('anon', null, format($q$select public.remove_feed_item(%L, 'us-hr-1')$q$, a));
+  perform pg_temp.denied('authenticated', a::text, format($q$select public.remove_feed_item(%L, 'us-hr-1')$q$, a));
+
+  delete from public.user_policy_feed where user_id in (a, b);
+  insert into public.user_policy_feed (user_id, policies) values
+    (a, '[{"id":"us-hr-1"},{"id":"us-hr-2"},{"title":"no id"}]'),
+    (b, '[{"id":"us-hr-1"}]');
+  perform public.remove_feed_item(a, 'us-hr-1');
+  if (select policies from public.user_policy_feed where user_id = a) <> '[{"id":"us-hr-2"},{"title":"no id"}]'::jsonb then
+    raise exception 'remove_feed_item did not remove exactly the one policy';
+  end if;
+  if (select policies from public.user_policy_feed where user_id = b) <> '[{"id":"us-hr-1"}]'::jsonb then
+    raise exception 'remove_feed_item touched another user''s feed';
+  end if;
+  perform public.remove_feed_item(b, 'us-hr-1');
+  if (select policies from public.user_policy_feed where user_id = b) <> '[]'::jsonb then
+    raise exception 'removing the last policy should leave an empty list';
+  end if;
+end $$;

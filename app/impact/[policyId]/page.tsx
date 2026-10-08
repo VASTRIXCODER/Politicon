@@ -11,7 +11,11 @@ import {
 } from 'lucide-react';
 import { EMPLOYMENT_STATUSES, FILING_STATUSES, HOUSING_SITUATIONS, INCOME_RANGES, labelOf } from '@/lib/profileOptions';
 import { requestAnalysis } from '@/lib/analysisClient';
+import { applicability, type Applicability } from '@/lib/applicability';
 import { coerceFullAnalysis } from '@/lib/analysisSchema';
+import PolicyProvenance from '@/components/PolicyProvenance';
+import FeedbackControls from '@/components/FeedbackControls';
+import AiDisclaimer, { confidenceLabel } from '@/components/ui/AiDisclaimer';
 import { apiFetch } from '@/lib/api';
 import { createClient } from '@/lib/supabase/client';
 import { FullAnalysis, ImpactDirection, Policy } from '@/types';
@@ -45,7 +49,7 @@ const TAB_LABELS: Record<Tab, string> = {
   timeline: 'Timeline',
   economic: 'Economic Context',
   deepdive: 'Deep Dive',
-  action: 'Action Plan',
+  action: 'Things to Consider',
 };
 
 /** Look up a Simple Mode "What this means for you" summary for a page section. */
@@ -61,6 +65,7 @@ interface ProfileSnapshot {
   housingSituation?: string;
   employmentStatus?: string;
   dependentsCount?: number | null;
+  debtTypes?: string[] | null;
 }
 
 /** Minimal policy metadata for normalizing a stored analysis. */
@@ -92,6 +97,7 @@ function snapshotFromRow(row: Record<string, unknown>): ProfileSnapshot {
     housingSituation: row.housing_situation as string,
     employmentStatus: row.employment_status as string,
     dependentsCount: (row.dependents_count as number | null) ?? null,
+    debtTypes: Array.isArray(row.debt_types) ? (row.debt_types as string[]) : null,
   };
 }
 
@@ -175,7 +181,7 @@ export default function PolicyDetailPage({ params }: { params: Promise<{ policyI
         const [{ data: prof }, { data: row, error: rowError }] = await Promise.all([
           supabase
             .from('user_profiles')
-            .select('income_range, state, filing_status, housing_situation, employment_status, dependents_count, financial_updated_at')
+            .select('income_range, state, filing_status, housing_situation, employment_status, dependents_count, debt_types, financial_updated_at')
             .eq('id', user.id)
             .maybeSingle(),
           supabase
@@ -293,7 +299,7 @@ export default function PolicyDetailPage({ params }: { params: Promise<{ policyI
     <DetailView
       analysis={analysis} profile={profile} analyzedAt={analyzedAt} tab={tab} setTab={setTab} onBack={() => router.back()}
       stale={stale} reanalyzing={generating} reanalyzeError={generateError} onReanalyze={() => generate(true)}
-      onDelete={deleteAnalysis}
+      onDelete={deleteAnalysis} policyId={policyId}
     />
   );
 }
@@ -314,11 +320,12 @@ function Shell({ children }: { children: React.ReactNode }) {
 // DETAIL VIEW
 // ===========================================================================
 function DetailView({
-  analysis: a, profile, analyzedAt, tab, setTab, onBack, stale, reanalyzing, reanalyzeError, onReanalyze, onDelete,
+  analysis: a, profile, analyzedAt, tab, setTab, onBack, stale, reanalyzing, reanalyzeError, onReanalyze, onDelete, policyId,
 }: {
   analysis: FullAnalysis; profile: ProfileSnapshot | null; analyzedAt: string | null;
   tab: Tab; setTab: (_t: Tab) => void; onBack: () => void;
   stale: boolean; reanalyzing: boolean; reanalyzeError: string | null; onReanalyze: () => void; onDelete: () => void;
+  policyId: string;
 }) {
   const { simple } = useReadingMode();
   const income = useMemo(() => incomeMidpoint({ incomeRange: profile?.incomeRange || '' } as Parameters<typeof incomeMidpoint>[0]), [profile]);
@@ -329,6 +336,9 @@ function DetailView({
       .filter((d) => d.value !== 0),
     [a.categoryImpacts]
   );
+
+  const confidence = confidenceLabel(a.confidenceScore);
+  const applies = useMemo(() => applicability(profile), [profile]);
 
   const profileChips = useMemo(() => {
     if (!profile) return [];
@@ -368,14 +378,19 @@ function DetailView({
             <Badge variant="primary">{titleCase(a.category)}</Badge>
             <span className={`text-[11px] font-mono-data px-2.5 py-0.5 rounded-full border capitalize ${getStatusColor(a.status)}`}>{a.status}</span>
             {a.billNumber && <Badge variant="default">{a.billNumber}</Badge>}
-            <span className="text-[11px] text-text-muted font-mono-data flex items-center gap-1 ml-1">
-              <Sparkles className="w-3 h-3 text-primary" /> {a.confidenceScore}% confidence
+            <span className={`text-[11px] font-mono-data flex items-center gap-1 ml-1 ${confidence.tone}`}>
+              <Sparkles className="w-3 h-3" aria-hidden /> {confidence.label}
+              {a.confidenceScore ? <> · {a.confidenceScore}/100<span className="sr-only"> (model-rated)</span></> : null}
             </span>
           </div>
           <h1 className="font-display text-3xl sm:text-4xl font-bold text-text-primary leading-tight">{a.policyTitle}</h1>
           {analyzedAt && (
             <p className="text-xs text-text-muted mt-2">Last analyzed {new Date(analyzedAt).toLocaleString()}</p>
           )}
+          <div className="mt-3 max-w-3xl">
+            <PolicyProvenance record={a.record} snapshotLabel />
+          </div>
+          <AiDisclaimer className="mt-3 max-w-3xl" />
         </motion.div>
 
         {stale && (
@@ -434,12 +449,32 @@ function DetailView({
           ))}
         </div>
 
-        {tab === 'overview' && <OverviewTab a={a} categoryBars={categoryBars} simple={simple} income={income} />}
+        {tab === 'overview' && <OverviewTab a={a} categoryBars={categoryBars} simple={simple} income={income} applies={applies} />}
         {tab === 'breakdown' && <BreakdownTab a={a} categoryBars={categoryBars} simple={simple} />}
         {tab === 'timeline' && <TimelineTab a={a} simple={simple} />}
-        {tab === 'economic' && <EconomicContextTab a={a} simple={simple} income={income} />}
+        {tab === 'economic' && <EconomicContextTab a={a} simple={simple} income={income} applies={applies} />}
         {tab === 'deepdive' && <DeepDiveTab a={a} />}
         {tab === 'action' && <ActionTab a={a} />}
+
+        <div className="mt-10 pt-6 border-t border-white/5">
+          <FeedbackControls
+            key={analyzedAt || 'analysis'}
+            targetType="analysis"
+            targetId={policyId}
+            // Kept mounted while a re-analysis runs (so focus stays put); repeat clicks are ignored.
+            onReanalyze={() => { if (!reanalyzing) onReanalyze(); }}
+          />
+          {/* Progress and errors for a re-analysis started from here or from the banner above. */}
+          <div role="status" className="mt-2 text-xs">
+            {reanalyzing ? (
+              <span className="flex items-center gap-2 text-text-muted">
+                <Loader2 className="w-3.5 h-3.5 animate-spin text-primary" aria-hidden /> Re-analyzing with your current profile…
+              </span>
+            ) : reanalyzeError && !stale ? (
+              <span className="text-red-300">{reanalyzeError}</span>
+            ) : null}
+          </div>
+        </div>
 
         {/* Jargon Buster sidebar — only in Simple Mode */}
         {simple && (
@@ -453,13 +488,23 @@ function DetailView({
 }
 
 // ----- Tab 1: Overview -----
-function OverviewTab({ a, categoryBars, simple, income }: { a: FullAnalysis; categoryBars: { name: string; value: number }[]; simple: boolean; income: number }) {
+function OverviewTab({ a, categoryBars, simple, income, applies }: {
+  a: FullAnalysis; categoryBars: { name: string; value: number }[]; simple: boolean; income: number; applies: Applicability;
+}) {
   return (
     <div className="space-y-6">
       {simple && <WhatThisMeans text={simpleSummary(a, 'overview') || a.plainEnglishSummary} />}
       <GlassCard className="rounded-3xl p-7" animate={false}>
         <h2 className="font-display text-lg font-semibold text-text-primary mb-3">What this means for you</h2>
         <p className="text-sm text-text-muted leading-relaxed">{a.plainEnglishSummary}</p>
+        {a.assumptions.length > 0 && (
+          <div className="mt-5 pt-5 border-t border-white/8">
+            <h3 className="text-xs font-mono-data uppercase tracking-widest text-text-muted mb-2">Assumptions behind these numbers</h3>
+            <ul className="space-y-1.5 list-disc pl-5 marker:text-text-muted">
+              {a.assumptions.map((x, i) => <li key={i} className="text-sm text-text-muted leading-relaxed">{x}</li>)}
+            </ul>
+          </div>
+        )}
       </GlassCard>
 
       <div className="grid lg:grid-cols-2 gap-6">
@@ -467,7 +512,9 @@ function OverviewTab({ a, categoryBars, simple, income }: { a: FullAnalysis; cat
           <h3 className="font-display text-base font-semibold text-text-primary mb-4">Immediate Effects</h3>
           <StatRow label="Monthly budget impact" value={`${money(a.immediate.monthlyBudgetImpact)}/mo`} positive={a.immediate.monthlyBudgetImpact >= 0} />
           <StatRow label="Annual budget impact" value={`${money(a.immediate.annualBudgetImpact)}/yr`} positive={a.immediate.annualBudgetImpact >= 0} />
-          <StatRow label="Take-home per paycheck" value={money(a.immediate.takeHomePerPaycheck)} positive={a.immediate.takeHomePerPaycheck >= 0} />
+          {(applies.paycheck || a.immediate.takeHomePerPaycheck !== 0) && (
+            <StatRow label="Take-home per paycheck" value={money(a.immediate.takeHomePerPaycheck)} positive={a.immediate.takeHomePerPaycheck >= 0} />
+          )}
           <StatRow
             label={simple ? 'Change to your tax bill' : 'Effective tax rate change'}
             value={simple ? pctToDollar(a.immediate.effectiveTaxRateChange, income) : pct(a.immediate.effectiveTaxRateChange)}
@@ -518,7 +565,7 @@ function OverviewTab({ a, categoryBars, simple, income }: { a: FullAnalysis; cat
 
       {/* Top recommendations */}
       <GlassCard className="rounded-3xl p-7" animate={false}>
-        <h3 className="font-display text-base font-semibold text-text-primary mb-4">Top Recommendations</h3>
+        <h3 className="font-display text-base font-semibold text-text-primary mb-4">Things to consider</h3>
         <div className="space-y-3">
           {a.recommendations.slice(0, 3).map((r, i) => (
             <div key={i} className="flex items-start gap-3">
@@ -642,7 +689,7 @@ function SectorIndicator({ label, value, dir }: { label: string; value: string; 
   );
 }
 
-function EconomicContextTab({ a, simple, income }: { a: FullAnalysis; simple: boolean; income: number }) {
+function EconomicContextTab({ a, simple, income, applies }: { a: FullAnalysis; simple: boolean; income: number; applies: Applicability }) {
   const { macro, corporate, personal, vulnerability: v } = a;
 
   // Transmission waterfall — magnitudes on a shared 0-100 scale.
@@ -745,12 +792,16 @@ function EconomicContextTab({ a, simple, income }: { a: FullAnalysis; simple: bo
             <StatRow label={simple ? 'Spendable money each month' : 'Disposable income'} value={`${money(personal.disposableIncomeMonthly)}/mo`} positive={personal.disposableIncomeMonthly >= 0} />
             <StatRow label={simple ? 'Your net worth (1 year)' : 'Net worth (1yr)'} value={pct(personal.netWorthChange1yrPct)} positive={personal.netWorthChange1yrPct >= 0} />
             <StatRow label={simple ? 'Your net worth (3 years)' : 'Net worth (3yr)'} value={pct(personal.netWorthChange3yrPct)} positive={personal.netWorthChange3yrPct >= 0} />
-            <StatRow label={simple ? 'Your home’s value' : 'Real estate equity'} value={money(personal.realEstateEquityDollar)} positive={personal.realEstateEquityDollar >= 0} />
+            {(applies.homeEquity || personal.realEstateEquityDollar !== 0) && (
+              <StatRow label={simple ? 'Your home’s value' : 'Real estate equity'} value={money(personal.realEstateEquityDollar)} positive={personal.realEstateEquityDollar >= 0} />
+            )}
           </div>
           <div>
             <StatRow label={simple ? 'How much more you can save' : 'Savings rate change'} value={`${personal.savingsRateChangePct >= 0 ? '+' : ''}${personal.savingsRateChangePct}pts`} positive={personal.savingsRateChangePct >= 0} />
-            <StatRow label={simple ? 'Share of paycheck going to debt' : 'Debt-to-income change'} value={`${personal.debtToIncomeChangePct >= 0 ? '+' : ''}${personal.debtToIncomeChangePct}pts`} positive={personal.debtToIncomeChangePct <= 0} />
-            {personal.debtImpacts.slice(0, 4).map((d, i) => (
+            {(applies.debt || personal.debtToIncomeChangePct !== 0) && (
+              <StatRow label={simple ? 'Share of paycheck going to debt' : 'Debt-to-income change'} value={`${personal.debtToIncomeChangePct >= 0 ? '+' : ''}${personal.debtToIncomeChangePct}pts`} positive={personal.debtToIncomeChangePct <= 0} />
+            )}
+            {applies.debt && personal.debtImpacts.slice(0, 4).map((d, i) => (
               <StatRow key={i} label={d.label} value={money(d.value)} positive={d.value >= 0} />
             ))}
           </div>
@@ -861,7 +912,7 @@ function DeepDiveTab({ a }: { a: FullAnalysis }) {
   );
 }
 
-// ----- Tab 5: Action Plan -----
+// ----- Tab 5: Things to consider -----
 const PRIORITY_STYLES: Record<string, string> = {
   high: 'bg-red-500/10 border-red-500/20 text-red-400',
   medium: 'bg-amber-500/10 border-amber-500/20 text-amber-400',
@@ -908,7 +959,7 @@ function ActionTab({ a }: { a: FullAnalysis }) {
     <div className="space-y-6">
       <GlassCard className="rounded-3xl p-7" animate={false}>
         <div className="flex items-center justify-between mb-5">
-          <h3 className="font-display text-base font-semibold text-text-primary">Your Action Plan</h3>
+          <h3 className="font-display text-base font-semibold text-text-primary">Things you could consider</h3>
           <span className="text-xs font-mono-data text-text-muted">{doneCount}/{a.recommendations.length} done</span>
         </div>
         <div className="space-y-3">

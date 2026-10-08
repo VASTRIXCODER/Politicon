@@ -38,6 +38,26 @@ export const FeedOutput = z.object({
 });
 export type FeedOutput = z.infer<typeof FeedOutput>;
 
+/** The model chooses among official records (by ref) and explains them; it never supplies facts. */
+export const FeedSelectionOutput = z.object({
+  policies: z
+    .array(
+      z.object({
+        ref: z.string().describe('The ref of a record from the lists, e.g. "F12" or "S3"'),
+        category: z
+          .enum(['taxes', 'healthcare', 'housing', 'employment', 'education', 'retirement', 'energy', 'trade', 'transportation', 'consumer', 'other'])
+          .catch('other'),
+        relevanceScore: z.number().int().describe('0-100: how directly this affects THIS user'),
+        summary: z.string().describe('One plain-English sentence on what the policy does, supported by the record'),
+        direction: direction.describe('Likely financial direction for this user'),
+        estimatedImpact: z.string().describe('Short hedged annual estimate, e.g. "≈ +$600/yr", or "Depends on …" when unclear'),
+        reasons: z.array(z.string()).describe('Up to 3 specific reasons this matters to this user'),
+      }),
+    )
+    .describe('Up to 10 records, most relevant first'),
+});
+export type FeedSelectionOutput = z.infer<typeof FeedSelectionOutput>;
+
 // ---------------------------------------------------------------------------
 // Advisor policy reply
 // ---------------------------------------------------------------------------

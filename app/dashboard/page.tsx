@@ -12,6 +12,10 @@ import Badge from '@/components/ui/Badge';
 import AnimatedCounter from '@/components/ui/AnimatedCounter';
 import { requestAnalysis } from '@/lib/analysisClient';
 import { apiFetch } from '@/lib/api';
+import PolicyProvenance from '@/components/PolicyProvenance';
+import FeedbackControls from '@/components/FeedbackControls';
+import AiDisclaimer from '@/components/ui/AiDisclaimer';
+import type { DiscoveredPolicy } from '@/types';
 import ViewFullImpactButton from '@/components/ViewFullImpactButton';
 import Navbar from '@/components/layout/Navbar';
 import AmbientBackground from '@/components/landing/AmbientBackground';
@@ -26,17 +30,7 @@ interface PolicyAnalysisRow {
   created_at: string;
 }
 
-interface FeedPolicy {
-  id: string;
-  title: string;
-  description: string;
-  category: string;
-  relevance: 'High' | 'Medium' | 'Low';
-  relevanceScore?: number;
-  estimatedImpact: string;
-  region: string;
-  direction?: string;
-}
+type FeedPolicy = DiscoveredPolicy;
 
 function SkeletonCard() {
   return (
@@ -84,14 +78,26 @@ const RELEVANCE_COLORS: Record<string, string> = {
   Low: 'text-text-muted bg-white/5 border-white/10',
 };
 
-function PolicyFeedCard({ policy, analyzed, onAnalyze, onAskAdvisor, analyzingIds }: {
+function PolicyFeedCard({ policy, analyzed, onAnalyze, onAskAdvisor, onDismiss, analyzingIds }: {
   policy: FeedPolicy;
   analyzed: boolean;
   onAnalyze: (_policy: FeedPolicy) => void;
   onAskAdvisor: (_policy: FeedPolicy) => void;
+  onDismiss: (_policy: FeedPolicy) => Promise<string | null>;
   analyzingIds: Set<string>;
 }) {
   const isAnalyzing = analyzingIds.has(policy.id);
+  const [dismissing, setDismissing] = useState(false);
+  const [dismissError, setDismissError] = useState<string | null>(null);
+  async function dismiss() {
+    setDismissing(true);
+    setDismissError(null);
+    const error = await onDismiss(policy);
+    if (error) {
+      setDismissError(error);
+      setDismissing(false);
+    }
+  }
   return (
     <GlassCard className="rounded-2xl p-5">
       <div className="flex items-start justify-between gap-3 mb-3">
@@ -108,11 +114,17 @@ function PolicyFeedCard({ policy, analyzed, onAnalyze, onAskAdvisor, analyzingId
         </div>
         <span className="text-[10px] text-text-muted flex-shrink-0">{policy.region}</span>
       </div>
-      <h3 className="font-medium text-text-primary text-sm leading-snug mb-1">{policy.title}</h3>
+      <h3 className="font-medium text-text-primary text-sm leading-snug mb-1">
+        {policy.billNumber && <span className="text-text-muted font-mono-data mr-1.5">{policy.billNumber}</span>}
+        {policy.title}
+      </h3>
       <p className="text-xs text-text-muted mb-2 leading-relaxed">{policy.description}</p>
       {policy.estimatedImpact && (
-        <p className="text-xs font-mono-data text-primary mb-4">{policy.estimatedImpact} est. impact</p>
+        <p className="text-xs font-mono-data text-primary mb-2">{policy.estimatedImpact} est. impact</p>
       )}
+      <div className="mb-4">
+        <PolicyProvenance record={policy.record} compact />
+      </div>
       <div className="flex gap-2">
         {analyzed ? (
           <ViewFullImpactButton
@@ -137,7 +149,17 @@ function PolicyFeedCard({ policy, analyzed, onAnalyze, onAskAdvisor, analyzingId
           onClick={() => onAskAdvisor(policy)}
           className="flex-1 flex items-center justify-center gap-1.5 glass hover:border-white/16 text-text-muted px-3 py-2 rounded-xl text-xs transition-all"
         >
-          <MessageSquare className="w-3 h-3" /> Ask Advisor
+          <MessageSquare className="w-3 h-3" /> Ask the Guide
+        </button>
+      </div>
+      <div className="mt-3 flex items-center justify-end gap-2 text-[11px]">
+        {dismissError && <span role="alert" className="text-red-300">{dismissError}</span>}
+        <button
+          onClick={dismiss}
+          disabled={dismissing}
+          className="text-text-muted hover:text-text-primary underline-offset-2 hover:underline disabled:opacity-60"
+        >
+          {dismissing ? 'Hiding…' : 'Not relevant to me'}
         </button>
       </div>
     </GlassCard>
@@ -368,6 +390,16 @@ export default function DashboardPage() {
     router.push(`/advisor?policyId=${encodeURIComponent(policy.id)}`);
   }
 
+  /** "Not relevant to me": recorded as feedback, and the policy leaves the feed. Returns an error message on failure. */
+  async function handleDismiss(policy: FeedPolicy): Promise<string | null> {
+    const res = await apiFetch('/api/feedback', {
+      body: { targetType: 'feed_item', targetId: policy.id, rating: 'not_relevant' },
+    });
+    if (!res.ok) return res.message;
+    setFeedPolicies(prev => prev.filter(p => p.id !== policy.id));
+    return null;
+  }
+
   const netImpact = totals?.netAnnual ?? analyses.reduce((sum, a) => sum + (a.dollar_impact || 0), 0);
   const analysisCount = totals?.count ?? analyses.length;
   const analyzedIds = useMemo(() => new Set(analyses.map(a => a.policy_id)), [analyses]);
@@ -430,7 +462,7 @@ export default function DashboardPage() {
                   </Link>
                   <Link href="/advisor">
                     <button className="flex items-center gap-2 glass hover:border-white/16 text-text-muted px-5 py-3 rounded-xl text-sm transition-all whitespace-nowrap">
-                      <MessageSquare className="w-4 h-4" /> Ask the Advisor
+                      <MessageSquare className="w-4 h-4" /> Ask the Policy Guide
                     </button>
                   </Link>
                 </div>
@@ -586,6 +618,7 @@ export default function DashboardPage() {
                               analyzed={analyzedIds.has(policy.id)}
                               onAnalyze={handleAnalyze}
                               onAskAdvisor={handleAskAdvisor}
+                              onDismiss={handleDismiss}
                               analyzingIds={analyzingIds}
                             />
                           ))}
@@ -596,7 +629,7 @@ export default function DashboardPage() {
 
                   <div className="space-y-6">
                     <div>
-                      <h2 className="font-display text-xl font-semibold text-text-primary mb-4">AI Portfolio Insight</h2>
+                      <h2 className="font-display text-xl font-semibold text-text-primary mb-4">Your Policy Snapshot</h2>
                       {insightLoading ? (
                         <GlassCard className="rounded-2xl p-5">
                           <div className="space-y-2 animate-pulse">
@@ -613,6 +646,8 @@ export default function DashboardPage() {
                             </div>
                             <p className="text-xs text-text-muted leading-relaxed">{portfolioInsight}</p>
                           </div>
+                          <AiDisclaimer className="mt-3" />
+                          <FeedbackControls targetType="insight" targetId="portfolio" excerpt={portfolioInsight.slice(0, 500)} className="mt-1" />
                         </GlassCard>
                       ) : (
                         <GlassCard className="rounded-2xl p-5">
@@ -622,7 +657,7 @@ export default function DashboardPage() {
                     </div>
 
                     <GlassCard className="rounded-2xl p-5 bg-gradient-to-br from-primary/10 to-secondary/5 border-primary/20">
-                      <h3 className="font-display font-semibold text-text-primary mb-2">Ask the AI Advisor</h3>
+                      <h3 className="font-display font-semibold text-text-primary mb-2">Ask the AI Policy Guide</h3>
                       <p className="text-xs text-text-muted mb-4">Get personalized answers about how any policy affects your specific situation.</p>
                       <Link href="/advisor">
                         <button className="w-full bg-primary/20 hover:bg-primary/30 border border-primary/20 text-primary py-2.5 rounded-xl text-sm font-medium transition-all flex items-center justify-center gap-2">
@@ -767,6 +802,7 @@ export default function DashboardPage() {
                             <p className="text-xs text-text-muted leading-relaxed">{portfolioInsight}</p>
                           </div>
                         </div>
+                        <AiDisclaimer className="mt-3" />
                       </GlassCard>
                     )}
                   </div>

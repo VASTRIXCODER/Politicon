@@ -193,4 +193,149 @@ describe('lib/claude.ts against the streaming Messages API', () => {
     expect(req.output_config.effort).toBe('medium');
     expect(req.messages[0].content).toContain('<policy>');
   });
+
+  const federalRecord = (i: number, extra: Record<string, unknown> = {}) => ({
+    id: `us-hr-${i}`, source: 'congress.gov' as const, region: 'Federal', billNumber: `H.R. ${i}`,
+    title: `Official Title ${i}`, status: 'proposed' as const,
+    latestActionDate: '2026-09-01', latestActionText: 'Referred to the Committee on Ways and Means.',
+    sourceUrl: `https://www.congress.gov/bill/119th-congress/house-bill/${i}`, congress: 119, billType: 'hr', number: String(i),
+    ...extra,
+  });
+  const ohioBudget = {
+    id: 'ohio-hb-96', source: 'openstates' as const, region: 'Ohio', billNumber: 'HB 96', title: 'Ohio Operating Budget',
+    status: 'enacted' as const, latestActionDate: '2026-07-01', latestActionText: 'Signed by the Governor',
+    sourceUrl: 'https://openstates.org/oh/bills/136/HB96/', session: '136', abstract: 'Makes operating appropriations for the biennium.',
+  };
+  const pick = (ref: string, extra: Record<string, unknown> = {}) => ({
+    ref, category: 'taxes', relevanceScore: 80, summary: `Pick ${ref}.`, direction: 'positive', estimatedImpact: '≈ +$600/yr', reasons: ['a'], ...extra,
+  });
+
+  it('grounded feed: the model only selects official records by ref; facts come from the record', async () => {
+    const { discoverPolicyFeed } = await import('@/lib/claude');
+    const candidates = [
+      ohioBudget,
+      ...Array.from({ length: 6 }, (_, i) => federalRecord(i + 1, i === 0 ? { status: 'enacted', latestActionText: 'Became Public Law No: 119-99.' } : {})),
+    ];
+    nextReply = {
+      stopReason: 'end_turn',
+      text: JSON.stringify({ policies: [
+        pick('F1', { relevanceScore: 88, summary: 'Changes tax brackets.' }),
+        pick('S1', { category: 'consumer' }),
+        pick('F99', { relevanceScore: 99, summary: 'Invented.' }),
+        pick('F1', { relevanceScore: 10, summary: 'Duplicate.' }),
+      ] }),
+    };
+    const items = await discoverPolicyFeed(profile, meta, undefined, candidates);
+
+    expect(items).toHaveLength(2); // unknown ref and duplicate dropped
+    expect(items[0]).toMatchObject({
+      id: 'us-hr-1', title: 'Official Title 1', billNumber: 'H.R. 1', status: 'enacted', region: 'Federal',
+      summary: 'Changes tax brackets.',
+      record: {
+        verified: true, source: 'congress.gov', sourceUrl: 'https://www.congress.gov/bill/119th-congress/house-bill/1', latestActionDate: '2026-09-01',
+        status: 'enacted', billNumber: 'H.R. 1', region: 'Federal', congress: 119, billType: 'hr', number: '1',
+      },
+    });
+    expect(items[1]).toMatchObject({
+      id: 'ohio-hb-96', region: 'Ohio', status: 'enacted',
+      record: {
+        verified: true, source: 'openstates', status: 'enacted', billNumber: 'HB 96', region: 'Ohio', session: '136',
+        abstract: 'Makes operating appropriations for the biennium.',
+      },
+    });
+    const req = lastRequest as Record<string, any>;
+    // Federal records come first in their own block; the date, profile and state records follow.
+    const [federalBlock, userBlock] = req.messages[0].content;
+    expect(federalBlock.text).toContain('F1 | Federal | H.R. 1 | enacted | 2026-09-01');
+    expect(federalBlock.text).not.toContain('Ohio');
+    expect(federalBlock.text).not.toContain('Today is');
+    expect(userBlock.text).toContain('Today is');
+    expect(userBlock.text).toContain('S1 | Ohio | HB 96 | enacted | 2026-07-01');
+    expect(userBlock.cache_control).toBeUndefined();
+    expect(req.output_config.format.schema.properties.policies.items.required).toContain('ref');
+  });
+
+  it('grounded feed: the federal block is the same for every user and carries the cache breakpoint', async () => {
+    const { discoverPolicyFeed } = await import('@/lib/claude');
+    const federal = Array.from({ length: 40 }, (_, i) => federalRecord(i + 1));
+    nextReply = { stopReason: 'end_turn', text: JSON.stringify({ policies: [pick('F2')] }) };
+
+    await discoverPolicyFeed(profile, meta, undefined, [ohioBudget, ...federal]);
+    const first = (lastRequest as Record<string, any>).messages[0].content;
+    await discoverPolicyFeed({ ...profile, state: 'Texas', incomeRange: '150k_200k' }, meta, undefined, federal);
+    const second = (lastRequest as Record<string, any>).messages[0].content;
+
+    expect(first[0].cache_control).toEqual({ type: 'ephemeral' });
+    expect(second[0]).toEqual(first[0]);
+    expect(second[1].text).not.toEqual(first[1].text);
+    expect(second[1].text).toContain('OFFICIAL STATE RECORDS: none available.');
+  });
+
+  it('grounded feed: dismissed records are never offered or returned', async () => {
+    const { discoverPolicyFeed } = await import('@/lib/claude');
+    const federal = Array.from({ length: 6 }, (_, i) => federalRecord(i + 1));
+    nextReply = { stopReason: 'end_turn', text: JSON.stringify({ policies: [pick('F1'), pick('F2')] }) };
+    const items = await discoverPolicyFeed(profile, meta, undefined, federal, new Set(['us-hr-1']));
+
+    expect(items.map((i) => i.id)).toEqual(['us-hr-2', 'us-hr-3']);
+    const [federalBlock] = (lastRequest as Record<string, any>).messages[0].content;
+    expect(federalBlock.text).not.toMatch(/\| H\.R\. 1 \|/);
+  });
+
+  it('fallback feed: drops dismissed policies and fails rather than return an empty feed', async () => {
+    const { discoverPolicyFeed, AiOutputError } = await import('@/lib/claude');
+    const { canonicalPolicyId } = await import('@/lib/policyId');
+    const title = 'One Big Beautiful Bill Act';
+    nextReply = {
+      stopReason: 'end_turn',
+      text: JSON.stringify({ policies: [{ title, billNumber: 'H.R. 1', status: 'enacted', category: 'taxes', relevanceScore: 91,
+        summary: 's', direction: 'positive', estimatedImpact: '', region: 'Federal', reasons: [] }] }),
+    };
+    const dismissed = new Set([canonicalPolicyId({ billNumber: 'H.R. 1', region: 'Federal', title })]);
+    const err = await discoverPolicyFeed(profile, meta, undefined, [], dismissed).catch((e) => e);
+    expect(err).toBeInstanceOf(AiOutputError);
+    expect(err.kind).toBe('empty');
+  });
+
+  it('advisor policy reply: the official record goes inside the fenced policy block', async () => {
+    const { advisorPolicyReply } = await import('@/lib/claude');
+    nextReply = { stopReason: 'end_turn', text: JSON.stringify({ summary: 'Funds the state budget.', dollarLine: 'About $0 a month.' }) };
+    const reply = await advisorPolicyReply(
+      {
+        title: 'Ohio Operating Budget', summary: 'Funds the state.', governingBody: 'HB 96', region: 'Ohio', status: 'enacted',
+        record: {
+          verified: true, source: 'openstates', sourceUrl: ohioBudget.sourceUrl, status: 'enacted', billNumber: 'HB 96', region: 'Ohio',
+          latestActionDate: '2026-07-01', latestAction: 'Signed by the Governor', abstract: ohioBudget.abstract, asOf: '2026-10-08T00:00:00Z',
+        },
+      },
+      profile, { feature: 'advisor_policy', userId: 'u1', usageId: 11 },
+    );
+    expect(reply.fullResponse).toBe('Funds the state budget.\n\nAbout $0 a month.');
+    const req = lastRequest as Record<string, any>;
+    const content = req.messages[0].content as string;
+    const fenced = content.slice(content.indexOf('<policy>'), content.indexOf('</policy>'));
+    for (const part of ['Bill: HB 96', 'Jurisdiction: Ohio', 'Status: enacted', '2026-07-01 — Signed by the Governor', 'Official abstract: Makes operating appropriations']) {
+      expect(fenced).toContain(part);
+    }
+    expect(req.system[0].text).toContain('authoritative');
+
+    await advisorPolicyReply(
+      { title: 'Some Act', summary: 's', governingBody: 'Federal', region: 'Federal', status: 'proposed', record: { verified: false, source: 'ai', asOf: '' } },
+      profile, { feature: 'advisor_policy', userId: 'u1', usageId: 12 },
+    );
+    const unverified = (lastRequest as Record<string, any>).messages[0].content as string;
+    expect(unverified).toContain('not verified');
+    expect(unverified).not.toContain('Bill:'); // governingBody holds only the region
+  });
+
+  it('falls back to unverified items when no official records are available', async () => {
+    const { discoverPolicyFeed } = await import('@/lib/claude');
+    nextReply = {
+      stopReason: 'end_turn',
+      text: JSON.stringify({ policies: [{ title: 'Some Act', billNumber: '', status: 'proposed', category: 'housing', relevanceScore: 50,
+        summary: 's', direction: 'neutral', estimatedImpact: '', region: 'Ohio', reasons: [] }] }),
+    };
+    const items = await discoverPolicyFeed(profile, meta, undefined, []);
+    expect(items[0].record).toMatchObject({ verified: false, source: 'ai' });
+  });
 });

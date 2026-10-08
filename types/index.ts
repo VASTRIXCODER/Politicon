@@ -46,7 +46,7 @@ export interface Policy {
   summary: string;
   description: string;
   category: string;
-  status: 'proposed' | 'passed' | 'enacted' | 'rejected';
+  status: 'proposed' | 'passed' | 'enacted' | 'repealed' | 'rejected';
   date: string;
   source: string;
   sourceUrl: string;
@@ -56,6 +56,7 @@ export interface Policy {
   impacts: PolicyImpact[];
   assumptions: string[];
   tags: string[];
+  record?: PolicyRecord;
 }
 
 export interface InsightCard {
@@ -148,6 +149,33 @@ export interface DiscoveredPolicy {
   estimatedImpact: string; // e.g. "+$1,200/yr"
   reasons: string[]; // 3 personalized reasons
   region: string;
+  /** The official record this item comes from (absent on older, unverified feeds). */
+  record?: PolicyRecord;
+}
+
+/**
+ * Where a policy's facts come from. Title, bill number, status and dates are
+ * taken from the official source; the AI only explains them.
+ */
+export interface PolicyRecord {
+  /** true when the policy was taken from an official source, false for AI-generated fallbacks. */
+  verified: boolean;
+  source: 'congress.gov' | 'openstates' | 'ai';
+  sourceUrl?: string;
+  latestActionDate?: string | null;
+  latestAction?: string | null;
+  /** When the feed was built. */
+  asOf: string;
+  /** The official status, bill number and jurisdiction (absent on records saved before they were kept). */
+  status?: 'proposed' | 'passed' | 'enacted' | 'repealed' | 'rejected';
+  billNumber?: string;
+  region?: string;
+  congress?: number;
+  billType?: string;
+  number?: string;
+  /** State legislative session, where the source gives one. */
+  session?: string;
+  abstract?: string;
 }
 
 // ============================================================
@@ -192,6 +220,8 @@ export interface FullAnalysis {
   assumptions: string[];
   /** ANALYSIS_SCHEMA_VERSION the analysis was produced with. */
   schemaVersion?: number;
+  /** The official record the analysis was grounded in, if any. */
+  record?: PolicyRecord;
 
   netAnnualImpact: number;
   netMonthlyImpact: number;

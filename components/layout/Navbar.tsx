@@ -13,7 +13,7 @@ const navLinks = [
   { label: 'How It Works', href: '/#how-it-works' },
   { label: 'Policies', href: '/policies' },
   { label: 'Explorer', href: '/explorer' },
-  { label: 'Advisor', href: '/advisor' },
+  { label: 'Policy Guide', href: '/advisor' },
 ];
 
 function UserDropdown({ user, onSignOut }: { user: SupabaseUser; onSignOut: () => void }) {

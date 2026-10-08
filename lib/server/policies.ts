@@ -1,6 +1,7 @@
 import 'server-only';
 import type { SupabaseClient } from '@supabase/supabase-js';
-import type { DiscoveredPolicy, Policy } from '@/types';
+import type { DiscoveredPolicy, Policy, PolicyRecord } from '@/types';
+import { validRecord } from '@/lib/analysisSchema';
 
 const POLICY_ID = /^[a-z0-9][a-z0-9-]{0,79}$/;
 
@@ -16,8 +17,9 @@ function toPolicy(p: {
   status: string;
   region: string;
   billNumber?: string;
+  record?: PolicyRecord;
 }): Policy {
-  const status = (['proposed', 'passed', 'enacted', 'rejected'] as const).find((s) => s === p.status) || 'proposed';
+  const status = (['proposed', 'passed', 'enacted', 'repealed', 'rejected'] as const).find((s) => s === p.status) || 'proposed';
   return {
     id: p.id,
     title: p.title,
@@ -27,13 +29,14 @@ function toPolicy(p: {
     status,
     date: new Date().toISOString(),
     source: 'Politicon policy feed',
-    sourceUrl: '',
+    sourceUrl: p.record?.sourceUrl || '',
     governingBody: p.billNumber || p.region || 'Federal',
     region: p.region || 'Federal',
     confidenceLevel: 'medium',
     impacts: [],
     assumptions: [],
     tags: [],
+    ...(p.record ? { record: p.record } : {}),
   };
 }
 
@@ -61,6 +64,7 @@ export async function resolvePolicy(supabase: SupabaseClient, userId: string, po
       status: match.status,
       region: match.region,
       billNumber: match.billNumber,
+      record: match.record,
     });
   }
 
@@ -73,15 +77,20 @@ export async function resolvePolicy(supabase: SupabaseClient, userId: string, po
   // A placeholder for a job that never produced an analysis isn't a source of policy details.
   const hasAnalysis = !!row?.analysis && Object.keys(row.analysis as object).length > 0;
   if (row && hasAnalysis) {
-    const analysis = (row.analysis || {}) as { plainEnglishSummary?: string };
+    const analysis = (row.analysis || {}) as { plainEnglishSummary?: string; record?: unknown };
+    // The official record stored with the analysis keeps a re-analysis grounded
+    // after the policy has left the feed.
+    const record = validRecord(analysis.record);
+    const official = record?.verified ? record : undefined;
     return toPolicy({
       id: row.policy_id,
       title: row.policy_title || policyId,
       summary: analysis.plainEnglishSummary || row.policy_title || policyId,
       category: row.category || 'taxes',
-      status: row.status || 'proposed',
-      region: 'Federal',
-      billNumber: row.bill_number || undefined,
+      status: official?.status || row.status || 'proposed',
+      region: record?.region || 'Federal',
+      billNumber: official?.billNumber || row.bill_number || undefined,
+      record,
     });
   }
 
