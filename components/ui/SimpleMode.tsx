@@ -3,7 +3,7 @@
 import { useState } from 'react';
 import { Lightbulb, BookOpen, ChevronDown } from 'lucide-react';
 import { JargonTerm } from '@/types';
-import { BASE_JARGON } from '@/lib/simpleMode';
+import { jargonList } from '@/lib/simpleMode';
 
 /** "What this means for you" plain-language callout, shown only in Simple Mode. */
 export function WhatThisMeans({ text }: { text?: string }) {
@@ -23,16 +23,7 @@ export function WhatThisMeans({ text }: { text?: string }) {
 export function JargonBuster({ terms }: { terms: JargonTerm[] }) {
   const [open, setOpen] = useState(true);
 
-  // The analysis's own terms first, then the built-in dictionary; one entry per
-  // term regardless of case, keeping the original spelling (e.g. "GDP").
-  const merged = new Map<string, JargonTerm>();
-  for (const t of terms) {
-    if (t.term && t.definition && !merged.has(t.term.toLowerCase())) merged.set(t.term.toLowerCase(), t);
-  }
-  for (const [term, definition] of Object.entries(BASE_JARGON)) {
-    if (!merged.has(term.toLowerCase())) merged.set(term.toLowerCase(), { term, definition });
-  }
-  const list = Array.from(merged.values());
+  const list = jargonList(terms);
 
   if (list.length === 0) return null;
 

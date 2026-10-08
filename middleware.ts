@@ -89,6 +89,11 @@ export async function middleware(request: NextRequest) {
   }
 
   if (user && AUTH_ROUTES.includes(pathname)) {
+    // A link error (e.g. an expired or already-used email link) is shown in
+    // Settings rather than dropped; Settings works before onboarding too.
+    if (request.nextUrl.searchParams.get('error') === 'link_invalid') {
+      return redirectTo(new URL('/settings?notice=link_invalid', request.url));
+    }
     const next = safeNextPath(request.nextUrl.searchParams.get('next'));
     return redirectTo(new URL(next || '/dashboard', request.url));
   }

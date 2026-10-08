@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useRef, useEffect, Suspense, useCallback } from 'react';
+import { useState, useRef, useEffect, useLayoutEffect, Suspense, useCallback } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { useSearchParams } from 'next/navigation';
 import {
@@ -40,6 +40,7 @@ interface ChatSession {
   messages: ExtendedMessage[];
   policy_id?: string;
   created_at: string;
+  updated_at?: string;
 }
 
 interface ExtendedMessage extends ChatMessage {
@@ -225,6 +226,9 @@ function AdvisorInner() {
   // never land in (or be saved to) a different conversation.
   const inflight = useRef<AbortController | null>(null);
   const conversation = useRef(0); // bumped whenever the user switches conversations
+  // A new conversation's first save inserts its row; a follow-up saved before
+  // that finishes waits for it and updates the same row instead of inserting.
+  const firstInsert = useRef<{ conversation: number; id: Promise<string | null> } | null>(null);
   const [mobileFeedOpen, setMobileFeedOpen] = useState(false);
 
   // Small screens start with the history sidebar closed.
@@ -293,40 +297,48 @@ function AdvisorInner() {
     return () => controller.abort();
   }, []);
 
-  const saveSession = async (sessionId: string | null, msgs: ExtendedMessage[], firstUserMsg?: string) => {
+  const saveSession = async (sessionId: string | null, msgs: ExtendedMessage[], firstUserMsg: string | undefined, conv: number) => {
     if (!userId.current) return sessionId;
+    if (!sessionId && firstInsert.current?.conversation === conv) sessionId = await firstInsert.current.id;
     const supabase = createClient();
     const title = firstUserMsg ? (firstUserMsg.length > 60 ? `${firstUserMsg.slice(0, 57)}…` : firstUserMsg) : 'New conversation';
     const serialized = msgs.filter(m => !m.local).map(m => ({ ...m, compiling: false, timestamp: m.timestamp instanceof Date ? m.timestamp.toISOString() : m.timestamp }));
     try {
       if (sessionId) {
-        await supabase.from('chat_sessions').update({ messages: serialized }).eq('id', sessionId);
-        setSessions(prev => prev.map(s => s.id === sessionId ? { ...s, messages: msgs } : s));
-        return sessionId;
-      } else {
+        const id = sessionId;
+        await supabase.from('chat_sessions').update({ messages: serialized }).eq('id', id);
+        // Most recently updated first, matching the order on load.
+        setSessions(prev => {
+          const s = prev.find(x => x.id === id);
+          return s ? [{ ...s, messages: msgs, updated_at: new Date().toISOString() }, ...prev.filter(x => x.id !== id)] : prev;
+        });
+        return id;
+      }
+      const insert = (async () => {
         const { data } = await supabase.from('chat_sessions').insert({
           user_id: userId.current, title, messages: serialized,
         }).select().single();
-        if (data) {
-          setSessions(prev => [{ ...data, messages: msgs }, ...prev]);
-          return data.id as string;
-        }
-      }
+        if (!data) return null;
+        setSessions(prev => [{ ...data, messages: msgs }, ...prev]);
+        return data.id as string;
+      })();
+      firstInsert.current = { conversation: conv, id: insert.catch(() => null) };
+      return await insert;
     } catch {
       console.warn('Could not save chat session');
     }
     return null;
   };
 
-  const sendMessage = useCallback(async (text: string, policyMeta?: PolicyMeta) => {
+  /** `fromComposer`: the text is what's typed in the box, so the box is cleared; retries and quick prompts leave a draft alone. */
+  const sendMessage = useCallback(async (text: string, policyMeta?: PolicyMeta, fromComposer = false) => {
     if (!text.trim() || isTyping) return;
 
     const isFirst = !messages.some(m => m.role === 'user');
     const userMsg: ExtendedMessage = { id: Date.now().toString(), role: 'user', content: text.trim(), timestamp: new Date() };
     const newMessages = [...messages, userMsg];
     setMessages(newMessages);
-    setInput('');
-    if (inputRef.current) inputRef.current.style.height = 'auto';
+    if (fromComposer) setInput('');
     setIsTyping(true);
     const controller = new AbortController();
     inflight.current = controller;
@@ -349,12 +361,14 @@ function AdvisorInner() {
     inflight.current = null;
 
     if (!res.ok) {
-      // Shown once, not saved, and not sent back to the model.
-      const wait = res.retryAfter && res.retryAfter > 0 ? ` You can try again in about ${Math.ceil(res.retryAfter / 60)} min.` : '';
+      // Shown once, not saved, and not sent back to the model. A used-up daily
+      // quota resets within a day, so it gets neither a wait time nor a retry.
+      const wait = res.code === 'rate_limited' && res.retryAfter && res.retryAfter > 0 ? ` You can try again in about ${Math.ceil(res.retryAfter / 60)} min.` : '';
+      const retryable = res.status === 0 || (res.status === 429 && res.code !== 'daily_quota') || res.status >= 500;
       setMessages(prev => [...prev, {
         id: (Date.now() + 1).toString(), role: 'assistant', local: true,
-        content: `${res.message}${res.status === 429 ? wait : ''}`, timestamp: new Date(),
-        retry: res.status === 0 || res.status === 429 || res.status >= 500 ? { text: text.trim(), policyMeta } : undefined,
+        content: `${res.message}${wait}`, timestamp: new Date(),
+        retry: retryable ? { text: text.trim(), policyMeta } : undefined,
       }]);
       setIsTyping(false);
       return;
@@ -379,13 +393,17 @@ function AdvisorInner() {
 
     setIsTyping(false);
     const title = isFirst ? (policyMeta?.policyTitle || text.trim()) : undefined;
-    const savedId = await saveSession(activeSessionId, finalMessages, title);
+    const savedId = await saveSession(activeSessionId, finalMessages, title, startedIn);
     if (!activeSessionId && savedId && conversation.current === startedIn) setActiveSessionId(savedId);
   }, [messages, isTyping, activeSessionId, simple]);
 
-  /** Resend a failed message: drop the error bubble and the user turn it answered. */
+  /**
+   * Resend a failed message: drop the error bubble and the user turn it
+   * answered. Only the latest message can be retried, so later turns are
+   * never cut off (or overwritten in the saved conversation).
+   */
   const retryMessage = (errorMsg: ExtendedMessage) => {
-    if (!errorMsg.retry || isTyping) return;
+    if (!errorMsg.retry || isTyping || messages[messages.length - 1]?.id !== errorMsg.id) return;
     const { text, policyMeta } = errorMsg.retry;
     const idx = messages.findIndex(m => m.id === errorMsg.id);
     const trimmed = messages.slice(0, idx > 0 && messages[idx - 1].role === 'user' ? idx - 1 : idx);
@@ -413,6 +431,14 @@ function AdvisorInner() {
     inputRef.current?.focus();
   }, [policyIdParam, feed, feedLoading]);
 
+  // Size the composer to its text however it was set (typing, prefill, clearing).
+  useLayoutEffect(() => {
+    const el = inputRef.current;
+    if (!el) return;
+    el.style.height = 'auto';
+    el.style.height = `${Math.min(el.scrollHeight, 128)}px`;
+  }, [input]);
+
   const pickPolicy = (p: DiscoveredPolicy) => {
     setPendingPolicy(null);
     sendMessage(`Tell me about the financial impact of ${p.title}`, {
@@ -423,7 +449,7 @@ function AdvisorInner() {
   const submitInput = () => {
     const meta = pendingPolicy;
     setPendingPolicy(null);
-    sendMessage(input, meta || undefined);
+    sendMessage(input, meta || undefined, true);
   };
 
   const cancelInflight = () => {
@@ -450,6 +476,7 @@ function AdvisorInner() {
 
   const newChat = () => {
     cancelInflight();
+    if (window.matchMedia('(max-width: 767px)').matches) setSidebarOpen(false);
     setActiveSessionId(null);
     setMessages([{ ...INITIAL_MESSAGE, timestamp: new Date() }]);
   };
@@ -461,9 +488,22 @@ function AdvisorInner() {
   return (
     <div className="min-h-screen relative flex flex-col">
       <AmbientBackground />
-      <div className="relative z-10 flex flex-col h-screen h-[100dvh]">
+      <div className="relative z-10 flex flex-col h-screen supports-[height:100dvh]:h-[100dvh]">
         <Navbar />
         <div className="flex-1 flex overflow-hidden pt-20 relative">
+
+          {/* Small screens: the history overlays the chat; tapping outside closes it. */}
+          <AnimatePresence>
+            {sidebarOpen && (
+              <motion.div
+                key="history-backdrop"
+                initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}
+                className="md:hidden absolute inset-x-0 top-20 bottom-0 z-30 bg-black/50"
+                onClick={() => setSidebarOpen(false)}
+                aria-hidden
+              />
+            )}
+          </AnimatePresence>
 
           {/* Left: Chat history */}
           <AnimatePresence>
@@ -473,11 +513,14 @@ function AdvisorInner() {
                 transition={{ duration: 0.2 }}
                 className="h-full glass-strong border-r border-white/8 flex flex-col overflow-hidden flex-shrink-0 max-md:absolute max-md:top-20 max-md:bottom-0 max-md:left-0 max-md:h-auto max-md:z-40"
               >
-                <div className="p-4 border-b border-white/8 flex items-center justify-between">
-                  <span className="text-sm font-semibold text-text-primary">Chat History</span>
+                <div className="p-4 border-b border-white/8 flex items-center justify-between gap-2">
+                  <span className="text-sm font-semibold text-text-primary flex-1">Chat History</span>
                   <button onClick={newChat}
                     className="flex items-center gap-1.5 bg-primary/20 hover:bg-primary/30 border border-primary/20 text-primary px-3 py-1.5 rounded-xl text-xs font-medium transition-all">
                     <Plus className="w-3 h-3" /> New
+                  </button>
+                  <button onClick={() => setSidebarOpen(false)} aria-label="Close chat history" className="md:hidden p-1.5 rounded-lg hover:bg-white/5">
+                    <X className="w-4 h-4 text-text-muted" />
                   </button>
                 </div>
                 <div className="flex-1 overflow-y-auto p-2">
@@ -499,7 +542,7 @@ function AdvisorInner() {
                           <p className="text-xs font-medium text-text-primary truncate">{session.title}</p>
                           <div className="flex items-center gap-1 mt-1">
                             <Clock className="w-2.5 h-2.5 text-text-muted" />
-                            <span className="text-[10px] text-text-muted">{new Date(session.created_at).toLocaleDateString()}</span>
+                            <span className="text-[10px] text-text-muted">{new Date(session.updated_at || session.created_at).toLocaleDateString()}</span>
                           </div>
                         </button>
                         <button
@@ -560,7 +603,9 @@ function AdvisorInner() {
 
               {/* Messages */}
               <div className="flex-1 overflow-y-auto pr-1" style={{ scrollbarWidth: 'thin' }}>
-                {messages.map(msg => <MessageBubble key={msg.id} message={msg} sessionId={activeSessionId} onRetry={retryMessage} />)}
+                {messages.map((msg, i) => (
+                  <MessageBubble key={msg.id} message={msg} sessionId={activeSessionId} onRetry={i === messages.length - 1 ? retryMessage : undefined} />
+                ))}
                 {isTyping && <TypingIndicator />}
                 <div ref={messagesEndRef} />
               </div>
@@ -582,12 +627,7 @@ function AdvisorInner() {
                   <textarea
                     ref={inputRef}
                     value={input}
-                    onChange={e => {
-                      setInput(e.target.value);
-                      // Grow with the text, up to the max height.
-                      e.target.style.height = 'auto';
-                      e.target.style.height = `${Math.min(e.target.scrollHeight, 128)}px`;
-                    }}
+                    onChange={e => setInput(e.target.value)}
                     aria-label="Message the Policy Guide"
                     onKeyDown={handleKeyDown}
                     placeholder={dragOver ? 'Drop a policy here to analyze it…' : 'Ask about any policy and how it affects your finances…'}

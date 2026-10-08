@@ -5,7 +5,6 @@ import { SUPPORT_EMAIL } from '@/lib/legal';
 const footerLinks = {
   Product: [
     { label: 'How It Works', href: '/#how-it-works' },
-    { label: 'Policy Explorer', href: '/explorer' },
     { label: 'AI Policy Guide', href: '/advisor' },
     { label: 'Impact Dashboard', href: '/impact' },
   ],

@@ -12,7 +12,7 @@ import {
 } from 'lucide-react';
 import { EMPLOYMENT_STATUSES, FILING_STATUSES, HOUSING_SITUATIONS, INCOME_RANGES, labelOf } from '@/lib/profileOptions';
 import { requestAnalysis } from '@/lib/analysisClient';
-import { formatPct, formatPts, formatUSD, impactTone, impactWords, signPrefix } from '@/lib/format';
+import { costChange, formatPct, formatPts, formatUSD, impactSign, impactTone, impactWords, signPrefix } from '@/lib/format';
 import { applicability, type Applicability } from '@/lib/applicability';
 import { coerceFullAnalysis } from '@/lib/analysisSchema';
 import PolicyProvenance from '@/components/PolicyProvenance';
@@ -41,6 +41,9 @@ import { RADAR_LABELS, TIMELINE_LABELS, CHART_DESCRIPTIONS, incomeMidpoint, pctT
 // ---------------------------------------------------------------------------
 // Dollar fields are signed from the user's point of view: + saves them money, − costs them.
 const money = (n: number, suffix = '') => formatUSD(n, { signed: true, suffix });
+/** A row for something the user pays (tax, rent, premiums): "$50 lower" / "$50 higher" rather than a user-side sign next to a cost name. */
+const costRow = (label: string, n: number, suffix = '') =>
+  ({ label, value: costChange(n, suffix), positive: impactSign(n) === 'neutral' ? undefined : n > 0 });
 const pct = (n: number) => formatPct(n, { digits: 2 });
 const titleCase = (s: string) => s.replace(/[-_]+/g, ' ').replace(/\b\w/g, (c) => c.toUpperCase());
 
@@ -112,16 +115,17 @@ function DirIcon({ d, className = 'w-5 h-5' }: { d: ImpactDirection; className?:
 
 /**
  * One labelled figure. `cue` is the signed dollar amount behind the value; when
- * set, "saves you" / "costs you" is spelled out so direction never relies on colour.
+ * set, "saves you" / "costs you" (or "you gain" / "you lose" for money coming
+ * in, `kind: 'income'`) is spelled out so direction never relies on colour.
  */
-function StatRow({ label, value, positive, cue }: { label: string; value: string; positive?: boolean; cue?: number }) {
+function StatRow({ label, value, positive, cue, kind }: { label: string; value: string; positive?: boolean; cue?: number; kind?: 'budget' | 'income' }) {
   const neutral = cue !== undefined && Math.round(cue) === 0;
   return (
     <div className="flex items-center justify-between gap-4 py-2 border-b border-white/6 last:border-0">
       <span className="text-xs text-text-muted">{label}</span>
       <span className={`font-mono-data text-sm font-semibold text-right ${positive === undefined || neutral ? 'text-text-primary' : positive ? 'text-emerald-400' : 'text-red-400'}`}>
         {value}
-        {cue !== undefined && !neutral && <span className="block text-[10px] font-normal text-text-muted">{impactWords(cue)}</span>}
+        {cue !== undefined && !neutral && <span className="block text-[10px] font-normal text-text-muted">{impactWords(cue, kind)}</span>}
       </span>
     </div>
   );
@@ -528,12 +532,12 @@ function OverviewTab({ a, categoryBars, simple, income, applies }: {
           <StatRow label="Monthly budget impact" value={money(a.immediate.monthlyBudgetImpact, '/mo')} positive={a.immediate.monthlyBudgetImpact >= 0} cue={a.immediate.monthlyBudgetImpact} />
           <StatRow label="Annual budget impact" value={money(a.immediate.annualBudgetImpact, '/yr')} positive={a.immediate.annualBudgetImpact >= 0} cue={a.immediate.annualBudgetImpact} />
           {(applies.paycheck || a.immediate.takeHomePerPaycheck !== 0) && (
-            <StatRow label="Take-home per paycheck" value={money(a.immediate.takeHomePerPaycheck)} positive={a.immediate.takeHomePerPaycheck >= 0} cue={a.immediate.takeHomePerPaycheck} />
+            <StatRow label="Take-home per paycheck" value={money(a.immediate.takeHomePerPaycheck)} positive={a.immediate.takeHomePerPaycheck >= 0} cue={a.immediate.takeHomePerPaycheck} kind="income" />
           )}
           <StatRow
             label={simple ? 'Change to your tax bill' : 'Effective tax rate change'}
-            value={simple ? pctToDollar(a.immediate.effectiveTaxRateChange, income) : pct(a.immediate.effectiveTaxRateChange)}
-            positive={a.immediate.effectiveTaxRateChange <= 0}
+            value={simple ? pctToDollar(a.immediate.effectiveTaxRateChange, income) : formatPts(a.immediate.effectiveTaxRateChange, { digits: 2 })}
+            positive={a.immediate.effectiveTaxRateChange === 0 ? undefined : a.immediate.effectiveTaxRateChange < 0}
           />
           {a.immediate.spendingCategories.slice(0, 5).map((s, i) => (
             <StatRow key={i} label={s.label} value={money(s.value)} positive={s.value >= 0} cue={s.value} />
@@ -619,10 +623,10 @@ function BreakdownTab({ a, categoryBars, simple }: { a: FullAnalysis; categoryBa
           <h3 className="font-display text-base font-semibold text-text-primary mb-4">Before vs After — Effective Tax Rate</h3>
           <BeforeAfterBar items={beforeAfter} unit="%" height={240} />
           <div className="mt-4 space-y-1">
-            <StatRow label="Take-home per paycheck" value={money(a.immediate.takeHomePerPaycheck)} positive={a.immediate.takeHomePerPaycheck >= 0} cue={a.immediate.takeHomePerPaycheck} />
+            <StatRow label="Take-home per paycheck" value={money(a.immediate.takeHomePerPaycheck)} positive={a.immediate.takeHomePerPaycheck >= 0} cue={a.immediate.takeHomePerPaycheck} kind="income" />
             <StatRow label="Monthly budget" value={money(a.immediate.monthlyBudgetImpact, '/mo')} positive={a.immediate.monthlyBudgetImpact >= 0} cue={a.immediate.monthlyBudgetImpact} />
-            <StatRow label="Federal income tax" value={money(a.tax.federalLiabilityChange)} positive={a.tax.federalLiabilityChange >= 0} cue={a.tax.federalLiabilityChange} />
-            <StatRow label="State income tax" value={money(a.tax.stateLiabilityChange)} positive={a.tax.stateLiabilityChange >= 0} cue={a.tax.stateLiabilityChange} />
+            <StatRow {...costRow('Federal income tax', a.tax.federalLiabilityChange)} />
+            <StatRow {...costRow('State income tax', a.tax.stateLiabilityChange)} />
           </div>
         </GlassCard>
       </div>
@@ -804,7 +808,7 @@ function EconomicContextTab({ a, simple, income, applies }: { a: FullAnalysis; s
         <h3 className="font-display text-base font-semibold text-text-primary mb-4">{simple ? 'The bottom line for you' : 'Personal Financial Data'}</h3>
         <div className="grid sm:grid-cols-2 gap-x-8">
           <div>
-            <StatRow label={simple ? 'Spendable money each month' : 'Disposable income'} value={money(personal.disposableIncomeMonthly, '/mo')} positive={personal.disposableIncomeMonthly >= 0} cue={personal.disposableIncomeMonthly} />
+            <StatRow label={simple ? 'Spendable money each month' : 'Disposable income'} value={money(personal.disposableIncomeMonthly, '/mo')} positive={personal.disposableIncomeMonthly >= 0} cue={personal.disposableIncomeMonthly} kind="income" />
             <StatRow label={simple ? 'Your net worth (1 year)' : 'Net worth (1yr)'} value={pct(personal.netWorthChange1yrPct)} positive={personal.netWorthChange1yrPct >= 0} />
             <StatRow label={simple ? 'Your net worth (3 years)' : 'Net worth (3yr)'} value={pct(personal.netWorthChange3yrPct)} positive={personal.netWorthChange3yrPct >= 0} />
             {(applies.homeEquity || personal.realEstateEquityDollar !== 0) && (
@@ -852,10 +856,10 @@ const SECTION_DEFS = [
 function DeepDiveTab({ a }: { a: FullAnalysis }) {
   const [open, setOpen] = useState<Record<string, boolean>>({ housing: true });
 
-  function rows(key: string): { label: string; value: string; positive?: boolean; cue?: number }[] {
+  function rows(key: string): { label: string; value: string; positive?: boolean; cue?: number; kind?: 'budget' | 'income' }[] {
     switch (key) {
       case 'housing': return [
-        { label: 'Housing costs, per month', value: money(a.housing.monthlyHousingEffect, '/mo'), positive: a.housing.monthlyHousingEffect >= 0, cue: a.housing.monthlyHousingEffect },
+        costRow('Housing costs, per month', a.housing.monthlyHousingEffect, '/mo'),
         { label: 'Property value change', value: pct(a.housing.propertyValueChangePct), positive: a.housing.propertyValueChangePct >= 0 },
         { label: 'Affordability index change', value: `${a.housing.affordabilityIndexChange >= 0 ? '+' : ''}${a.housing.affordabilityIndexChange}` },
         ...(a.housing.firstTimeBuyerImpact ? [{ label: 'First-time buyer', value: a.housing.firstTimeBuyerImpact }] : []),
@@ -863,28 +867,28 @@ function DeepDiveTab({ a }: { a: FullAnalysis }) {
       case 'employment': return [
         { label: 'Job security risk', value: `${a.employment.jobSecurityRisk}/100` },
         { label: 'Wage growth projection', value: pct(a.employment.wageGrowthPct), positive: a.employment.wageGrowthPct >= 0 },
-        { label: 'Job benefits', value: money(a.employment.benefitChangeValue), positive: a.employment.benefitChangeValue >= 0, cue: a.employment.benefitChangeValue },
+        { label: 'Job benefits', value: money(a.employment.benefitChangeValue), positive: a.employment.benefitChangeValue >= 0, cue: a.employment.benefitChangeValue, kind: 'income' },
         ...(a.employment.industryEffects ? [{ label: 'Industry effects', value: a.employment.industryEffects }] : []),
       ];
       case 'healthcare': return [
-        { label: 'Health premiums, per month', value: money(a.healthcare.monthlyPremiumChange, '/mo'), positive: a.healthcare.monthlyPremiumChange >= 0, cue: a.healthcare.monthlyPremiumChange },
-        { label: 'Out-of-pocket maximum', value: money(a.healthcare.outOfPocketMaxChange), positive: a.healthcare.outOfPocketMaxChange >= 0, cue: a.healthcare.outOfPocketMaxChange },
-        { label: 'Prescription costs', value: money(a.healthcare.prescriptionCostChange), positive: a.healthcare.prescriptionCostChange >= 0, cue: a.healthcare.prescriptionCostChange },
+        costRow('Health premiums, per month', a.healthcare.monthlyPremiumChange, '/mo'),
+        costRow('Out-of-pocket maximum', a.healthcare.outOfPocketMaxChange),
+        costRow('Prescription costs', a.healthcare.prescriptionCostChange),
         ...(a.healthcare.coverageChange ? [{ label: 'Coverage', value: a.healthcare.coverageChange }] : []),
       ];
       case 'retirement': return [
         { label: '401(k) / IRA contribution limit', value: money(a.retirement.contributionLimitChange), positive: a.retirement.contributionLimitChange >= 0 },
-        { label: 'Social Security benefits', value: money(a.retirement.socialSecurityChange), positive: a.retirement.socialSecurityChange >= 0, cue: a.retirement.socialSecurityChange },
+        { label: 'Social Security benefits', value: money(a.retirement.socialSecurityChange), positive: a.retirement.socialSecurityChange >= 0, cue: a.retirement.socialSecurityChange, kind: 'income' },
         { label: 'Retirement timeline', value: `${a.retirement.timelineImpactYears >= 0 ? '+' : ''}${a.retirement.timelineImpactYears} yrs`, positive: a.retirement.timelineImpactYears <= 0 },
       ];
       case 'education': return [
-        { label: 'Student loan payments, per month', value: money(a.education.studentLoanPaymentChange, '/mo'), positive: a.education.studentLoanPaymentChange >= 0, cue: a.education.studentLoanPaymentChange },
-        { label: 'Tuition assistance', value: money(a.education.tuitionAssistanceChange), positive: a.education.tuitionAssistanceChange >= 0, cue: a.education.tuitionAssistanceChange },
-        { label: 'Child education costs', value: money(a.education.childEducationCostChange), positive: a.education.childEducationCostChange >= 0, cue: a.education.childEducationCostChange },
+        costRow('Student loan payments, per month', a.education.studentLoanPaymentChange, '/mo'),
+        { label: 'Tuition assistance', value: money(a.education.tuitionAssistanceChange), positive: a.education.tuitionAssistanceChange >= 0, cue: a.education.tuitionAssistanceChange, kind: 'income' },
+        costRow('Child education costs', a.education.childEducationCostChange),
       ];
       case 'tax': return [
-        { label: 'Federal income tax', value: money(a.tax.federalLiabilityChange), positive: a.tax.federalLiabilityChange >= 0, cue: a.tax.federalLiabilityChange },
-        { label: 'State income tax', value: money(a.tax.stateLiabilityChange), positive: a.tax.stateLiabilityChange >= 0, cue: a.tax.stateLiabilityChange },
+        costRow('Federal income tax', a.tax.federalLiabilityChange),
+        costRow('State income tax', a.tax.stateLiabilityChange),
         { label: 'Effective rate', value: `${a.tax.effectiveRateBefore}% → ${a.tax.effectiveRateAfter}%`, positive: a.tax.effectiveRateAfter <= a.tax.effectiveRateBefore },
         ...(a.tax.bracketChange ? [{ label: 'Bracket', value: a.tax.bracketChange }] : []),
         ...(a.tax.deductionChanges ? [{ label: 'Deductions', value: a.tax.deductionChanges }] : []),
@@ -892,8 +896,8 @@ function DeepDiveTab({ a }: { a: FullAnalysis }) {
       ];
       case 'ripple': return [
         { label: 'Inflation impact', value: pct(a.ripple.inflationImpactPct), positive: a.ripple.inflationImpactPct <= 0 },
-        { label: 'Cost of living, per year', value: money(a.ripple.costOfLivingChange, '/yr'), positive: a.ripple.costOfLivingChange >= 0, cue: a.ripple.costOfLivingChange },
-        { label: 'Purchasing power, per year', value: money(a.ripple.purchasingPowerChange, '/yr'), positive: a.ripple.purchasingPowerChange >= 0, cue: a.ripple.purchasingPowerChange },
+        costRow('Cost of living, per year', a.ripple.costOfLivingChange, '/yr'),
+        { label: 'Purchasing power, per year', value: money(a.ripple.purchasingPowerChange, '/yr'), positive: a.ripple.purchasingPowerChange >= 0, cue: a.ripple.purchasingPowerChange, kind: 'income' },
         ...(a.ripple.interestRateEffect ? [{ label: 'Interest rates on debt', value: a.ripple.interestRateEffect }] : []),
       ];
       default: return [];

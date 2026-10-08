@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback, useRef } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { useRouter } from 'next/navigation';
 import Link from 'next/link';
@@ -14,6 +14,7 @@ import {
   FILING_STATUSES, HOME_VALUE_BANDS, HOUSING_SITUATIONS, INCOME_RANGES, INVESTMENT_TYPES, MAX_CONCERNS,
   MAX_DEPENDENTS, OCCUPATIONS, US_STATES, isHomeowner, validOnly, validOrEmpty,
 } from '@/lib/profileOptions';
+import { isAuthRetryableFetchError } from '@supabase/supabase-js';
 import { FinancialProfileSchema } from '@/lib/profileSchema';
 import { apiFetch } from '@/lib/api';
 import { createClient } from '@/lib/supabase/client';
@@ -30,6 +31,12 @@ const TABS = [
   { id: 'preferences', label: 'Preferences', icon: Eye },
   { id: 'security', label: 'Security', icon: Shield },
 ];
+
+// Messages for ?notice=… (set by email links that land here).
+const NOTICES: Record<string, { message: string; type: 'success' | 'error' }> = {
+  email_change_pending: { message: 'Address confirmed. To finish changing your email, also open the link we sent to your other address.', type: 'success' },
+  link_invalid: { message: 'That link is invalid or has expired. You’re still signed in.', type: 'error' },
+};
 
 // ─── tiny helpers ─────────────────────────────────────────────────────────────
 
@@ -144,8 +151,26 @@ export default function SettingsPage() {
   const loadProfile = useCallback(async () => {
     setLoading(true);
     setLoadError(false);
-    const { data: { user } } = await supabase.auth.getUser();
-    if (!user) { router.replace('/auth/signin'); return; }
+    try {
+      await loadProfileData();
+    } catch {
+      setLoadError(true);
+      setLoading(false);
+    }
+  }, []); // eslint-disable-line react-hooks/exhaustive-deps
+
+  const loadProfileData = async () => {
+    const { data: { user }, error: userError } = await supabase.auth.getUser();
+    if (!user) {
+      // A network or server failure isn't a sign-out: offer the retry card.
+      if (userError && (isAuthRetryableFetchError(userError) || (userError.status ?? 0) >= 500)) {
+        setLoadError(true);
+        setLoading(false);
+        return;
+      }
+      router.replace('/auth/signin');
+      return;
+    }
 
     setEmail(user.email || '');
     const providers = (user.app_metadata?.providers as string[] | undefined) || [user.app_metadata?.provider];
@@ -176,9 +201,20 @@ export default function SettingsPage() {
       setInvestments(validOrEmpty(INVESTMENT_TYPES, data.investments));
     }
     setLoading(false);
-  }, []); // eslint-disable-line react-hooks/exhaustive-deps
+  };
 
   useEffect(() => { loadProfile(); }, [loadProfile]);
+
+  // Show a notice from an email link once the page (and its toast) is up.
+  const noticeShown = useRef(false);
+  useEffect(() => {
+    if (loading || loadError || noticeShown.current) return;
+    noticeShown.current = true;
+    const notice = NOTICES[new URLSearchParams(window.location.search).get('notice') || ''];
+    if (!notice) return;
+    window.history.replaceState(null, '', window.location.pathname);
+    showToast(notice.message, notice.type);
+  }, [loading, loadError, showToast]);
 
   // ── save profile (name) ──────────────────────────────────────────────────
   const saveProfile = async () => {

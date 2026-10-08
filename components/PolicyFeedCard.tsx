@@ -62,8 +62,11 @@ export default function PolicyFeedCard({ policy, analyzed, impact, onAnalyze, on
       <p className="text-xs text-text-muted mb-2 leading-relaxed">{policy.description}</p>
       {analyzed && typeof impact === 'number' ? (
         <p className={`text-xs font-mono-data mb-2 ${impactTone(impact)}`}>{formatUSD(impact, { signed: true, suffix: '/yr' })} for you</p>
-      ) : policy.estimatedImpact ? (
+      ) : policy.estimatedImpact && /\$\s?\d/.test(policy.estimatedImpact) ? (
         <p className="text-xs font-mono-data text-primary mb-2">{policy.estimatedImpact} est. impact</p>
+      ) : policy.estimatedImpact ? (
+        // e.g. "Depends on final details": words, not a figure.
+        <p className="text-xs text-text-muted mb-2">Estimated impact: {policy.estimatedImpact}</p>
       ) : null}
       <div className="mb-4">
         <PolicyProvenance record={policy.record} compact />

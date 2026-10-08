@@ -1,5 +1,6 @@
-import { UserProfile } from '@/types';
+import { UserProfile, type JargonTerm } from '@/types';
 import { INCOME_MIDPOINTS, type IncomeRange } from '@/lib/profileOptions';
+import { formatUSD } from '@/lib/format';
 
 /**
  * Representative household income for a profile's income bracket. Uses the
@@ -19,13 +20,17 @@ export function incomeMidpoint(profile?: UserProfile | null): number {
   return 75000; // sensible default
 }
 
-/** Turn a percentage of income into a concrete dollar example string. */
+/**
+ * Turn a change measured in percent of income into a concrete dollar example
+ * that names its direction in words: 0.4 pts of $75,000 → "about $300 more
+ * this year", −0.4 → "about $300 less this year".
+ */
 export function pctToDollar(pct: number, income: number, period: 'year' | 'month' = 'year'): string {
   const annual = (pct / 100) * income;
   const amount = period === 'month' ? annual / 12 : annual;
   const rounded = Math.abs(amount) >= 100 ? Math.round(amount / 10) * 10 : Math.round(amount);
-  const sign = rounded >= 0 ? 'about $' : 'about -$';
-  return `${sign}${Math.abs(rounded).toLocaleString()}${period === 'month' ? '/mo' : ' this year'}`;
+  if (!Number.isFinite(rounded) || rounded === 0) return 'No change';
+  return `about ${formatUSD(Math.abs(rounded))} ${rounded > 0 ? 'more' : 'less'}${period === 'month' ? ' a month' : ' this year'}`;
 }
 
 /** Radar dimension labels — expert (technical) vs simple (everyday) wording. */
@@ -76,9 +81,43 @@ export const BASE_JARGON: Record<string, string> = {
   'Disposable income': 'The money you have left after taxes to spend or save.',
   'Balance of payments': 'A record of all the money flowing between a country and the rest of the world: trade, investment and transfers.',
   'Capital expenditure': 'Money companies spend to grow — on buildings, equipment, and hiring.',
-  Capex: 'Money companies spend to grow — on buildings, equipment, and hiring.',
   ROA: 'How good a company is at making profit from what it owns.',
   ROE: 'How good a company is at making profit from its owners’ money.',
   'Financial leverage': 'How much debt a company uses to run its business.',
   'Effective tax rate': 'The real share of your income that actually goes to taxes.',
 };
+
+/** Other spellings of the same term, so each is listed once ("Capex" = "Capital expenditure"). */
+const JARGON_ALIASES: Record<string, string> = {
+  'gross domestic product': 'gdp',
+  'consumer price index': 'cpi',
+  'personal consumption expenditures': 'pce',
+  'personal consumption expenditures price index': 'pce',
+  'economic policy uncertainty': 'epu',
+  capex: 'capital expenditure',
+  'capital expenditures': 'capital expenditure',
+  'return on assets': 'roa',
+  'return on equity': 'roe',
+};
+
+function jargonKey(term: string): string {
+  // "GDP (gross domestic product)" and "GDP" are the same entry.
+  const k = term.trim().toLowerCase().replace(/\s*\(.*\)$/, '').replace(/\s+/g, ' ');
+  return JARGON_ALIASES[k] ?? k;
+}
+
+/**
+ * The Jargon Buster's entries: the analysis's own terms, one per term (case
+ * and known aliases ignored). The built-in dictionary is only a fallback for
+ * analyses that supply none, so unrelated terms never pad the list.
+ */
+export function jargonList(terms: JargonTerm[]): JargonTerm[] {
+  const merged = new Map<string, JargonTerm>();
+  for (const t of terms) {
+    if (!t?.term?.trim() || !t.definition?.trim()) continue;
+    const key = jargonKey(t.term);
+    if (!merged.has(key)) merged.set(key, t);
+  }
+  if (merged.size > 0) return Array.from(merged.values());
+  return Object.entries(BASE_JARGON).map(([term, definition]) => ({ term, definition }));
+}

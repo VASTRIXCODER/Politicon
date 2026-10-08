@@ -27,7 +27,7 @@ const FAQ: { q: string; a: React.ReactNode }[] = [
   },
   {
     q: 'Can I download or delete my data?',
-    a: <>Yes. In <Link className="text-primary hover:underline" href="/settings">Settings</Link> you can export everything we store about you as a file, delete single analyses or conversations, or delete your account entirely. See the <Link className="text-primary hover:underline" href="/privacy">Privacy Policy</Link> for details.</>,
+    a: <>Yes. In <Link className="text-primary hover:underline" href="/settings">Settings</Link> you can export everything we store about you as a file or delete your account entirely. To delete a single analysis, open it from your <Link className="text-primary hover:underline" href="/impact">Impact dashboard</Link> and use the delete option on its page; to delete a conversation, use the trash icon next to it in the <Link className="text-primary hover:underline" href="/advisor">AI Policy Guide</Link>&apos;s chat history. See the <Link className="text-primary hover:underline" href="/privacy">Privacy Policy</Link> for details.</>,
   },
   {
     q: 'Will Politicon tell me how to vote?',

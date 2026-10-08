@@ -69,10 +69,39 @@ export function impactSign(n: number): ImpactSign {
   return v > 0 ? 'gain' : v < 0 ? 'loss' : 'neutral';
 }
 
-/** Words that state the direction in text: "saves you" / "costs you" / "no change". */
-export function impactWords(n: number): string {
+/**
+ * Words that state the direction in text: "saves you" / "costs you" for
+ * budget effects, "you gain" / "you lose" for money coming in (pay, benefits),
+ * "no change" either way.
+ */
+export function impactWords(n: number, kind: 'budget' | 'income' = 'budget'): string {
   const s = impactSign(n);
-  return s === 'gain' ? 'saves you' : s === 'loss' ? 'costs you' : 'no change';
+  if (s === 'neutral') return 'no change';
+  if (kind === 'income') return s === 'gain' ? 'you gain' : 'you lose';
+  return s === 'gain' ? 'saves you' : 'costs you';
+}
+
+/**
+ * A change to something the user pays (tax, rent, premiums), given the
+ * user-side signed amount: costChange(50) → "$50 lower", costChange(-50) →
+ * "$50 higher", so a cost label never sits next to a sign that reads backwards.
+ */
+export function costChange(n: number, suffix = ''): string {
+  const s = impactSign(n);
+  if (s === 'neutral') return 'No change';
+  return `${formatUSD(Math.abs(n), { suffix })} ${s === 'gain' ? 'lower' : 'higher'}`;
+}
+
+/**
+ * Chart axis ticks: compact dollars, keeping cents below $10 so fractional
+ * ticks on small ranges ($0.50, $1.50) don't round to the same label.
+ */
+export function formatAxisUSD(n: number): string {
+  if (Number.isFinite(n) && Math.abs(n) < 10 && !Number.isInteger(n)) {
+    const v = clean(n, 2);
+    return `${sign(v, false)}$${Math.abs(v).toFixed(2)}`;
+  }
+  return formatUSD(n, { compact: true });
 }
 
 /** Tailwind text colour for a signed amount. */

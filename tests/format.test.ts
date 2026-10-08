@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { formatUSD, formatPct, formatPts, impactSign, impactWords, impactTone } from '@/lib/format';
+import { formatUSD, formatPct, formatPts, impactSign, impactWords, impactTone, costChange, formatAxisUSD } from '@/lib/format';
 
 const M = '−';
 
@@ -53,6 +53,36 @@ describe('impact helpers', () => {
     expect(impactWords(-10)).toBe('costs you');
     expect(impactWords(10)).toBe('saves you');
     expect(impactTone(0)).toBe('text-text-muted');
+  });
+  it('words money coming in as a gain or loss, not a saving', () => {
+    expect(impactWords(10, 'income')).toBe('you gain');
+    expect(impactWords(-10, 'income')).toBe('you lose');
+    expect(impactWords(0, 'income')).toBe('no change');
+  });
+});
+
+describe('costChange', () => {
+  it('reads from the cost side: a user gain is a lower cost', () => {
+    expect(costChange(1200)).toBe('$1,200 lower');
+    expect(costChange(-1200)).toBe('$1,200 higher');
+    expect(costChange(-50, '/mo')).toBe('$50/mo higher');
+    expect(costChange(0.3)).toBe('No change');
+  });
+});
+
+describe('formatAxisUSD', () => {
+  it('keeps fractional ticks distinct on small ranges', () => {
+    expect(formatAxisUSD(0.5)).toBe('$0.50');
+    expect(formatAxisUSD(0.75)).toBe('$0.75');
+    expect(formatAxisUSD(1.5)).toBe('$1.50');
+    expect(formatAxisUSD(2.25)).toBe('$2.25');
+    expect(formatAxisUSD(-1.5)).toBe(`${M}$1.50`);
+  });
+  it('uses compact whole dollars otherwise', () => {
+    expect(formatAxisUSD(0)).toBe('$0');
+    expect(formatAxisUSD(2)).toBe('$2');
+    expect(formatAxisUSD(1500)).toBe('$1.5K');
+    expect(formatAxisUSD(-2500)).toBe(`${M}$2.5K`);
   });
 });
 

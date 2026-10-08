@@ -32,9 +32,14 @@ export default function ForgotPasswordPage() {
       redirectTo: `${window.location.origin}/auth/callback?next=/auth/reset`,
     });
     setSending(false);
-    // Whether an account exists is never revealed; only throttling is reported.
-    if (err && /rate limit|too many|seconds/i.test(err.message)) {
-      setError('Too many requests. Please wait a minute and try again.');
+    // Unknown addresses succeed too, so reporting failures never reveals
+    // whether an account exists; only a request that really went out shows "sent".
+    if (err) {
+      setError(
+        /rate limit|too many|seconds/i.test(err.message)
+          ? 'Too many requests. Please wait a minute and try again.'
+          : 'We couldn’t send the email. Check the address and your connection, then try again.',
+      );
       return;
     }
     setSentTo(address);

@@ -38,17 +38,27 @@ export default function PoliciesPage() {
   const [analyzingIds, setAnalyzingIds] = useState<Set<string>>(new Set());
   const abort = useRef<AbortController | null>(null);
   const timer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const policyCount = useRef(0);
+  useEffect(() => { policyCount.current = policies.length; }, [policies]);
 
   async function loadImpacts() {
+    // Same rule as the dashboard and /impact: a policy is analyzed once it has a
+    // stored result, even while a re-analysis is running or after one failed.
     const { data } = await createClient()
-      .from('analyzed_policies')
-      .select('policy_id, net_annual_impact')
-      .eq('generation_status', 'ready');
-    setImpacts(new Map((data || []).map((r) => [r.policy_id as string, Number(r.net_annual_impact) || 0])));
+      .from('policy_analyses')
+      .select('policy_id, dollar_impact');
+    setImpacts(new Map((data || []).map((r) => [r.policy_id as string, Number(r.dollar_impact) || 0])));
+  }
+
+  /** With a feed on screen, an error is a toast; otherwise it replaces the (empty) list. */
+  function fail(message: string) {
+    if (policyCount.current > 0) showToast(message, 'error');
+    else setError(message);
   }
 
   async function loadFeed(attempt = 0) {
     const signal = abort.current?.signal;
+    if (timer.current) clearTimeout(timer.current);
     if (attempt === 0) { setLoading(true); setError(null); }
     const res = await apiFetch<{ policies?: DiscoveredPolicy[]; generating?: boolean }>('/api/policies/feed', { signal });
     if (signal?.aborted) return;
@@ -61,15 +71,19 @@ export default function PoliciesPage() {
           timer.current = setTimeout(() => loadFeed(attempt + 1), POLL_MS);
           return;
         }
-        setError('Your feed is taking longer than usual. Please check back in a few minutes.');
+        fail('Your feed is taking longer than usual. Please check back in a few minutes.');
       }
-      setPreparing(false);
     } else if (res.code === 'needs_onboarding') {
       router.replace('/onboarding');
       return;
+    } else if (attempt > 0 && attempt < POLL_ATTEMPTS && (res.status === 0 || res.status === 429 || (res.status >= 500 && res.code !== 'feed_failed'))) {
+      // A blip while waiting for a refresh: keep checking.
+      timer.current = setTimeout(() => loadFeed(attempt + 1), POLL_MS);
+      return;
     } else {
-      setError(res.message);
+      fail(res.message);
     }
+    setPreparing(false);
     setLoading(false);
   }
 
@@ -114,6 +128,10 @@ export default function PoliciesPage() {
     () => ['All', ...Array.from(new Set(policies.map((p) => p.category).filter(Boolean))).sort()],
     [policies],
   );
+  // A chosen category can leave the feed (dismissed, or a refresh); fall back to All.
+  useEffect(() => {
+    if (category !== 'All' && !categories.includes(category)) setCategory('All');
+  }, [categories, category]);
 
   const filtered = useMemo(() => {
     const q = search.trim().toLowerCase();
@@ -161,12 +179,11 @@ export default function PoliciesPage() {
                 </button>
               )}
             </div>
-            <div role="radiogroup" aria-label="Show" className="flex gap-1 glass rounded-2xl p-1 w-fit">
+            <div role="group" aria-label="Show" className="flex gap-1 glass rounded-2xl p-1 w-fit">
               {(Object.keys(SHOW_LABELS) as Show[]).map((k) => (
                 <button
                   key={k}
-                  role="radio"
-                  aria-checked={show === k}
+                  aria-pressed={show === k}
                   onClick={() => setShow(k)}
                   className={`px-4 py-2.5 rounded-xl text-sm font-medium whitespace-nowrap transition-all ${show === k ? 'bg-primary/20 text-primary border border-primary/20' : 'text-text-muted hover:text-text-primary'}`}
                 >
@@ -177,12 +194,11 @@ export default function PoliciesPage() {
           </div>
 
           {categories.length > 2 && (
-            <div role="radiogroup" aria-label="Category" className="flex gap-2 mb-8 overflow-x-auto pb-2 scrollbar-hide">
+            <div role="group" aria-label="Category" className="flex gap-2 mb-8 overflow-x-auto pb-2 scrollbar-hide">
               {categories.map((cat) => (
                 <button
                   key={cat}
-                  role="radio"
-                  aria-checked={category === cat}
+                  aria-pressed={category === cat}
                   onClick={() => setCategory(cat)}
                   className={`flex-shrink-0 px-4 py-2 rounded-full text-xs font-medium border transition-all ${
                     category === cat ? 'bg-primary/20 border-primary/40 text-primary' : 'glass border-white/8 text-text-muted hover:text-text-primary'

@@ -15,7 +15,7 @@ export const mockPolicies: Policy[] = [
     region: 'Federal',
     confidenceLevel: 'high',
     impacts: [
-      { category: 'education', label: 'Monthly Loan Payment', value: -85, unit: '$/month', direction: 'positive', description: 'Estimated reduction in monthly student loan payments for average borrower' },
+      { category: 'education', label: 'Monthly Loan Savings', value: -85, unit: '$/month', direction: 'positive', description: 'Estimated reduction in monthly student loan payments for average borrower' },
       { category: 'income', label: 'Lifetime Savings', value: 12500, unit: '$', direction: 'positive', description: 'Projected total interest savings over standard 10-year repayment' },
     ],
     assumptions: ['Based on average federal student loan balance of $37,000', 'Assumes standard 10-year repayment plan'],
@@ -186,11 +186,11 @@ export const hotPolicyTags = [
   { label: 'Student Loans', category: 'Education', impact: '+$1,020/yr', direction: 'positive' as const },
   { label: 'Minimum Wage', category: 'Employment', impact: '+$20k/yr', direction: 'positive' as const },
   { label: 'Homebuyer Credit', category: 'Housing', impact: '+$15,000', direction: 'positive' as const },
-  { label: 'ACA Subsidies', category: 'Healthcare', impact: '-$2,160/yr', direction: 'positive' as const },
-  { label: 'Capital Gains', category: 'Taxes', impact: '-$4,080/yr', direction: 'negative' as const },
+  { label: 'ACA Subsidies', category: 'Healthcare', impact: '+$2,160/yr', direction: 'positive' as const },
+  { label: 'Capital Gains', category: 'Taxes', impact: '−$4,080/yr', direction: 'negative' as const },
   { label: 'Clean Energy Jobs', category: 'Employment', impact: '$52k salary', direction: 'positive' as const },
   { label: 'CA Income Tax', category: 'Taxes', impact: '+$850/yr', direction: 'positive' as const },
   { label: 'Child Tax Credit', category: 'Taxes', impact: '+$3,600/child', direction: 'positive' as const },
   { label: 'Social Security COLA', category: 'Social Security', impact: '+$92/mo', direction: 'positive' as const },
-  { label: 'Prescription Drug Pricing', category: 'Healthcare', impact: '-$1,300/yr', direction: 'positive' as const },
+  { label: 'Prescription Drug Pricing', category: 'Healthcare', impact: '+$1,300/yr', direction: 'positive' as const },
 ];

@@ -7,16 +7,18 @@ import { Eye, EyeOff, Loader2 } from 'lucide-react';
 import { createClient } from '@/lib/supabase/client';
 import Button from '@/components/ui/Button';
 import AuthCard from '@/components/auth/AuthCard';
+import { endRecovery, recoveryStatus } from './actions';
 
 const MIN_LENGTH = 8;
 
 /**
  * Where the password-reset email lands (via /auth/callback or /auth/confirm,
- * which sign the user in with a short-lived recovery session).
+ * which sign the user in with a short-lived recovery session). Only that
+ * session can set a password here; anyone else signed in is sent to Settings.
  */
 export default function ResetPasswordPage() {
   const router = useRouter();
-  const [status, setStatus] = useState<'checking' | 'ready' | 'no_session' | 'done'>('checking');
+  const [status, setStatus] = useState<'checking' | 'ready' | 'no_session' | 'not_recovery' | 'done'>('checking');
   const [password, setPassword] = useState('');
   const [confirm, setConfirm] = useState('');
   const [show, setShow] = useState(false);
@@ -24,7 +26,7 @@ export default function ResetPasswordPage() {
   const [error, setError] = useState('');
 
   useEffect(() => {
-    createClient().auth.getUser().then(({ data: { user } }) => setStatus(user ? 'ready' : 'no_session'));
+    recoveryStatus().then(setStatus, () => setStatus('no_session'));
   }, []);
 
   async function save(e: React.FormEvent) {
@@ -33,6 +35,9 @@ export default function ResetPasswordPage() {
     if (password !== confirm) { setError('The passwords don’t match.'); return; }
     setSaving(true);
     setError('');
+    // The reset window is short; re-check it in case the page sat open.
+    const current = await recoveryStatus().catch(() => 'no_session' as const);
+    if (current !== 'ready') { setSaving(false); setStatus(current); return; }
     const supabase = createClient();
     const { error: err } = await supabase.auth.updateUser({ password });
     if (err) {
@@ -46,6 +51,7 @@ export default function ResetPasswordPage() {
     }
     // Anyone still signed in elsewhere with the old password is signed out.
     await supabase.auth.signOut({ scope: 'others' });
+    await endRecovery().catch(() => {});
     setStatus('done');
     setTimeout(() => router.replace('/dashboard'), 1500);
   }
@@ -63,6 +69,16 @@ export default function ResetPasswordPage() {
       <AuthCard title="Link expired" subtitle="This reset link is invalid or has expired. Links work once and only for about an hour.">
         <Link href="/auth/forgot" className="inline-flex items-center justify-center w-full rounded-xl bg-primary text-white font-medium px-8 py-4">
           Request a new link
+        </Link>
+      </AuthCard>
+    );
+  }
+
+  if (status === 'not_recovery') {
+    return (
+      <AuthCard title="Change your password in Settings" subtitle="You're already signed in, so change your password in Settings instead.">
+        <Link href="/settings" className="inline-flex items-center justify-center w-full rounded-xl bg-primary text-white font-medium px-8 py-4">
+          Go to Settings
         </Link>
       </AuthCard>
     );
