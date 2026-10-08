@@ -2,7 +2,7 @@ import 'server-only';
 import type { NextResponse } from 'next/server';
 import { createAdminClient } from '@/lib/supabase/admin';
 import { apiError } from '@/lib/server/http';
-import { AI_MODEL, modelPrice, type AiFeature } from '@/lib/server/aiConfig';
+import { AI_MODEL, estimatedCostUsd, modelPrice, type AiFeature } from '@/lib/server/aiConfig';
 
 export type { AiFeature };
 
@@ -47,6 +47,12 @@ export async function checkAiBudget(
   if (isDisabled(feature)) {
     return { ok: false, response: apiError(503, 'ai_disabled', 'This AI feature is temporarily turned off. Please check back soon.') };
   }
+  // Spend can't be tracked for a model without a known price, so refuse.
+  const estimate = estimatedCostUsd(feature);
+  if (estimate === null) {
+    console.error(`No price configured for ${AI_MODEL}; set AI_PRICE_INPUT_PER_MTOK and AI_PRICE_OUTPUT_PER_MTOK.`);
+    return { ok: false, response: apiError(503, 'ai_unavailable', 'AI features are temporarily unavailable.') };
+  }
   try {
     const { data, error } = await createAdminClient().rpc('reserve_ai_call', {
       p_user_id: userId,
@@ -54,6 +60,7 @@ export async function checkAiBudget(
       p_model: AI_MODEL,
       p_user_daily_limit: dailyLimit(feature),
       p_global_daily_usd: globalDailyUsd(),
+      p_estimated_usd: Number(estimate.toFixed(6)),
     });
     const row = Array.isArray(data)
       ? (data[0] as { allowed: boolean; reason: string | null; usage_id: number | null } | undefined)
@@ -90,8 +97,8 @@ export interface AiUsageRecord {
 export async function recordAiUsage(r: AiUsageRecord): Promise<void> {
   const cacheRead = r.cacheReadTokens || 0;
   const cacheWrite = r.cacheWriteTokens || 0;
-  const cost =
-    ((r.inputTokens + cacheWrite * 1.25 + cacheRead * 0.1) * modelPrice(r.model).input + r.outputTokens * modelPrice(r.model).output) / 1_000_000;
+  const price = modelPrice(r.model) ?? modelPrice(AI_MODEL) ?? { input: 0, output: 0 };
+  const cost = ((r.inputTokens + cacheWrite * 1.25 + cacheRead * 0.1) * price.input + r.outputTokens * price.output) / 1_000_000;
   try {
     const { error } = await createAdminClient().from('ai_usage').update({
       model: r.model,

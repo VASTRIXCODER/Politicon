@@ -13,6 +13,8 @@ const recordAiUsage = vi.fn();
 vi.mock('@/lib/server/aiGuard', () => ({ recordAiUsage: (...a: unknown[]) => recordAiUsage(...a) }));
 
 let nextReply: { text: string; stopReason: string } = { text: '', stopReason: 'end_turn' };
+// When set, the fake server sends message_start and then stalls, like a stream cut off mid-generation.
+let hangAfterStart = false;
 let lastRequest: Record<string, unknown> | null = null;
 let server: http.Server;
 
@@ -33,6 +35,7 @@ beforeAll(async () => {
         message: { id: 'msg_1', type: 'message', role: 'assistant', model, content: [], stop_reason: null, stop_sequence: null,
           usage: { input_tokens: 1200, output_tokens: 1, cache_read_input_tokens: 800, cache_creation_input_tokens: 0 } },
       });
+      if (hangAfterStart) return; // leave the stream open with no further events
       sse(res, 'content_block_start', { type: 'content_block_start', index: 0, content_block: { type: 'text', text: '' } });
       sse(res, 'content_block_delta', { type: 'content_block_delta', index: 0, delta: { type: 'text_delta', text: nextReply.text } });
       sse(res, 'content_block_stop', { type: 'content_block_stop', index: 0 });
@@ -46,7 +49,7 @@ beforeAll(async () => {
   process.env.ANTHROPIC_API_KEY = 'test-key';
 });
 
-afterAll(() => server.close());
+afterAll(() => { server.closeAllConnections(); server.close(); });
 
 const profile = {
   id: 'u1', hasCompletedOnboarding: true, country: 'United States', state: 'Ohio', city: '', ageRange: '25_34',
@@ -79,21 +82,43 @@ describe('lib/claude.ts against the streaming Messages API', () => {
     expect(req.thinking).toBeUndefined(); // adaptive by default; "disabled" would be a 400
     expect(req.output_config.effort).toBe('medium');
     expect(req.output_config.format.type).toBe('json_schema');
-    expect(req.system[0].cache_control).toEqual({ type: 'ephemeral' });
+    // The feed's static prompt is too short to cache, so no breakpoint is set on it.
+    expect(req.system[0].cache_control).toBeUndefined();
+    expect(req.cache_control).toBeUndefined();
+    expect(req.output_config.format.schema.properties.policies.items.properties.status.enum).toEqual(
+      ['proposed', 'passed', 'enacted', 'repealed', 'rejected'],
+    );
     expect(req.messages[0].content).toContain('Today is');
 
     expect(recordAiUsage).toHaveBeenLastCalledWith(expect.objectContaining({
-      usageId: 42, model: 'claude-sonnet-5-5', inputTokens: 1200, outputTokens: 350, cacheReadTokens: 800, ok: true,
+      usageId: 42, model: 'claude-sonnet-5-5', inputTokens: 1200, outputTokens: 350, cacheReadTokens: 800,
+      ok: true, requestId: 'req_test',
     }));
   });
 
-  it('turns a refusal into a typed error and records it as not ok', async () => {
+  it('turns a refusal into a typed error and still bills it against the quota', async () => {
     const { discoverPolicyFeed, AiOutputError } = await import('@/lib/claude');
     nextReply = { stopReason: 'refusal', text: '' };
     const err = await discoverPolicyFeed(profile, meta).catch((e) => e);
     expect(err).toBeInstanceOf(AiOutputError);
     expect(err.kind).toBe('refusal');
-    expect(recordAiUsage).toHaveBeenLastCalledWith(expect.objectContaining({ ok: false, stopReason: 'refusal' }));
+    expect(recordAiUsage).toHaveBeenLastCalledWith(expect.objectContaining({ ok: true, stopReason: 'refusal', outputTokens: 350 }));
+  });
+
+  it('charges an interrupted call its full output allowance instead of $0', async () => {
+    const { discoverPolicyFeed } = await import('@/lib/claude');
+    nextReply = { stopReason: 'end_turn', text: '{"policies": []}' };
+    const controller = new AbortController();
+    hangAfterStart = true;
+    const pending = discoverPolicyFeed(profile, meta, controller.signal).catch((e) => e);
+    await new Promise((r) => setTimeout(r, 150));
+    controller.abort();
+    const err = await pending;
+    hangAfterStart = false;
+    expect(err).toBeInstanceOf(Error);
+    expect(recordAiUsage).toHaveBeenLastCalledWith(expect.objectContaining({
+      ok: true, stopReason: 'interrupted', inputTokens: 1200, outputTokens: 16000,
+    }));
   });
 
   it('rejects output that does not match the schema', async () => {
@@ -119,6 +144,8 @@ describe('lib/claude.ts against the streaming Messages API', () => {
     expect(req.output_config.effort).toBe('low');
     expect(req.output_config.format).toBeUndefined();
     expect(req.system).toHaveLength(2);
+    // Chat caches the whole conversation prefix, which is re-sent every turn.
+    expect(req.cache_control).toEqual({ type: 'ephemeral' });
     expect(req.system[1].text).toContain('Ohio');
     expect(req.system[1].cache_control).toBeUndefined();
   });
@@ -161,6 +188,8 @@ describe('lib/claude.ts against the streaming Messages API', () => {
     expect(full.personal.debtImpacts).toEqual([]);
     const req = lastRequest as Record<string, any>;
     expect(req.max_tokens).toBe(32000);
+    // The long static analysis prompt is cached across users.
+    expect(req.system[0].cache_control).toEqual({ type: 'ephemeral' });
     expect(req.output_config.effort).toBe('medium');
     expect(req.messages[0].content).toContain('<policy>');
   });

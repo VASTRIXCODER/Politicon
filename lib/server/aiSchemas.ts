@@ -2,13 +2,15 @@ import 'server-only';
 import { z } from 'zod/v4';
 
 /**
- * Structured-output schemas. The API constrains the model's JSON to these
- * shapes and the SDK validates the result, so there's no free-text JSON
- * extraction. Field semantics are explained in the prompts and descriptions.
+ * Structured-output schemas. The JSON schema sent to the API (see
+ * toStrictJsonSchema) constrains the model's output, including enums, and the
+ * response is then parsed with these zod schemas. Enum fields fall back to a
+ * safe default rather than failing, so one unexpected value can never throw
+ * away a whole generation.
  */
 
-const direction = z.enum(['positive', 'negative', 'neutral']);
-const status = z.enum(['proposed', 'passed', 'enacted', 'repealed', 'rejected']);
+const direction = z.enum(['positive', 'negative', 'neutral']).catch('neutral');
+const status = z.enum(['proposed', 'passed', 'enacted', 'repealed', 'rejected']).catch('proposed');
 const labeled = z.object({ label: z.string(), value: z.number() });
 
 // ---------------------------------------------------------------------------
@@ -21,7 +23,9 @@ export const FeedOutput = z.object({
         title: z.string().describe('Short official policy name'),
         billNumber: z.string().describe('Official bill number such as "H.R. 1" or "SB 1047", or "" if none'),
         status,
-        category: z.enum(['taxes', 'healthcare', 'housing', 'employment', 'education', 'retirement', 'energy']),
+        category: z
+          .enum(['taxes', 'healthcare', 'housing', 'employment', 'education', 'retirement', 'energy', 'trade', 'transportation', 'consumer', 'other'])
+          .catch('other'),
         relevanceScore: z.number().int().describe('0-100: how directly this affects THIS user'),
         summary: z.string().describe('One plain-English sentence on what the policy does'),
         direction: direction.describe('Financial direction for this user'),
@@ -121,7 +125,7 @@ export const AnalysisOutput = z.object({
   }),
   tradeoffs: z.object({ gains: z.array(labeled), losses: z.array(labeled), netAssessment: z.string() }),
   riskFactors: z.object({ uncertainties: z.array(z.string()), confidence: z.number().int() }),
-  recommendations: z.array(z.object({ step: z.string(), priority: z.enum(['high', 'medium', 'low']) })),
+  recommendations: z.array(z.object({ step: z.string(), priority: z.enum(['high', 'medium', 'low']).catch('medium') })),
   macro: z.object({
     gdpImpactPct: z.number(),
     gdpExplanation: z.string(),
@@ -133,11 +137,11 @@ export const AnalysisOutput = z.object({
   }),
   corporate: z.object({
     sector: z.string(),
-    capexDirection: z.enum(['expanding', 'neutral', 'pulling_back']),
+    capexDirection: z.enum(['expanding', 'neutral', 'pulling_back']).catch('neutral'),
     capexExplanation: z.string(),
-    leverageEffect: z.enum(['more_debt', 'neutral', 'conservative']),
+    leverageEffect: z.enum(['more_debt', 'neutral', 'conservative']).catch('neutral'),
     leverageExplanation: z.string(),
-    profitabilityTrend: z.enum(['improving', 'neutral', 'declining']),
+    profitabilityTrend: z.enum(['improving', 'neutral', 'declining']).catch('neutral'),
     profitabilityExplanation: z.string(),
     equityPortfolioImpactPct: z.number(),
     equityImpactRange: z.string(),
@@ -171,3 +175,35 @@ export const AnalysisOutput = z.object({
   }),
 });
 export type AnalysisOutput = z.infer<typeof AnalysisOutput>;
+
+// ---------------------------------------------------------------------------
+// JSON schema for the API
+// ---------------------------------------------------------------------------
+// Keywords structured outputs doesn't use; dropped rather than moved into
+// descriptions (which is what the SDK's zod helper does — it also drops enums).
+const DROPPED_KEYWORDS = new Set([
+  '$schema', 'default', 'minimum', 'maximum', 'exclusiveMinimum', 'exclusiveMaximum',
+  'minLength', 'maxLength', 'pattern', 'maxItems',
+]);
+
+function strictify(node: unknown): unknown {
+  if (Array.isArray(node)) return node.map(strictify);
+  if (!node || typeof node !== 'object') return node;
+  const out: Record<string, unknown> = {};
+  for (const [key, value] of Object.entries(node as Record<string, unknown>)) {
+    if (DROPPED_KEYWORDS.has(key)) continue;
+    if (key === 'minItems' && typeof value === 'number' && value > 1) continue;
+    out[key] = strictify(value);
+  }
+  if (out.type === 'object' && out.properties && typeof out.properties === 'object') {
+    // Every object is closed and every field required, as structured outputs expects.
+    out.additionalProperties = false;
+    out.required = Object.keys(out.properties as object);
+  }
+  return out;
+}
+
+/** The strict JSON schema sent as output_config.format, with enums intact. */
+export function toStrictJsonSchema(schema: z.ZodType): Record<string, unknown> {
+  return strictify(z.toJSONSchema(schema, { io: 'input', unrepresentable: 'any' })) as Record<string, unknown>;
+}

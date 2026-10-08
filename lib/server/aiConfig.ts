@@ -29,14 +29,29 @@ const MODEL_PRICES: Record<string, { input: number; output: number }> = {
   'claude-sonnet-4-20250514': { input: 3, output: 15 },
 };
 
-/** Price for a model; AI_PRICE_INPUT_PER_MTOK / AI_PRICE_OUTPUT_PER_MTOK override unknown models. */
-export function modelPrice(model: string): { input: number; output: number } {
-  const known = MODEL_PRICES[model] || Object.entries(MODEL_PRICES).find(([k]) => model.startsWith(k))?.[1];
-  if (known) return known;
+function overridePrice(): { input: number; output: number } | null {
   const input = Number(process.env.AI_PRICE_INPUT_PER_MTOK);
   const output = Number(process.env.AI_PRICE_OUTPUT_PER_MTOK);
-  return {
-    input: Number.isFinite(input) && input > 0 ? input : 3,
-    output: Number.isFinite(output) && output > 0 ? output : 15,
-  };
+  return Number.isFinite(input) && input > 0 && Number.isFinite(output) && output > 0 ? { input, output } : null;
+}
+
+/**
+ * Price for a model, or null when it's unknown. AI_PRICE_INPUT_PER_MTOK /
+ * AI_PRICE_OUTPUT_PER_MTOK set the price of a model not listed above.
+ */
+export function modelPrice(model: string): { input: number; output: number } | null {
+  return MODEL_PRICES[model] || Object.entries(MODEL_PRICES).find(([k]) => model.startsWith(k))?.[1] || overridePrice();
+}
+
+/** Typical input size of a request, used for the up-front cost estimate. */
+const ESTIMATED_INPUT_TOKENS = 8000;
+
+/**
+ * Worst-case cost of one call, reserved against the spend ceiling before the
+ * call starts and replaced with the real cost when it finishes.
+ */
+export function estimatedCostUsd(feature: AiFeature): number | null {
+  const price = modelPrice(AI_MODEL);
+  if (!price) return null;
+  return (ESTIMATED_INPUT_TOKENS * price.input + FEATURES[feature].maxTokens * price.output) / 1_000_000;
 }

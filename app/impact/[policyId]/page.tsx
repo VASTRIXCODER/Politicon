@@ -137,20 +137,24 @@ export default function PolicyDetailPage({ params }: { params: Promise<{ policyI
   const generationAbort = useRef<AbortController | null>(null);
   useEffect(() => () => generationAbort.current?.abort(), []);
 
-  async function generate(force = false) {
+  /** Start a generation, or with followOnly just wait for one that's already running. */
+  async function generate(force = false, followOnly = false) {
     generationAbort.current?.abort();
     generationAbort.current = new AbortController();
     setGenerating(true);
     setGenerateError(null);
-    const res = await requestAnalysis(policyId, { force, signal: generationAbort.current?.signal });
+    const res = await requestAnalysis(policyId, { force, followOnly, signal: generationAbort.current.signal });
     if (res.ok) {
       setAnalysis(coerceFullAnalysis(res.analysis as unknown as Record<string, unknown>, policyFromAnalysis(policyId, res.analysis)));
       if (res.profileSnapshot) setProfile(res.profileSnapshot as ProfileSnapshot);
-      setAnalyzedAt(new Date().toISOString());
       setNotFound(false);
-      setStale(false);
       setLegacy(false);
-    } else if (res.message !== 'Cancelled.') {
+      // Only a generation that just finished is "new"; a stored result keeps its own date and staleness.
+      if (res.fresh) {
+        setAnalyzedAt(new Date().toISOString());
+        setStale(false);
+      }
+    } else if (!res.cancelled) {
       setGenerateError(res.message);
     }
     setGenerating(false);
@@ -185,9 +189,14 @@ export default function PolicyDetailPage({ params }: { params: Promise<{ policyI
         if (rowError) throw rowError;
 
         const stored = row?.analysis as (FullAnalysis & { legacy?: boolean }) | undefined;
-        const jobRunning = row?.generation_status === 'pending' && !!row.generation_started_at
-          && Date.now() - new Date(row.generation_started_at).getTime() < 6 * 60 * 1000;
-        if (row?.generation_status === 'failed' && row.generation_error) setGenerateError(row.generation_error);
+        // Generous window (vs. the server's 6 minutes) so clock differences
+        // don't matter; following a dead job just times out.
+        const startedAgo = row?.generation_started_at ? Date.now() - new Date(row.generation_started_at).getTime() : Infinity;
+        const jobRunning = row?.generation_status === 'pending' && startedAgo < 30 * 60 * 1000;
+        // Report a failed attempt only while it's recent.
+        if (row?.generation_status === 'failed' && row.generation_error && startedAgo < 24 * 60 * 60 * 1000) {
+          setGenerateError(`The last attempt to analyze this failed: ${row.generation_error}`);
+        }
 
         if (stored && stored.legacy) {
           // Summary-only analysis from before the full breakdown existed.
@@ -224,7 +233,7 @@ export default function PolicyDetailPage({ params }: { params: Promise<{ policyI
     }
 
     load().then(() => {
-      if (followRunningJob && !cancelled) generate(false);
+      if (followRunningJob && !cancelled) generate(false, true);
     });
     return () => { cancelled = true; };
     // Loads once per policy; generate() only reads policyId and state setters.

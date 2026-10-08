@@ -1,6 +1,5 @@
 import 'server-only';
 import Anthropic from '@anthropic-ai/sdk';
-import { zodOutputFormat } from '@anthropic-ai/sdk/helpers/zod';
 import type { z } from 'zod/v4';
 import type { UserProfile, Policy, DiscoveredPolicy, FullAnalysis } from '@/types';
 import { incomeMidpoint } from '@/lib/simpleMode';
@@ -13,7 +12,7 @@ import {
 import { ANALYSIS_SCHEMA_VERSION, coerceFullAnalysis, policyStatus } from '@/lib/analysisSchema';
 import { recordAiUsage, type AiFeature } from '@/lib/server/aiGuard';
 import { AI_MODEL, FEATURES } from '@/lib/server/aiConfig';
-import { AnalysisOutput, FeedOutput, PolicyReplyOutput } from '@/lib/server/aiSchemas';
+import { AnalysisOutput, FeedOutput, PolicyReplyOutput, toStrictJsonSchema } from '@/lib/server/aiSchemas';
 
 export { ANALYSIS_SCHEMA_VERSION, policyStatus };
 
@@ -39,9 +38,11 @@ export type AiOutputKind = 'refusal' | 'truncated' | 'invalid' | 'empty';
 
 /** Thrown when the model's output can't be turned into a usable result. */
 export class AiOutputError extends Error {
-  constructor(message: string, readonly kind: AiOutputKind = 'invalid') {
+  readonly kind: AiOutputKind;
+  constructor(message: string, kind: AiOutputKind = 'invalid') {
     super(message);
     this.name = 'AiOutputError';
+    this.kind = kind;
   }
 }
 
@@ -122,20 +123,37 @@ function textOf(message: Anthropic.Message): string {
     .join('');
 }
 
-async function track(meta: CallMeta, started: number, message: Anthropic.Message | null): Promise<void> {
+/**
+ * Finalize the ledger row for a call. `final` is the completed message; when
+ * the call was cut off (timeout, abort, dropped stream) `snapshot` is the
+ * partial message the SDK accumulated. Anything that reached the model is
+ * billed, so it counts toward the user's quota and the spend ceiling: an
+ * interrupted call is charged its full output allowance, since its true
+ * output (including thinking) isn't known.
+ */
+async function track(
+  meta: CallMeta,
+  started: number,
+  final: Anthropic.Message | null,
+  snapshot: Anthropic.Message | null,
+  requestId: string | null,
+): Promise<void> {
+  const source = final ?? snapshot;
+  const interrupted = !final && !!snapshot;
   await recordAiUsage({
     usageId: meta.usageId,
     feature: meta.feature,
     userId: meta.userId,
-    model: message?.model || AI_MODEL,
-    inputTokens: message?.usage.input_tokens || 0,
-    outputTokens: message?.usage.output_tokens || 0,
-    cacheReadTokens: message?.usage.cache_read_input_tokens || 0,
-    cacheWriteTokens: message?.usage.cache_creation_input_tokens || 0,
-    stopReason: message?.stop_reason ?? null,
-    requestId: (message as { _request_id?: string } | null)?._request_id ?? null,
+    model: source?.model || AI_MODEL,
+    inputTokens: source?.usage.input_tokens || 0,
+    outputTokens: interrupted ? FEATURES[meta.feature].maxTokens : source?.usage.output_tokens || 0,
+    cacheReadTokens: source?.usage.cache_read_input_tokens || 0,
+    cacheWriteTokens: source?.usage.cache_creation_input_tokens || 0,
+    stopReason: final?.stop_reason ?? (interrupted ? 'interrupted' : 'failed_before_start'),
+    requestId,
     latencyMs: Date.now() - started,
-    ok: !!message && message.stop_reason !== 'max_tokens' && message.stop_reason !== 'refusal',
+    // false only when the request never reached the model (nothing billed).
+    ok: !!source,
   });
 }
 
@@ -148,47 +166,55 @@ interface RunOptions<T> {
   /** When set, the response is constrained to this schema and returned parsed. */
   schema?: z.ZodType<T>;
   signal?: AbortSignal;
+  /** Cache the whole request prefix (worth it only when it will be re-sent, as in chat). */
+  cacheConversation?: boolean;
 }
 
 /**
  * The JSON schema for a structured response. Passed as a plain format (not the
  * SDK's auto-parsing one) so we can check stop_reason and record usage before
  * parsing — the auto-parser throws inside finalMessage(), which would hide
- * refusals and lose the call's token counts.
+ * refusals and lose the call's token counts — and built ourselves so enums
+ * are kept (the SDK helper moves them into descriptions).
  */
-function jsonFormat(schema: z.ZodType): { type: 'json_schema'; schema: Record<string, unknown> } {
-  const f = zodOutputFormat(schema) as unknown as { type: 'json_schema'; schema: Record<string, unknown> };
-  return { type: f.type, schema: f.schema };
+export function jsonFormat(schema: z.ZodType): { type: 'json_schema'; schema: Record<string, unknown> } {
+  return { type: 'json_schema', schema: toStrictJsonSchema(schema) };
 }
 
 async function run<T = never>(meta: CallMeta, opts: RunOptions<T>): Promise<{ text: string; parsed: T | null }> {
   const cfg = FEATURES[meta.feature];
   const started = Date.now();
   let message: Anthropic.Message | null = null;
+  let stream: ReturnType<typeof client.messages.stream> | null = null;
   try {
+    // A cache breakpoint only helps on a block long enough to be cached
+    // (Sonnet 5.5 minimum: 512 tokens ≈ 2,000 characters).
     const system: Anthropic.TextBlockParam[] = [
-      { type: 'text', text: opts.system, cache_control: { type: 'ephemeral' } },
+      { type: 'text', text: opts.system, ...(opts.system.length >= 2400 ? { cache_control: { type: 'ephemeral' as const } } : {}) },
       ...(opts.userSystem ? [{ type: 'text' as const, text: opts.userSystem }] : []),
     ];
     const outputConfig = {
       ...(supportsEffort(AI_MODEL) ? { effort: cfg.effort } : {}),
       ...(opts.schema ? { format: jsonFormat(opts.schema) } : {}),
     };
-    const stream = client.messages.stream(
+    stream = client.messages.stream(
       {
         model: AI_MODEL,
         max_tokens: cfg.maxTokens,
         system,
         messages: opts.messages,
+        // Multi-turn chat re-sends the growing conversation, so cache it.
+        ...(opts.cacheConversation ? { cache_control: { type: 'ephemeral' as const } } : {}),
         ...(Object.keys(outputConfig).length ? { output_config: outputConfig } : {}),
       },
       { signal: opts.signal },
     );
     message = await stream.finalMessage();
   } finally {
-    await track(meta, started, message);
+    await track(meta, started, message, message ? null : stream?.currentMessage ?? null, stream?.request_id ?? null);
   }
 
+  if (!message) throw new AiOutputError('No response', 'empty');
   if (message.stop_reason === 'refusal') throw new AiOutputError('The model declined this request', 'refusal');
   if (message.stop_reason === 'max_tokens') throw new AiOutputError('Response was cut off (max_tokens)', 'truncated');
   const text = textOf(message).trim();
@@ -372,7 +398,9 @@ function formatPolicyLines(items: PolicyLine[]): string {
 const SUMMARY_SYSTEM = `You are Politicon's AI policy guide. You explain how government policies combine to affect a household's finances, in plain, non-partisan language. Plain text only, no markdown headers.
 ${UNTRUSTED_DATA_RULE}`;
 
-export async function cumulativeSummary(items: PolicyLine[], profile: UserProfile, meta: CallMeta, simpleMode = false): Promise<string> {
+export async function cumulativeSummary(
+  items: PolicyLine[], profile: UserProfile, meta: CallMeta, simpleMode = false, signal?: AbortSignal,
+): Promise<string> {
   if (items.length === 0) return '';
   const total = items.reduce((s, i) => s + i.annual, 0);
   const { text } = await run(meta, {
@@ -387,11 +415,14 @@ ${formatPolicyLines(items)}
 
 In 3-4 sentences, explain what the COMBINED effect means for this user's finances, name the dominant drivers, and end with one concrete thing they could consider.`,
     }],
+    signal,
   });
   return text;
 }
 
-export async function portfolioInsight(items: PolicyLine[], profile: UserProfile, meta: CallMeta, simpleMode = false): Promise<string> {
+export async function portfolioInsight(
+  items: PolicyLine[], profile: UserProfile, meta: CallMeta, simpleMode = false, signal?: AbortSignal,
+): Promise<string> {
   const { text } = await run(meta, {
     system: SUMMARY_SYSTEM,
     userSystem: `${buildUserContext(profile)}${simpleMode ? `\n\n${SIMPLE_MODE_INSTRUCTION}` : ''}`,
@@ -404,6 +435,7 @@ ${formatPolicyLines(items)}
 
 In 2-3 sentences, summarize the net financial picture across these policies and name the biggest driver. Be concise and dollar-specific.`,
     }],
+    signal,
   });
   return text;
 }
@@ -460,6 +492,7 @@ export async function chatWithAdvisor(
     system: CHAT_SYSTEM,
     userSystem: `Today is ${today()}.\n\n${buildUserContext(profile)}${simpleMode ? `\n\n${SIMPLE_MODE_INSTRUCTION}` : ''}`,
     messages: history,
+    cacheConversation: true,
     signal,
   });
   return text;

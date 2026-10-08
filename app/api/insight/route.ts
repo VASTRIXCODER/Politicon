@@ -2,7 +2,7 @@ import { createHash } from 'node:crypto';
 import { NextRequest, NextResponse } from 'next/server';
 import { portfolioInsight } from '@/lib/claude';
 import { getRequestContext } from '@/lib/server/requestContext';
-import { apiError } from '@/lib/server/http';
+import { apiError, requestDeadline } from '@/lib/server/http';
 import { rateLimit } from '@/lib/rateLimit';
 import { checkAiBudget } from '@/lib/server/aiGuard';
 import { aiFailure } from '@/lib/server/aiErrors';
@@ -24,7 +24,11 @@ export async function POST(req: NextRequest) {
 
   const loaded = await loadPolicyLines(supabase, user.id, { limit: 8 });
   if (!loaded.ok) return apiError(503, 'lookup_failed', 'Could not load your analyses. Please try again.');
-  if (loaded.lines.length === 0) return NextResponse.json({ insight: '' });
+  if (loaded.lines.length === 0) {
+    // Nothing left to summarize: don't keep an insight about deleted analyses.
+    await createAdminClient().from('ai_insights').delete().eq('user_id', user.id);
+    return NextResponse.json({ insight: '' });
+  }
 
   const cacheKey = createHash('sha256')
     .update(JSON.stringify({ lines: loaded.lines, simpleMode, profile: auth.ctx.profileVersion }))
@@ -38,7 +42,9 @@ export async function POST(req: NextRequest) {
   if (!budget.ok) return budget.response;
 
   try {
-    const insight = await portfolioInsight(loaded.lines, profile, { feature: 'insight', userId: user.id, usageId: budget.usageId }, simpleMode);
+    const insight = await portfolioInsight(
+      loaded.lines, profile, { feature: 'insight', userId: user.id, usageId: budget.usageId }, simpleMode, requestDeadline(req),
+    );
     const { error } = await createAdminClient()
       .from('ai_insights')
       .upsert({ user_id: user.id, cache_key: cacheKey, insight, created_at: new Date().toISOString() }, { onConflict: 'user_id' });

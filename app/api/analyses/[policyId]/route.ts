@@ -30,5 +30,7 @@ export async function DELETE(req: NextRequest, { params }: { params: Promise<{ p
     return apiError(500, 'delete_failed', 'Could not delete this analysis. Please try again.');
   }
   if (!data || data.length === 0) return apiError(404, 'not_found', 'Analysis not found.');
+  // The cached dashboard insight summarized this analysis; drop it so it's rebuilt without it.
+  await createAdminClient().from('ai_insights').delete().eq('user_id', user.id);
   return NextResponse.json({ ok: true });
 }

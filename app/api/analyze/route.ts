@@ -140,7 +140,7 @@ export async function POST(req: NextRequest) {
   }
 
   const meta = { feature: 'analyze' as const, userId: user.id, usageId: budget.usageId };
-  after(() => runAnalysis(policy, profile, meta, profileVersion));
+  after(() => runAnalysis(policy, profile, meta, profileVersion, now));
 
   return NextResponse.json({ status: 'pending' }, { status: 202 });
 }
@@ -151,10 +151,12 @@ async function runAnalysis(
   profile: UserProfile,
   meta: { feature: 'analyze'; userId: string; usageId: number },
   profileVersion: string | null,
+  startedAt: string,
 ) {
   const admin = createAdminClient();
+  // Only write while this job still owns the row (a stale job can't overwrite a newer one).
   const match = (q: ReturnType<ReturnType<typeof admin.from>['update']>) =>
-    q.eq('user_id', meta.userId).eq('policy_id', policy.id);
+    q.eq('user_id', meta.userId).eq('policy_id', policy.id).eq('generation_started_at', startedAt);
 
   try {
     const analysis = await analyzePolicyFull(policy, profile, meta, AbortSignal.timeout(GENERATION_TIMEOUT_MS));

@@ -248,3 +248,32 @@ begin
   exception when check_violation then null;
   end;
 end $$;
+
+-- Reservations carry an estimated cost that counts against the global ceiling
+-- until the real cost replaces it; abandoned reservations stay counted.
+do $$
+declare
+  u constant uuid := '22222222-2222-2222-2222-222222222222';
+  ok boolean;
+  why text;
+  v_usage bigint;
+begin
+  delete from public.ai_usage;
+  select r.allowed, r.usage_id into ok, v_usage from public.reserve_ai_call(u, 'analyze', 'm', 10, 1.00, 0.40) r;
+  if not ok or (select cost_usd from public.ai_usage where ai_usage.id = v_usage) <> 0.40 then
+    raise exception 'estimate not reserved';
+  end if;
+  select r.allowed into ok from public.reserve_ai_call(u, 'analyze', 'm', 10, 1.00, 0.40) r;
+  if not ok then raise exception 'second in-flight call should still fit under $1'; end if;
+  select r.allowed, r.reason into ok, why from public.reserve_ai_call(u, 'analyze', 'm', 10, 1.00, 0.40) r;
+  if ok or why <> 'global_budget' then raise exception 'in-flight estimates ignored by the ceiling'; end if;
+
+  -- The 5-argument call shape used by older code still works.
+  select r.allowed into ok from public.reserve_ai_call(u, 'feed', 'm', 10, 100) r;
+  if not ok then raise exception '5-argument call broke'; end if;
+
+  update public.ai_usage set created_at = now() - interval '20 minutes' where pending;
+  perform public.purge_expired_data();
+  if exists (select 1 from public.ai_usage where pending) then raise exception 'abandoned reservation not closed'; end if;
+  if (select sum(cost_usd) from public.ai_usage) < 0.80 then raise exception 'abandoned reservation lost its cost'; end if;
+end $$;

@@ -128,7 +128,8 @@ function ImpactContent() {
           if (dbErr) {
             console.error('Analyses load error:', dbErr);
           } else {
-            const rows = (data || []) as unknown as PolicyAnalysisRow[];
+            // Rows still being generated (no analysis yet) aren't shown.
+            const rows = ((data || []) as unknown as PolicyAnalysisRow[]).filter(r => r.summary || r.legacy);
             setAnalyses(rows);
             setCheckedIds(new Set(rows.map(r => r.id)));
             if (policyParam) {

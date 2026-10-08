@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect, useMemo } from 'react';
+import { useState, useEffect, useMemo, useRef } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
@@ -84,14 +84,14 @@ const RELEVANCE_COLORS: Record<string, string> = {
   Low: 'text-text-muted bg-white/5 border-white/10',
 };
 
-function PolicyFeedCard({ policy, analyzed, onAnalyze, onAskAdvisor, analyzingId }: {
+function PolicyFeedCard({ policy, analyzed, onAnalyze, onAskAdvisor, analyzingIds }: {
   policy: FeedPolicy;
   analyzed: boolean;
   onAnalyze: (_policy: FeedPolicy) => void;
   onAskAdvisor: (_policy: FeedPolicy) => void;
-  analyzingId: string | null;
+  analyzingIds: Set<string>;
 }) {
-  const isAnalyzing = analyzingId === policy.id;
+  const isAnalyzing = analyzingIds.has(policy.id);
   return (
     <GlassCard className="rounded-2xl p-5">
       <div className="flex items-start justify-between gap-3 mb-3">
@@ -160,8 +160,17 @@ export default function DashboardPage() {
   const [feedPolicies, setFeedPolicies] = useState<FeedPolicy[]>([]);
   const [feedLoading, setFeedLoading] = useState(true);
   const [feedUpdatedAt, setFeedUpdatedAt] = useState<string | null>(null);
+  const feedUpdatedAtRef = useRef<string | null>(null);
   const [feedRefreshing, setFeedRefreshing] = useState(false);
-  const [analyzingId, setAnalyzingId] = useState<string | null>(null);
+  const [analyzingIds, setAnalyzingIds] = useState<Set<string>>(() => new Set());
+  // Everything in flight (analysis jobs, feed polling) stops when the page unmounts.
+  const unmounted = useRef(new AbortController());
+  const feedTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const hasFeed = useRef(false);
+  useEffect(() => () => {
+    unmounted.current.abort();
+    if (feedTimer.current) clearTimeout(feedTimer.current);
+  }, []);
   const [toast, setToast] = useState<{ message: string; type: 'success' | 'error' } | null>(null);
   const [activeTab, setActiveTab] = useState<'analyzed' | 'cumulative'>('analyzed');
   const [feedError, setFeedError] = useState<string | null>(null);
@@ -272,33 +281,52 @@ export default function DashboardPage() {
 
   // Feeds are built in the background: a 202 means one is being generated, so
   // keep showing whatever we have and check back until it's ready.
-  async function loadFeed(refresh = false, attempt = 0) {
+  async function loadFeed(refresh = false, attempt = 0, refreshStartedAt?: string | null) {
+    if (unmounted.current.signal.aborted) return;
     if (attempt === 0) {
       if (refresh) setFeedRefreshing(true); else setFeedLoading(true);
       setFeedError(null);
     }
-    const res = await apiFetch<{ policies?: FeedPolicy[]; updatedAt?: string; generating?: boolean }>(
-      '/api/policies/feed',
-      refresh && attempt === 0 ? { method: 'POST' } : {},
-    );
+    const res = await apiFetch<{
+      policies?: FeedPolicy[]; updatedAt?: string | null; generating?: boolean; stale?: boolean; failed?: boolean;
+    }>('/api/policies/feed', { ...(refresh && attempt === 0 ? { method: 'POST' } : {}), signal: unmounted.current.signal });
+    if (unmounted.current.signal.aborted) return;
+    // A refresh is judged against the feed that was showing when it started.
+    const baseline = attempt === 0 && refresh ? feedUpdatedAtRef.current : refreshStartedAt;
+
+    const showPolicies = (list: FeedPolicy[] | undefined) => {
+      if (!Array.isArray(list)) return;
+      setFeedPolicies(list);
+      hasFeed.current = list.length > 0;
+    };
+
     if (res.ok && res.status === 202) {
-      if (Array.isArray(res.data.policies) && res.data.policies.length > 0) {
-        setFeedPolicies(res.data.policies);
+      if (res.data.policies?.length) {
+        showPolicies(res.data.policies);
         setFeedLoading(false);
       }
       setFeedRefreshing(true);
       if (attempt < FEED_POLL_ATTEMPTS) {
-        setTimeout(() => loadFeed(false, attempt + 1), FEED_POLL_MS);
+        feedTimer.current = setTimeout(() => loadFeed(false, attempt + 1, baseline ?? null), FEED_POLL_MS);
         return;
       }
-      setFeedError('Your feed is taking longer than usual. Please check back in a few minutes.');
+      if (hasFeed.current) showToast('Your feed is taking longer than usual to update. Check back in a few minutes.', 'error');
+      else setFeedError('Your feed is taking longer than usual. Please check back in a few minutes.');
     } else if (res.ok) {
-      setFeedPolicies(Array.isArray(res.data.policies) ? res.data.policies : []);
-      if (res.data.updatedAt) setFeedUpdatedAt(res.data.updatedAt);
+      showPolicies(res.data.policies);
+      if (res.data.updatedAt) {
+        setFeedUpdatedAt(res.data.updatedAt);
+        feedUpdatedAtRef.current = res.data.updatedAt;
+      }
+      // A refresh that ended without a newer feed failed, even though the old one is still showing.
+      const refreshed = baseline === undefined || (res.data.updatedAt && res.data.updatedAt !== baseline);
+      if (attempt > 0 && baseline !== undefined && (!refreshed || res.data.stale || res.data.failed)) {
+        showToast("We couldn't refresh your feed just now. Showing your previous one.", 'error');
+      }
     } else if (res.code === 'needs_onboarding') {
       setNeedsOnboarding(true);
-    } else if (refresh || feedPolicies.length > 0) {
-      // Keep the current feed when a refresh can't start.
+    } else if (refresh || hasFeed.current) {
+      // Keep the current feed when a refresh can't start or a poll fails.
       showToast(res.message, 'error');
     } else {
       setFeedError(res.message);
@@ -310,16 +338,22 @@ export default function DashboardPage() {
   useEffect(() => { loadFeed(false); }, []);
 
   async function handleAnalyze(policy: FeedPolicy) {
-    setAnalyzingId(policy.id);
+    if (analyzingIds.has(policy.id)) return;
+    setAnalyzingIds(prev => new Set(prev).add(policy.id));
     // Analyses run in the background; this resolves when the job finishes.
-    const res = await requestAnalysis(policy.id);
+    const res = await requestAnalysis(policy.id, { signal: unmounted.current.signal });
+    if (unmounted.current.signal.aborted) return;
     if (res.ok) {
       showToast(`Analysis complete for "${policy.title}"`);
       await refetchAnalyses();
-    } else {
+    } else if (!res.cancelled) {
       showToast(res.message, 'error');
     }
-    setAnalyzingId(null);
+    setAnalyzingIds(prev => {
+      const next = new Set(prev);
+      next.delete(policy.id);
+      return next;
+    });
   }
 
   function handleAskAdvisor(policy: FeedPolicy) {
@@ -544,7 +578,7 @@ export default function DashboardPage() {
                               analyzed={analyzedIds.has(policy.id)}
                               onAnalyze={handleAnalyze}
                               onAskAdvisor={handleAskAdvisor}
-                              analyzingId={analyzingId}
+                              analyzingIds={analyzingIds}
                             />
                           ))}
                         </div>
