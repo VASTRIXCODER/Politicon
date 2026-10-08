@@ -12,6 +12,7 @@ import {
 import { EMPLOYMENT_STATUSES, FILING_STATUSES, HOUSING_SITUATIONS, INCOME_RANGES, labelOf } from '@/lib/profileOptions';
 import { requestAnalysis } from '@/lib/analysisClient';
 import { coerceFullAnalysis } from '@/lib/analysisSchema';
+import PolicyProvenance from '@/components/PolicyProvenance';
 import { apiFetch } from '@/lib/api';
 import { createClient } from '@/lib/supabase/client';
 import { FullAnalysis, ImpactDirection, Policy } from '@/types';
@@ -376,6 +377,9 @@ function DetailView({
           {analyzedAt && (
             <p className="text-xs text-text-muted mt-2">Last analyzed {new Date(analyzedAt).toLocaleString()}</p>
           )}
+          <div className="mt-3 max-w-3xl">
+            <PolicyProvenance record={a.record} />
+          </div>
         </motion.div>
 
         {stale && (

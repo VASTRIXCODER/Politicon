@@ -7,6 +7,7 @@ import { checkAiBudget } from '@/lib/server/aiGuard';
 import type { UserProfile } from '@/types';
 import { createAdminClient } from '@/lib/supabase/admin';
 import { reconcilePolicyIds } from '@/lib/policyId';
+import { candidatesFor } from '@/lib/server/legislation';
 
 export const dynamic = 'force-dynamic';
 // Generation runs after the response is sent (see after() below).
@@ -93,7 +94,10 @@ async function startGeneration(req: NextRequest, ctx: RequestContext, row: FeedR
 async function runGeneration(profile: UserProfile, meta: { feature: 'feed'; userId: string; usageId: number }, lock: string) {
   const admin = createAdminClient();
   try {
-    const generated = await discoverPolicyFeed(profile, meta, AbortSignal.timeout(GENERATION_TIMEOUT_MS));
+    const signal = AbortSignal.timeout(GENERATION_TIMEOUT_MS);
+    // Official records first; the model chooses among them and explains them.
+    const candidates = await candidatesFor(profile.state);
+    const generated = await discoverPolicyFeed(profile, meta, signal, candidates);
     // Keep ids stable against analyses the user already has.
     const { data: analyzed } = await admin
       .from('analyzed_policies')

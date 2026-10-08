@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { createAdminClient } from '@/lib/supabase/admin';
 import { rateLimit } from '@/lib/rateLimit';
 import { AI_MODEL, modelPrice } from '@/lib/server/aiConfig';
+import { legislationHealth } from '@/lib/server/legislation';
 
 export const dynamic = 'force-dynamic';
 
@@ -9,7 +10,7 @@ type Check = { ok: boolean; detail?: string };
 
 const TIMEOUT_MS = 3000;
 // Latest migration the code depends on (see supabase/migrations).
-const EXPECTED_SCHEMA_VERSION = '20261008090000';
+const EXPECTED_SCHEMA_VERSION = '20261008120000';
 
 async function probe(fn: (_signal: AbortSignal) => PromiseLike<{ error: { message?: string; code?: string } | null }>): Promise<Check> {
   try {
@@ -86,6 +87,13 @@ export async function GET(req: NextRequest) {
 
   const token = process.env.HEALTHCHECK_TOKEN;
   const authorized = !!token && req.headers.get('x-health-token') === token;
+  // Official-data sources are checked only on authorized calls (they're rate-limited
+  // upstream). They are reported but do not fail the overall check: without them the
+  // feed falls back to clearly labeled, unverified items.
+  if (authorized) {
+    checks.legislation = await legislationHealth();
+    if (!process.env.OPENSTATES_API_KEY) checks.stateLegislation = { ok: true, detail: 'OPENSTATES_API_KEY not set; state bills are skipped' };
+  }
   return NextResponse.json(authorized ? { ok, env, checks } : { ok }, {
     status: ok ? 200 : 503,
     headers: { 'Cache-Control': 'no-store' },

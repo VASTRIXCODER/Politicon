@@ -193,4 +193,44 @@ describe('lib/claude.ts against the streaming Messages API', () => {
     expect(req.output_config.effort).toBe('medium');
     expect(req.messages[0].content).toContain('<policy>');
   });
+
+  it('grounded feed: the model only selects official records by ref; facts come from the record', async () => {
+    const { discoverPolicyFeed } = await import('@/lib/claude');
+    const candidates = Array.from({ length: 6 }, (_, i) => ({
+      id: `us-hr-${i + 1}`, source: 'congress.gov' as const, region: 'Federal', billNumber: `H.R. ${i + 1}`,
+      title: `Official Title ${i + 1}`, status: i === 0 ? ('enacted' as const) : ('proposed' as const),
+      latestActionDate: '2026-09-01', latestActionText: 'Became Public Law No: 119-99.',
+      sourceUrl: `https://www.congress.gov/bill/119th-congress/house-bill/${i + 1}`, congress: 119, billType: 'hr', number: String(i + 1),
+    }));
+    nextReply = {
+      stopReason: 'end_turn',
+      text: JSON.stringify({ policies: [
+        { ref: 'P1', category: 'taxes', relevanceScore: 88, summary: 'Changes tax brackets.', direction: 'positive', estimatedImpact: '≈ +$600/yr', reasons: ['a'] },
+        { ref: 'P99', category: 'taxes', relevanceScore: 99, summary: 'Invented.', direction: 'positive', estimatedImpact: '+$9,999/yr', reasons: [] },
+        { ref: 'P1', category: 'taxes', relevanceScore: 10, summary: 'Duplicate.', direction: 'neutral', estimatedImpact: '', reasons: [] },
+      ] }),
+    };
+    const items = await discoverPolicyFeed(profile, meta, undefined, candidates);
+
+    expect(items).toHaveLength(1); // unknown ref and duplicate dropped
+    expect(items[0]).toMatchObject({
+      id: 'us-hr-1', title: 'Official Title 1', billNumber: 'H.R. 1', status: 'enacted', region: 'Federal',
+      summary: 'Changes tax brackets.',
+      record: { verified: true, source: 'congress.gov', sourceUrl: 'https://www.congress.gov/bill/119th-congress/house-bill/1', latestActionDate: '2026-09-01' },
+    });
+    const req = lastRequest as Record<string, any>;
+    expect(req.messages[0].content).toContain('P1 | Federal | H.R. 1 | enacted | 2026-09-01');
+    expect(req.output_config.format.schema.properties.policies.items.required).toContain('ref');
+  });
+
+  it('falls back to unverified items when no official records are available', async () => {
+    const { discoverPolicyFeed } = await import('@/lib/claude');
+    nextReply = {
+      stopReason: 'end_turn',
+      text: JSON.stringify({ policies: [{ title: 'Some Act', billNumber: '', status: 'proposed', category: 'housing', relevanceScore: 50,
+        summary: 's', direction: 'neutral', estimatedImpact: '', region: 'Ohio', reasons: [] }] }),
+    };
+    const items = await discoverPolicyFeed(profile, meta, undefined, []);
+    expect(items[0].record).toMatchObject({ verified: false, source: 'ai' });
+  });
 });

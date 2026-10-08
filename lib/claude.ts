@@ -12,7 +12,8 @@ import {
 import { ANALYSIS_SCHEMA_VERSION, coerceFullAnalysis, policyStatus } from '@/lib/analysisSchema';
 import { recordAiUsage, type AiFeature } from '@/lib/server/aiGuard';
 import { AI_MODEL, FEATURES } from '@/lib/server/aiConfig';
-import { AnalysisOutput, FeedOutput, PolicyReplyOutput, toStrictJsonSchema } from '@/lib/server/aiSchemas';
+import { AnalysisOutput, FeedOutput, FeedSelectionOutput, PolicyReplyOutput, toStrictJsonSchema } from '@/lib/server/aiSchemas';
+import type { LegislationItem } from '@/lib/server/legislation';
 
 export { ANALYSIS_SCHEMA_VERSION, policyStatus };
 
@@ -236,7 +237,23 @@ async function run<T = never>(meta: CallMeta, opts: RunOptions<T>): Promise<{ te
 // ===========================================================================
 // POLICY DISCOVERY ENGINE
 // ===========================================================================
-const FEED_SYSTEM = `You are Politicon's policy discovery engine. You identify current US federal and state policies (bills, laws, regulations and programs) that materially affect a specific household's finances, and you explain them without political opinion.
+/** Grounded mode needs at least this many official records to choose from. */
+const MIN_GROUNDED_CANDIDATES = 5;
+/** Records offered to the model (state first, then federal). */
+const MAX_CANDIDATES = 240;
+
+const GROUNDED_FEED_SYSTEM = `You are Politicon's policy discovery engine. You are given a list of official legislative records (federal bills and laws from Congress.gov, and bills from the user's state legislature). Choose the ones that most materially affect this household's finances and explain each in plain, non-partisan language.
+
+Rules:
+- Choose only records from the list, by their ref. The list is the authority for titles, bill numbers, status and dates; never restate or change them.
+- Prefer enacted laws and bills with recent action that change taxes, benefits, prices, wages, housing, health care, education costs or retirement for households like this one. Skip ceremonial, procedural, and narrowly technical bills.
+- relevanceScore reflects real personal exposure for THIS user, not general newsworthiness.
+- summary: one sentence on what the policy does, supported by its title and latest action. If the title is vague, describe it at that level — never invent provisions.
+- direction and estimatedImpact are from the user's perspective and hedged (for example "≈ +$600/yr"); write "Depends on final details" when the record doesn't support a figure.
+- Give up to 3 reasons, each a specific link to the user's profile.
+- Return up to 10 records, most relevant first.`;
+
+const FALLBACK_FEED_SYSTEM = `You are Politicon's policy discovery engine. You identify current US federal and state policies (bills, laws, regulations and programs) that materially affect a specific household's finances, and you explain them without political opinion.
 
 Rules:
 - Only include real policies you are confident exist, with their official names and bill numbers where they have one. Never invent bills.
@@ -245,9 +262,98 @@ Rules:
 - Give up to 3 reasons, each a specific link to the user's profile.
 - Return up to 10 policies, most relevant first.`;
 
-export async function discoverPolicyFeed(profile: UserProfile, meta: CallMeta, signal?: AbortSignal): Promise<DiscoveredPolicy[]> {
+function relevanceLabel(score: number): DiscoveredPolicy['relevance'] {
+  return score >= 70 ? 'High' : score >= 40 ? 'Medium' : 'Low';
+}
+
+/** Order the records shown to the model: the user's state first, then federal; recent action first. */
+function rankCandidates(candidates: LegislationItem[]): LegislationItem[] {
+  const byRecency = (a: LegislationItem, b: LegislationItem) => (b.latestActionDate || '').localeCompare(a.latestActionDate || '');
+  const state = candidates.filter((c) => c.region !== 'Federal').sort(byRecency).slice(0, 60);
+  const federal = candidates.filter((c) => c.region === 'Federal').sort(byRecency);
+  return [...state, ...federal].slice(0, MAX_CANDIDATES);
+}
+
+/**
+ * Build the user's policy feed. With official records available, the model
+ * only selects and explains them (verified items). If every official source
+ * is unavailable, it falls back to the model's own knowledge, and the items
+ * are marked unverified so the UI can say so.
+ */
+export async function discoverPolicyFeed(
+  profile: UserProfile,
+  meta: CallMeta,
+  signal?: AbortSignal,
+  candidates: LegislationItem[] = [],
+): Promise<DiscoveredPolicy[]> {
+  const asOf = new Date().toISOString();
+  return candidates.length >= MIN_GROUNDED_CANDIDATES
+    ? groundedFeed(profile, meta, rankCandidates(candidates), asOf, signal)
+    : fallbackFeed(profile, meta, asOf, signal);
+}
+
+async function groundedFeed(
+  profile: UserProfile, meta: CallMeta, records: LegislationItem[], asOf: string, signal?: AbortSignal,
+): Promise<DiscoveredPolicy[]> {
+  const list = records
+    .map((r, i) => {
+      const action = r.latestActionDate ? `${r.latestActionDate}: ${fence(r.latestActionText || '', 200)}` : 'no recorded action';
+      return `P${i + 1} | ${r.region} | ${r.billNumber} | ${r.status} | ${action} | ${fence(r.title, 300)}`;
+    })
+    .join('\n');
+
   const { parsed } = await run(meta, {
-    system: FEED_SYSTEM,
+    system: GROUNDED_FEED_SYSTEM,
+    messages: [{
+      role: 'user',
+      content: `Today is ${today()}.\n\n${buildUserContext(profile)}\n\nOFFICIAL RECORDS (ref | jurisdiction | bill | status | latest action | title):\n<policy>\n${list}\n</policy>\n\n${UNTRUSTED_DATA_RULE}`,
+    }],
+    schema: FeedSelectionOutput,
+    signal,
+  });
+
+  const seen = new Set<string>();
+  const items: DiscoveredPolicy[] = [];
+  for (const pick of parsed!.policies) {
+    const index = Number(pick.ref.replace(/^P/i, '')) - 1;
+    const r = records[index];
+    if (!r || seen.has(r.id)) continue; // unknown refs are dropped; nothing is taken from the model but the explanation
+    seen.add(r.id);
+    const score = Math.max(0, Math.min(100, Math.round(pick.relevanceScore)));
+    items.push({
+      id: r.id,
+      title: r.title,
+      billNumber: r.billNumber,
+      status: r.status,
+      category: pick.category,
+      relevanceScore: score,
+      relevance: relevanceLabel(score),
+      summary: pick.summary,
+      description: pick.summary,
+      direction: pick.direction,
+      estimatedImpact: pick.estimatedImpact,
+      reasons: pick.reasons.filter(Boolean).slice(0, 3),
+      region: r.region,
+      record: {
+        verified: true,
+        source: r.source,
+        sourceUrl: r.sourceUrl,
+        latestActionDate: r.latestActionDate,
+        latestAction: r.latestActionText,
+        asOf,
+        ...(r.congress ? { congress: r.congress, billType: r.billType, number: r.number } : {}),
+        ...(r.abstract ? { abstract: r.abstract } : {}),
+      },
+    });
+    if (items.length === 10) break;
+  }
+  if (items.length === 0) throw new AiOutputError('Policy feed was empty', 'empty');
+  return items;
+}
+
+async function fallbackFeed(profile: UserProfile, meta: CallMeta, asOf: string, signal?: AbortSignal): Promise<DiscoveredPolicy[]> {
+  const { parsed } = await run(meta, {
+    system: FALLBACK_FEED_SYSTEM,
     messages: [{
       role: 'user',
       content: `Today is ${today()}. Identify the most relevant current policies for this user.\n\n${buildUserContext(profile)}`,
@@ -272,13 +378,14 @@ export async function discoverPolicyFeed(profile: UserProfile, meta: CallMeta, s
       status: policyStatus(p.status),
       category: p.category,
       relevanceScore: score,
-      relevance: score >= 70 ? 'High' : score >= 40 ? 'Medium' : 'Low',
+      relevance: relevanceLabel(score),
       summary: p.summary,
       description: p.summary,
       direction: p.direction,
       estimatedImpact: p.estimatedImpact,
       reasons: p.reasons.filter(Boolean).slice(0, 3),
       region: p.region || 'Federal',
+      record: { verified: false, source: 'ai', asOf },
     });
     if (items.length === 10) break;
   }
@@ -297,6 +404,7 @@ REASONING DISCIPLINE:
 3. Trace second-order effects, not just the headline: a tax change shifts disposable income → spending → local prices; a rate change shifts debt costs AND home values AND savings yields. Capture these in ripple, macro and spendingVelocity.
 4. Calibrate magnitude to the user's income anchor. Don't output a $5,000 effect for a policy that realistically moves this user by $200, and don't under-state a large structural change.
 5. Be honest about uncertainty: lower confidenceScore when the policy is proposed or contested or the user's exposure is indirect, and list the real uncertainties. Record what you assumed about the user or the policy in "assumptions".
+6. Ground the mechanism in the OFFICIAL RECORD when one is provided: its status and latest action are authoritative, and the official summary is the source for what the policy does. Where the record doesn't specify something (amounts, phase-ins, effective dates), say what you assumed in "assumptions" and lower confidenceScore. If no official record is provided, the policy details come from the user's feed and may be incomplete — be explicit about that.
 
 SIGN CONVENTION (critical): every dollar field is signed from the USER'S perspective. Positive = money the user gains (savings, credits, higher take-home). Negative = money the user loses (higher taxes, higher costs). A tax increase is therefore a NEGATIVE number. netAnnualImpact ≈ the sum of categoryImpacts plus ripple effects. timeline.year1/3/5 and the 12 monthly points are CUMULATIVE; month 12 ends near netAnnualImpact.
 
@@ -315,7 +423,17 @@ SECTION GUIDE:
 
 ${UNTRUSTED_DATA_RULE}`;
 
-export async function analyzePolicyFull(policy: Policy, profile: UserProfile, meta: CallMeta, signal?: AbortSignal): Promise<FullAnalysis> {
+export async function analyzePolicyFull(
+  policy: Policy, profile: UserProfile, meta: CallMeta, signal?: AbortSignal, officialSummary?: string | null,
+): Promise<FullAnalysis> {
+  const record = policy.record;
+  const officialBlock = record?.verified
+    ? `\nOFFICIAL RECORD (${record.source === 'congress.gov' ? 'Congress.gov' : 'Open States'}):
+Status: ${policy.status}
+Latest action: ${record.latestActionDate || 'unknown date'} — ${fence(record.latestAction || 'not recorded', 300)}
+Source: ${record.sourceUrl || 'n/a'}
+Official summary: ${officialSummary ? fence(officialSummary, 4000) : 'not available'}`
+    : '\nOFFICIAL RECORD: none — this policy was not verified against an official source.';
   const content = `Today is ${today()}. Analyze the financial impact of this policy for the user below.
 
 ${buildUserContext(profile)}
@@ -330,6 +448,7 @@ Description: ${fence(policy.description)}
 Category: ${fence(policy.category, 50)}
 Status: ${fence(policy.status, 30)}
 Region: ${fence(policy.region, 100)}
+${officialBlock}
 </policy>`;
 
   const { parsed } = await run(meta, {
@@ -340,7 +459,8 @@ Region: ${fence(policy.region, 100)}
   });
   const p = parsed!;
   if (!p.plainEnglishSummary.trim()) throw new AiOutputError('Analysis is missing its summary', 'invalid');
-  return coerceFullAnalysis({ ...p, schemaVersion: ANALYSIS_SCHEMA_VERSION }, policy);
+  // The official record travels with the analysis so the detail page can cite it.
+  return coerceFullAnalysis({ ...p, schemaVersion: ANALYSIS_SCHEMA_VERSION, record: policy.record }, policy);
 }
 
 // ===========================================================================

@@ -277,3 +277,26 @@ begin
   if exists (select 1 from public.ai_usage where pending) then raise exception 'abandoned reservation not closed'; end if;
   if (select sum(cost_usd) from public.ai_usage) < 0.80 then raise exception 'abandoned reservation lost its cost'; end if;
 end $$;
+
+-- Legislation cache is server-only; feedback is insert/read-own.
+do $$
+declare
+  a constant text := '11111111-1111-1111-1111-111111111111';
+  b constant text := '22222222-2222-2222-2222-222222222222';
+begin
+  perform pg_temp.denied('authenticated', a, 'select * from public.legislation_cache');
+  perform pg_temp.denied('anon', null, $q$insert into public.legislation_cache (key, items) values ('federal', '[]')$q$);
+  perform pg_temp.allowed('authenticated', a, format($q$insert into public.ai_feedback (user_id, target_type, target_id, rating) values (%L, 'analysis', 'us-hr-1', 'down')$q$, a));
+  perform pg_temp.denied('authenticated', a, format($q$insert into public.ai_feedback (user_id, target_type, target_id, rating) values (%L, 'analysis', 'us-hr-1', 'down')$q$, b));
+  perform pg_temp.denied('authenticated', a, $q$update public.ai_feedback set rating = 'up'$q$);
+  perform pg_temp.denied('authenticated', a, $q$delete from public.ai_feedback$q$);
+  perform pg_temp.denied('anon', null, 'select * from public.ai_feedback');
+end $$;
+
+begin;
+set local role authenticated;
+select set_config('request.jwt.claim.sub', '22222222-2222-2222-2222-222222222222', true) \g /dev/null
+do $$ begin
+  if exists (select 1 from public.ai_feedback) then raise exception 'feedback visible to another user'; end if;
+end $$;
+commit;

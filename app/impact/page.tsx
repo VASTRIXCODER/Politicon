@@ -40,9 +40,22 @@ const ROW_COLUMNS =
 const signedUSD = (n: number) => `${n < 0 ? '−' : '+'}$${Math.abs(Math.round(n)).toLocaleString()}`;
 
 const methodology = [
-  { q: 'How are dollar amounts calculated?', a: 'We combine publicly available policy data with your income bracket, filing status, location, and life situation. Calculations draw on CBO, IRS, and academic economic models with transparency into assumptions.' },
-  { q: 'What does "net annual impact" mean?', a: 'The sum of all positive and negative policy effects across your selected policies, normalized to an annual dollar figure.' },
-  { q: 'How confident are these estimates?', a: 'Each analysis is AI-generated for your specific profile. Proposed policies carry more uncertainty than enacted laws. Always verify with a professional for major decisions.' },
+  {
+    q: 'Where do the policies come from?',
+    a: 'Federal bills and laws come from Congress.gov, the official source for legislation, and state bills from Open States, which tracks every state legislature. Each policy shows its latest official action and links to the record. If those sources are unavailable, a policy may be suggested by the AI instead and is clearly marked as not verified.',
+  },
+  {
+    q: 'How are dollar amounts estimated?',
+    a: "An AI model (Anthropic's Claude) reads the policy's official summary and status and applies them to the ranges in your profile: income bracket, state, filing status, housing, debts and dependents. It shows the assumptions it made. These are educational estimates, not a tax calculation or professional advice.",
+  },
+  {
+    q: 'What does "net annual impact" mean?',
+    a: 'The sum of the estimated gains and costs across the policies you have selected, expressed per year. Gains are positive; costs are negative.',
+  },
+  {
+    q: 'How confident are these estimates?',
+    a: 'Each analysis has a confidence score. Proposed bills are less certain than enacted laws, and estimates depend on details a bill may not specify yet. Check the official record, and talk to a qualified professional (for example a CPA or a free IRS VITA clinic) before making major decisions.',
+  },
 ];
 
 function SkeletonCard() {

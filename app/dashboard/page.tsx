@@ -12,6 +12,8 @@ import Badge from '@/components/ui/Badge';
 import AnimatedCounter from '@/components/ui/AnimatedCounter';
 import { requestAnalysis } from '@/lib/analysisClient';
 import { apiFetch } from '@/lib/api';
+import PolicyProvenance from '@/components/PolicyProvenance';
+import type { DiscoveredPolicy } from '@/types';
 import ViewFullImpactButton from '@/components/ViewFullImpactButton';
 import Navbar from '@/components/layout/Navbar';
 import AmbientBackground from '@/components/landing/AmbientBackground';
@@ -26,17 +28,7 @@ interface PolicyAnalysisRow {
   created_at: string;
 }
 
-interface FeedPolicy {
-  id: string;
-  title: string;
-  description: string;
-  category: string;
-  relevance: 'High' | 'Medium' | 'Low';
-  relevanceScore?: number;
-  estimatedImpact: string;
-  region: string;
-  direction?: string;
-}
+type FeedPolicy = DiscoveredPolicy;
 
 function SkeletonCard() {
   return (
@@ -108,11 +100,17 @@ function PolicyFeedCard({ policy, analyzed, onAnalyze, onAskAdvisor, analyzingId
         </div>
         <span className="text-[10px] text-text-muted flex-shrink-0">{policy.region}</span>
       </div>
-      <h3 className="font-medium text-text-primary text-sm leading-snug mb-1">{policy.title}</h3>
+      <h3 className="font-medium text-text-primary text-sm leading-snug mb-1">
+        {policy.billNumber && <span className="text-text-muted font-mono-data mr-1.5">{policy.billNumber}</span>}
+        {policy.title}
+      </h3>
       <p className="text-xs text-text-muted mb-2 leading-relaxed">{policy.description}</p>
       {policy.estimatedImpact && (
-        <p className="text-xs font-mono-data text-primary mb-4">{policy.estimatedImpact} est. impact</p>
+        <p className="text-xs font-mono-data text-primary mb-2">{policy.estimatedImpact} est. impact</p>
       )}
+      <div className="mb-4">
+        <PolicyProvenance record={policy.record} compact />
+      </div>
       <div className="flex gap-2">
         {analyzed ? (
           <ViewFullImpactButton

@@ -1,6 +1,6 @@
 import 'server-only';
 import type { SupabaseClient } from '@supabase/supabase-js';
-import type { DiscoveredPolicy, Policy } from '@/types';
+import type { DiscoveredPolicy, Policy, PolicyRecord } from '@/types';
 
 const POLICY_ID = /^[a-z0-9][a-z0-9-]{0,79}$/;
 
@@ -16,6 +16,7 @@ function toPolicy(p: {
   status: string;
   region: string;
   billNumber?: string;
+  record?: PolicyRecord;
 }): Policy {
   const status = (['proposed', 'passed', 'enacted', 'rejected'] as const).find((s) => s === p.status) || 'proposed';
   return {
@@ -27,13 +28,14 @@ function toPolicy(p: {
     status,
     date: new Date().toISOString(),
     source: 'Politicon policy feed',
-    sourceUrl: '',
+    sourceUrl: p.record?.sourceUrl || '',
     governingBody: p.billNumber || p.region || 'Federal',
     region: p.region || 'Federal',
     confidenceLevel: 'medium',
     impacts: [],
     assumptions: [],
     tags: [],
+    ...(p.record ? { record: p.record } : {}),
   };
 }
 
@@ -61,6 +63,7 @@ export async function resolvePolicy(supabase: SupabaseClient, userId: string, po
       status: match.status,
       region: match.region,
       billNumber: match.billNumber,
+      record: match.record,
     });
   }
 

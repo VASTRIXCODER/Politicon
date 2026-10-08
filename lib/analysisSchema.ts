@@ -4,7 +4,7 @@
  * finite, enums valid. Safe to use on both server and client, so older stored
  * rows render with the current UI.
  */
-import type { FullAnalysis, ImpactDirection, Policy } from '@/types';
+import type { FullAnalysis, ImpactDirection, Policy, PolicyRecord } from '@/types';
 
 /** Bump when the FullAnalysis shape changes (stored with each analysis). */
 export const ANALYSIS_SCHEMA_VERSION = 3;
@@ -65,6 +65,20 @@ export function policyStatus(v: unknown, fallback?: string): (typeof POLICY_STAT
 
 function clamp100(v: unknown): number {
   return Math.max(0, Math.min(100, Math.round(num(v))));
+}
+
+/** Keep a stored official record only if it has the expected shape. */
+function validRecord(v: unknown): PolicyRecord | undefined {
+  const r = obj(v);
+  if (typeof r.verified !== 'boolean' || typeof r.source !== 'string') return undefined;
+  return {
+    verified: r.verified,
+    source: (['congress.gov', 'openstates', 'ai'] as const).find((s) => s === r.source) || 'ai',
+    sourceUrl: typeof r.sourceUrl === 'string' && /^https:\/\//.test(r.sourceUrl) ? r.sourceUrl : undefined,
+    latestActionDate: typeof r.latestActionDate === 'string' ? r.latestActionDate : null,
+    latestAction: typeof r.latestAction === 'string' ? r.latestAction : null,
+    asOf: str(r.asOf),
+  };
 }
 
 export function coerceFullAnalysis(p: Record<string, unknown>, policy: Policy): FullAnalysis {
@@ -142,6 +156,7 @@ export function coerceFullAnalysis(p: Record<string, unknown>, policy: Policy): 
     plainEnglishSummary: str(p.plainEnglishSummary, policy.summary),
     assumptions: Array.isArray(p.assumptions) ? p.assumptions.map((a) => str(a)).filter(Boolean).slice(0, 10) : [],
     schemaVersion: num(p.schemaVersion, 0) || undefined,
+    record: validRecord(p.record),
     netAnnualImpact: Math.round(netAnnual),
     netMonthlyImpact: Math.round(netMonthly),
     immediate: {

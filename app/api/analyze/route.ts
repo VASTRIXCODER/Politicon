@@ -10,6 +10,7 @@ import { describeAiError } from '@/lib/server/aiErrors';
 import { resolvePolicy } from '@/lib/server/policies';
 import { createAdminClient } from '@/lib/supabase/admin';
 import { AI_MODEL } from '@/lib/server/aiConfig';
+import { officialSummary } from '@/lib/server/legislation';
 
 export const dynamic = 'force-dynamic';
 // The generation runs after the response is sent (see after() below).
@@ -204,7 +205,10 @@ async function runAnalysis(
     q.eq('user_id', meta.userId).eq('policy_id', policy.id).eq('generation_started_at', startedAt);
 
   try {
-    const analysis = await analyzePolicyFull(policy, profile, meta, AbortSignal.timeout(GENERATION_TIMEOUT_MS));
+    const signal = AbortSignal.timeout(GENERATION_TIMEOUT_MS);
+    // Ground the analysis in the official summary when the policy has an official record.
+    const summary = policy.record?.verified ? await officialSummary({ ...policy.record, id: policy.id }) : null;
+    const analysis = await analyzePolicyFull(policy, profile, meta, signal, summary);
     // Only a validated analysis is ever written, so a failure never overwrites a good row.
     const { error } = await match(
       admin.from('analyzed_policies').update({
