@@ -1,7 +1,7 @@
 'use client';
 
 import { useCallback, useEffect, useRef, useState } from 'react';
-import { AnimatePresence, motion } from 'framer-motion';
+import { AnimatePresence, m } from 'framer-motion';
 import { AlertTriangle, Check, X } from 'lucide-react';
 
 export type ToastType = 'success' | 'error';
@@ -56,7 +56,7 @@ export function useToast() {
       </div>
       <AnimatePresence>
         {state && (
-          <motion.div
+          <m.div
             key={state.id}
             ref={box}
             onMouseEnter={() => setHold((h) => ({ ...h, hover: true }))}
@@ -81,10 +81,10 @@ export function useToast() {
               ? <Check className="w-4 h-4 flex-shrink-0 mt-0.5" aria-hidden />
               : <AlertTriangle className="w-4 h-4 flex-shrink-0 mt-0.5" aria-hidden />}
             <span className="flex-1">{state.message}</span>
-            <button onClick={dismiss} aria-label="Dismiss" className="opacity-70 hover:opacity-100">
-              <X className="w-3.5 h-3.5" />
+            <button type="button" onClick={dismiss} aria-label="Dismiss notification" className="-m-1.5 p-1.5 rounded-lg opacity-70 hover:opacity-100">
+              <X className="w-3.5 h-3.5" aria-hidden />
             </button>
-          </motion.div>
+          </m.div>
         )}
       </AnimatePresence>
     </>

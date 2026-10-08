@@ -2,20 +2,22 @@
 
 import { useState, useEffect, useMemo, Suspense } from 'react';
 import { useSearchParams } from 'next/navigation';
-import { motion } from 'framer-motion';
-import { TrendingUp, TrendingDown, Minus, Search, ChevronDown, ChevronUp, ArrowUpDown, Sparkles, Loader2 } from 'lucide-react';
+import { m } from 'framer-motion';
+import { TrendingUp, TrendingDown, Minus, Search, ChevronDown, ArrowUpDown, Sparkles, Loader2 } from 'lucide-react';
 import { createClient } from '@/lib/supabase/client';
 import GlassCard from '@/components/ui/GlassCard';
 import Badge from '@/components/ui/Badge';
-import GsapCounter from '@/components/ui/GsapCounter';
+import Button from '@/components/ui/Button';
+import CountUp from '@/components/ui/CountUp';
+import { Tabs, TabList, Tab, TabPanel } from '@/components/ui/Tabs';
 import Navbar from '@/components/layout/Navbar';
 import AmbientBackground from '@/components/landing/AmbientBackground';
 import { apiFetch } from '@/lib/api';
 import ViewFullImpactButton from '@/components/ViewFullImpactButton';
 import AiDisclaimer from '@/components/ui/AiDisclaimer';
-import { formatUSD, impactTone, signPrefix } from '@/lib/format';
-import { CumulativeStackedBar, CumulativeProjectionLines } from '@/components/charts/Charts';
-import Link from 'next/link';
+import { formatUSD, impactTone } from '@/lib/format';
+// Code-split: recharts loads only when the Cumulative tab is opened.
+import { CumulativeStackedBar, CumulativeProjectionLines } from '@/components/charts/LazyCharts';
 
 /** One saved analysis, with just the parts of the structured result this page shows. */
 interface PolicyAnalysisRow {
@@ -41,6 +43,11 @@ const ROW_COLUMNS =
 
 const signedUSD = (n: number) => formatUSD(n, { signed: true });
 
+// Violet-tinted action: primary-300 text keeps it at AA contrast on the tint.
+const TINT_BUTTON = 'bg-primary/20 hover:bg-primary/30 border-primary/20 text-primary-300';
+
+type ImpactTab = 'individual' | 'cumulative';
+
 const methodology = [
   {
     q: 'Where do the policies come from?',
@@ -62,7 +69,7 @@ const methodology = [
 
 function SkeletonCard() {
   return (
-    <div className="glass rounded-2xl p-5 animate-pulse">
+    <div className="glass rounded-2xl p-5 animate-pulse backdrop-filter-none" aria-hidden>
       <div className="h-4 bg-white/10 rounded w-3/4 mb-3" />
       <div className="h-3 bg-white/10 rounded w-1/2" />
     </div>
@@ -71,7 +78,7 @@ function SkeletonCard() {
 
 function AnalysisBody({ row, headingTag = 'h4' }: { row: PolicyAnalysisRow; headingTag?: 'h3' | 'h4' }) {
   const H = headingTag;
-  const heading = 'text-xs font-mono-data font-bold text-primary uppercase tracking-widest mb-2';
+  const heading = 'text-xs font-mono-data font-bold text-primary-300 uppercase tracking-widest mb-2';
   const t = row.timeline;
   const gains = (row.tradeoffs?.gains || []).slice(0, 3);
   const losses = (row.tradeoffs?.losses || []).slice(0, 3);
@@ -88,7 +95,7 @@ function AnalysisBody({ row, headingTag = 'h4' }: { row: PolicyAnalysisRow; head
           <dl className="grid grid-cols-3 gap-3">
             {([['1 year', t.year1], ['3 years', t.year3], ['5 years', t.year5]] as const).map(([label, v]) => (
               <div key={label} className="rounded-xl bg-white/5 border border-white/10 px-3 py-2">
-                <dt className="text-[11px] text-text-muted">{label}</dt>
+                <dt className="text-meta text-text-muted">{label}</dt>
                 <dd className={`font-mono-data text-sm font-semibold ${(v ?? 0) < 0 ? 'text-red-400' : 'text-emerald-400'}`}>{v === undefined ? '—' : signedUSD(v)}</dd>
               </div>
             ))}
@@ -120,7 +127,7 @@ function ImpactContent() {
   const searchParams = useSearchParams();
   const policyParam = searchParams.get('policy');
 
-  const [tab, setTab] = useState<'individual' | 'cumulative'>('individual');
+  const [tab, setTab] = useState<ImpactTab>('individual');
   const [analyses, setAnalyses] = useState<PolicyAnalysisRow[]>([]);
   const [loading, setLoading] = useState(true);
   const [selectedPolicy, setSelectedPolicy] = useState<PolicyAnalysisRow | null>(null);
@@ -233,27 +240,24 @@ function ImpactContent() {
       <AmbientBackground />
       <div className="relative z-10">
         <Navbar />
-        <main className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 pt-28 pb-20">
+        <main id="main" tabIndex={-1} className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 pt-28 pb-20">
 
-          <motion.div initial={{ opacity: 0, y: 16 }} animate={{ opacity: 1, y: 0 }} className="mb-8">
+          <m.div initial={{ opacity: 0, y: 16 }} animate={{ opacity: 1, y: 0 }} className="mb-8">
             <h1 className="font-display text-3xl font-bold text-text-primary mb-2">Impact Analysis</h1>
             <p className="text-text-muted">Your personalized policy financial impact breakdown.</p>
-          </motion.div>
+          </m.div>
 
-          <div className="flex gap-1 glass rounded-2xl p-1 mb-8 w-fit">
-            {(['individual', 'cumulative'] as const).map(t => (
-              <button key={t} onClick={() => setTab(t)}
-                className={`px-5 py-2.5 rounded-xl text-sm font-medium transition-all capitalize ${
-                  tab === t ? 'bg-primary/20 text-primary border border-primary/20' : 'text-text-muted hover:text-text-primary'
-                }`}>
-                {t === 'individual' ? 'Individual Analyses' : 'Cumulative Analysis'}
-              </button>
-            ))}
-          </div>
+          <Tabs value={tab} onValueChange={setTab}>
+            <TabList label="Impact views" className="glass rounded-2xl p-1 mb-8 w-fit">
+              {(['individual', 'cumulative'] as const).map(t => (
+                <Tab key={t} value={t} className="px-5 py-2.5 border border-transparent aria-selected:bg-primary/20 aria-selected:border-primary/20">
+                  {t === 'individual' ? 'Individual Analyses' : 'Cumulative Analysis'}
+                </Tab>
+              ))}
+            </TabList>
 
-          {/* INDIVIDUAL TAB */}
-          {tab === 'individual' && (
-            <div className="space-y-6">
+            {/* INDIVIDUAL TAB */}
+            <TabPanel value="individual" className="space-y-6">
               {selectedPolicy && (
                 <GlassCard className="rounded-3xl p-8 mb-4 border-primary/20 bg-primary/5">
                   <div className="flex items-start justify-between gap-4 mb-6">
@@ -266,7 +270,7 @@ function ImpactContent() {
                       <div className={`font-mono-data text-2xl font-bold ${impactTone(selectedPolicy.dollar_impact || 0)}`}>
                         {formatUSD(selectedPolicy.dollar_impact || 0, { signed: true, suffix: '/yr' })}
                       </div>
-                      <ViewFullImpactButton policyId={selectedPolicy.policy_id} policyTitle={selectedPolicy.policy_title} category={selectedPolicy.category} variant="chat" />
+                      <ViewFullImpactButton policyId={selectedPolicy.policy_id} policyTitle={selectedPolicy.policy_title} category={selectedPolicy.category} variant="chat" analyzed />
                     </div>
                   </div>
                   <AnalysisBody row={selectedPolicy} headingTag="h3" />
@@ -274,61 +278,73 @@ function ImpactContent() {
               )}
 
               {loading ? (
-                <div className="space-y-3">{[...Array(4)].map((_, i) => <SkeletonCard key={i} />)}</div>
+                <div className="space-y-3" role="status">
+                  <span className="sr-only">Loading your analyses…</span>
+                  {[...Array(4)].map((_, i) => <SkeletonCard key={i} />)}
+                </div>
               ) : analyses.length === 0 ? (
                 <GlassCard className="rounded-3xl p-12 text-center">
-                  <Search className="w-12 h-12 text-text-muted mx-auto mb-4" />
-                  <h3 className="font-display text-xl font-semibold text-text-primary mb-2">No policies analyzed yet</h3>
+                  <Search className="w-12 h-12 text-text-muted mx-auto mb-4" aria-hidden />
+                  <h2 className="font-display text-xl font-semibold text-text-primary mb-2">No policies analyzed yet</h2>
                   <p className="text-sm text-text-muted mb-6 max-w-sm mx-auto">Browse the policy feed on your dashboard to get started.</p>
-                  <div className="flex gap-3 justify-center">
-                    <Link href="/dashboard"><button className="bg-primary/20 hover:bg-primary/30 border border-primary/20 text-primary px-5 py-3 rounded-xl text-sm font-medium transition-all">Go to Dashboard</button></Link>
-                    <Link href="/advisor"><button className="glass hover:border-white/16 text-text-muted px-5 py-3 rounded-xl text-sm transition-all">Ask the Policy Guide</button></Link>
+                  <div className="flex flex-wrap gap-3 justify-center">
+                    <Button href="/dashboard" variant="ghost" size="sm" className={`px-5 py-3 ${TINT_BUTTON}`}>Go to Dashboard</Button>
+                    <Button href="/advisor" variant="ghost" size="sm" className="px-5 py-3 font-normal text-text-muted hover:text-text-primary hover:border-white/16">Ask the Policy Guide</Button>
                   </div>
                 </GlassCard>
               ) : (
                 <GlassCard className="rounded-3xl p-7">
-                  <div className="flex items-center justify-between mb-6">
+                  <div className="flex items-center justify-between gap-3 mb-6">
                     <h2 className="font-display text-xl font-semibold text-text-primary">All Analyzed Policies</h2>
-                    <button onClick={() => setSortBy(s => s === 'impact' ? 'date' : 'impact')}
-                      className="flex items-center gap-1.5 text-xs text-text-muted hover:text-text-primary glass px-3 py-2 rounded-xl transition-all">
-                      <ArrowUpDown className="w-3 h-3" /> Sort by {sortBy === 'impact' ? 'date' : 'impact'}
+                    <button type="button" onClick={() => setSortBy(s => s === 'impact' ? 'date' : 'impact')}
+                      className="flex items-center gap-1.5 text-xs text-text-muted hover:text-text-primary bg-white/4 border border-white/8 hover:border-white/16 px-3 py-2 rounded-xl transition-all">
+                      <ArrowUpDown className="w-3 h-3" aria-hidden /> Sort by {sortBy === 'impact' ? 'date' : 'impact'}
                     </button>
                   </div>
-                  <div className="space-y-3">
-                    {sortedAnalyses.map(analysis => (
-                      <div key={analysis.id}>
-                        <button onClick={() => setSelectedPolicy(a => a?.id === analysis.id ? null : analysis)}
-                          className={`w-full flex items-center justify-between gap-4 p-4 rounded-2xl text-left transition-all ${
-                            selectedPolicy?.id === analysis.id ? 'bg-primary/10 border border-primary/20' : 'glass hover:border-white/16'
+                  <ul className="space-y-3">
+                    {sortedAnalyses.map(analysis => {
+                      const isOpen = selectedPolicy?.id === analysis.id;
+                      const value = analysis.dollar_impact || 0;
+                      const panelId = `analysis-panel-${analysis.id}`;
+                      return (
+                        <li key={analysis.id}>
+                          {/* The row toggles its summary; "View Full Impact" is a separate link beside it, not nested inside. */}
+                          <div className={`flex items-center gap-3 p-4 rounded-2xl border transition-all ${
+                            isOpen ? 'bg-primary/10 border-primary/20' : 'bg-white/4 border-white/8 hover:border-white/16'
                           }`}>
-                          <div className="flex-1 min-w-0">
-                            <p className="text-sm font-medium text-text-primary truncate">{analysis.policy_title}</p>
-                            <div className="flex items-center gap-2 mt-1">
-                              <Badge variant="default">{analysis.category}</Badge>
-                              <span className="text-[10px] text-text-muted">{new Date(analysis.created_at).toLocaleDateString()}</span>
-                            </div>
+                            <button
+                              type="button"
+                              onClick={() => setSelectedPolicy(a => a?.id === analysis.id ? null : analysis)}
+                              aria-expanded={isOpen}
+                              aria-controls={isOpen ? panelId : undefined}
+                              className="flex-1 min-w-0 flex items-center justify-between gap-4 text-left rounded-xl"
+                            >
+                              <span className="flex-1 min-w-0">
+                                <span className="block text-sm font-medium text-text-primary truncate">{analysis.policy_title}</span>
+                                <span className="flex items-center gap-2 mt-1">
+                                  <Badge variant="default">{analysis.category}</Badge>
+                                  <span className="text-meta text-text-muted">{new Date(analysis.created_at).toLocaleDateString()}</span>
+                                </span>
+                              </span>
+                              <span className={`font-mono-data text-sm font-bold flex-shrink-0 ${impactTone(value)}`}>
+                                {formatUSD(value, { signed: true, suffix: '/yr' })}
+                              </span>
+                            </button>
+                            <ViewFullImpactButton policyId={analysis.policy_id} policyTitle={analysis.policy_title} category={analysis.category} variant="compact" analyzed className="flex-shrink-0" />
+                            {value > 0
+                              ? <TrendingUp className="w-4 h-4 text-emerald-400 flex-shrink-0" aria-hidden />
+                              : value < 0 ? <TrendingDown className="w-4 h-4 text-red-400 flex-shrink-0" aria-hidden /> : <Minus className="w-4 h-4 text-text-muted flex-shrink-0" aria-hidden />}
                           </div>
-                          <div className="flex items-center gap-3 flex-shrink-0">
-                            <p className={`font-mono-data text-sm font-bold ${impactTone(analysis.dollar_impact || 0)}`}>
-                              {formatUSD(analysis.dollar_impact || 0, { signed: true, suffix: '/yr' })}
-                            </p>
-                            <div onClick={e => e.stopPropagation()}>
-                              <ViewFullImpactButton policyId={analysis.policy_id} policyTitle={analysis.policy_title} category={analysis.category} variant="compact" />
-                            </div>
-                            {(analysis.dollar_impact || 0) >= 0
-                              ? <TrendingUp className="w-4 h-4 text-emerald-400" />
-                              : (analysis.dollar_impact || 0) < 0 ? <TrendingDown className="w-4 h-4 text-red-400" /> : <Minus className="w-4 h-4 text-text-muted" />}
-                          </div>
-                        </button>
 
-                        {selectedPolicy?.id === analysis.id && (
-                          <motion.div initial={{ opacity: 0, height: 0 }} animate={{ opacity: 1, height: 'auto' }} className="mt-2 glass rounded-2xl p-6 overflow-hidden">
-                            <AnalysisBody row={analysis} headingTag="h4" />
-                          </motion.div>
-                        )}
-                      </div>
-                    ))}
-                  </div>
+                          {isOpen && (
+                            <m.div id={panelId} initial={{ opacity: 0, height: 0 }} animate={{ opacity: 1, height: 'auto' }} className="mt-2 bg-white/3 border border-white/8 rounded-2xl p-6 overflow-hidden">
+                              <AnalysisBody row={analysis} headingTag="h4" />
+                            </m.div>
+                          )}
+                        </li>
+                      );
+                    })}
+                  </ul>
                 </GlassCard>
               )}
 
@@ -336,91 +352,105 @@ function ImpactContent() {
                 <GlassCard className="rounded-3xl p-7">
                   <h2 className="font-display text-xl font-semibold text-text-primary mb-6">Methodology &amp; Transparency</h2>
                   <div className="space-y-3">
-                    {methodology.map((item, i) => (
-                      <div key={i} className="glass rounded-2xl overflow-hidden">
-                        <button onClick={() => setExpandedMethod(expandedMethod === i ? null : i)} className="w-full flex items-center justify-between p-5 text-left">
-                          <span className="text-sm font-medium text-text-primary">{item.q}</span>
-                          {expandedMethod === i ? <ChevronUp className="w-4 h-4 text-text-muted flex-shrink-0" /> : <ChevronDown className="w-4 h-4 text-text-muted flex-shrink-0" />}
-                        </button>
-                        {expandedMethod === i && <div className="px-5 pb-5"><p className="text-sm text-text-muted leading-relaxed">{item.a}</p></div>}
-                      </div>
-                    ))}
+                    {methodology.map((item, i) => {
+                      const isOpen = expandedMethod === i;
+                      return (
+                        <div key={i} className="bg-white/3 border border-white/8 rounded-2xl overflow-hidden">
+                          <h3>
+                            <button
+                              type="button"
+                              onClick={() => setExpandedMethod(isOpen ? null : i)}
+                              aria-expanded={isOpen}
+                              aria-controls={`method-${i}`}
+                              className="w-full flex items-center justify-between gap-3 p-5 text-left rounded-2xl"
+                            >
+                              <span className="text-sm font-medium text-text-primary">{item.q}</span>
+                              <ChevronDown className={`w-4 h-4 text-text-muted flex-shrink-0 transition-transform ${isOpen ? 'rotate-180' : ''}`} aria-hidden />
+                            </button>
+                          </h3>
+                          <div id={`method-${i}`} hidden={!isOpen} className="px-5 pb-5">
+                            <p className="text-sm text-text-muted leading-relaxed">{item.a}</p>
+                          </div>
+                        </div>
+                      );
+                    })}
                   </div>
                 </GlassCard>
               )}
-            </div>
-          )}
+            </TabPanel>
 
-          {/* CUMULATIVE TAB */}
-          {tab === 'cumulative' && (
-            <div className="space-y-8">
+            {/* CUMULATIVE TAB */}
+            <TabPanel value="cumulative" className="space-y-8">
               {loading ? (
-                <div className="space-y-4">{[...Array(4)].map((_, i) => <SkeletonCard key={i} />)}</div>
+                <div className="space-y-4" role="status">
+                  <span className="sr-only">Loading your analyses…</span>
+                  {[...Array(4)].map((_, i) => <SkeletonCard key={i} />)}
+                </div>
               ) : analyses.length === 0 ? (
                 <GlassCard className="rounded-3xl p-12 text-center">
-                  <Search className="w-12 h-12 text-text-muted mx-auto mb-4" />
-                  <h3 className="font-display text-xl font-semibold text-text-primary mb-2">No analyses yet</h3>
+                  <Search className="w-12 h-12 text-text-muted mx-auto mb-4" aria-hidden />
+                  <h2 className="font-display text-xl font-semibold text-text-primary mb-2">No analyses yet</h2>
                   <p className="text-sm text-text-muted mb-6">Analyze some policies first to see cumulative impact.</p>
-                  <Link href="/dashboard"><button className="bg-primary/20 hover:bg-primary/30 border border-primary/20 text-primary px-5 py-3 rounded-xl text-sm font-medium transition-all">Go to Dashboard</button></Link>
+                  <Button href="/dashboard" variant="ghost" size="sm" className={`px-5 py-3 ${TINT_BUTTON}`}>Go to Dashboard</Button>
                 </GlassCard>
               ) : (
                 <>
-                  <motion.div initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} className="glass-strong rounded-3xl p-10 relative overflow-hidden text-center">
+                  <m.div initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} className="glass-strong rounded-3xl p-10 relative overflow-hidden text-center">
                     <div className="absolute inset-0 bg-gradient-to-br from-gold/8 via-transparent to-primary/8" />
                     <div className="relative z-10">
-                      <p className="text-xs font-mono-data text-text-muted uppercase tracking-widest mb-4">Net Annual Impact ({checkedAnalyses.length} selected)</p>
+                      <h2 className="text-xs font-mono-data text-text-muted uppercase tracking-widest mb-4">Net Annual Impact ({checkedAnalyses.length} selected)</h2>
                       <div className={`font-mono-data text-6xl sm:text-7xl font-bold mb-3 ${netImpact >= 0 ? 'gradient-text-gold' : 'text-red-400'}`}>
-                        <span aria-hidden><GsapCounter value={Math.abs(Math.round(netImpact))} prefix={`${signPrefix(netImpact)}$`} /></span>
-                        <span className="sr-only">{formatUSD(netImpact, { signed: true })}</span>
+                        <CountUp value={Math.round(netImpact)} format={signedUSD} />
                       </div>
                       <p className="text-text-muted">per year</p>
                     </div>
-                  </motion.div>
+                  </m.div>
 
                   <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
                     <GlassCard className="rounded-3xl p-7">
-                      <h2 className="font-display text-xl font-semibold text-text-primary mb-4">Select Policies</h2>
-                      <div className="space-y-2 max-h-[360px] overflow-y-auto pr-1">
-                        {analyses.map(analysis => (
-                          <label key={analysis.id} className="flex items-center gap-3 p-3 rounded-xl hover:bg-white/5 cursor-pointer transition-all">
-                            <input type="checkbox" checked={checkedIds.has(analysis.id)}
-                              onChange={e => { const next = new Set(checkedIds); if (e.target.checked) next.add(analysis.id); else next.delete(analysis.id); setCheckedIds(next); }}
-                              className="w-4 h-4 accent-primary rounded" />
-                            <div className="flex-1 min-w-0">
-                              <p className="text-sm text-text-primary truncate">{analysis.policy_title}</p>
-                              <p className="text-xs text-text-muted">{analysis.category}</p>
-                            </div>
-                            <span className={`font-mono-data text-xs font-bold flex-shrink-0 ${impactTone(analysis.dollar_impact || 0)}`}>
-                              {formatUSD(analysis.dollar_impact || 0, { signed: true })}
-                            </span>
-                          </label>
-                        ))}
+                      <h2 id="select-policies" className="font-display text-xl font-semibold text-text-primary mb-4">Select Policies</h2>
+                      <div role="group" aria-labelledby="select-policies">
+                        <div className="space-y-2 max-h-[360px] overflow-y-auto pr-1">
+                          {analyses.map(analysis => (
+                            <label key={analysis.id} className="flex items-center gap-3 p-3 rounded-xl hover:bg-white/5 cursor-pointer transition-all">
+                              <input type="checkbox" checked={checkedIds.has(analysis.id)}
+                                onChange={e => { const next = new Set(checkedIds); if (e.target.checked) next.add(analysis.id); else next.delete(analysis.id); setCheckedIds(next); }}
+                                className="w-4 h-4 accent-primary rounded" />
+                              <span className="flex-1 min-w-0">
+                                <span className="block text-sm text-text-primary truncate">{analysis.policy_title}</span>
+                                <span className="block text-xs text-text-muted">{analysis.category}</span>
+                              </span>
+                              <span className={`font-mono-data text-xs font-bold flex-shrink-0 ${impactTone(analysis.dollar_impact || 0)}`}>
+                                {formatUSD(analysis.dollar_impact || 0, { signed: true })}
+                              </span>
+                            </label>
+                          ))}
+                        </div>
                       </div>
                     </GlassCard>
 
                     <GlassCard className="rounded-3xl p-7">
                       <h2 className="font-display text-xl font-semibold text-text-primary mb-4">Combined Impact by Category</h2>
-                      <CumulativeStackedBar data={stackedData} series={stackedSeries} height={320} />
+                      <CumulativeStackedBar data={stackedData} series={stackedSeries} height={320} title="Combined impact by category" />
                     </GlassCard>
                   </div>
 
                   <GlassCard className="rounded-3xl p-7">
                     <div className="flex items-center justify-between mb-2 flex-wrap gap-3">
                       <h2 className="font-display text-xl font-semibold text-text-primary">1 / 3 / 5-Year Projection</h2>
-                      <div className="flex gap-5">
+                      <dl className="flex gap-5">
                         {[1, 3, 5].map(yr => (
                           <div key={yr} className="text-right">
-                            <p className="text-[10px] font-mono-data text-text-muted uppercase">{yr}yr</p>
-                            <p className={`font-mono-data text-sm font-bold ${impactTone(netImpact)}`}>
-                              <span aria-hidden><GsapCounter value={Math.abs(Math.round(netImpact * yr))} prefix={`${signPrefix(netImpact)}$`} duration={1} /></span>
-                              <span className="sr-only">{formatUSD(netImpact * yr, { signed: true })}</span>
-                            </p>
+                            <dt className="text-meta font-mono-data text-text-muted uppercase">{yr}yr<span className="sr-only"> total</span></dt>
+                            <dd className={`font-mono-data text-sm font-bold ${impactTone(netImpact)}`}>
+                              <CountUp value={Math.round(netImpact * yr)} format={signedUSD} duration={1000} />
+                            </dd>
                           </div>
                         ))}
-                      </div>
+                      </dl>
                     </div>
                     <p className="text-xs text-text-muted mb-4">One line per policy, with a gold total line.</p>
-                    <CumulativeProjectionLines data={projectionData} series={projectionSeries} height={340} />
+                    <CumulativeProjectionLines data={projectionData} series={projectionSeries} height={340} title="1, 3 and 5-year projection" />
                   </GlassCard>
 
                   <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
@@ -429,57 +459,61 @@ function ImpactContent() {
                       {ranked.length === 0 ? (
                         <p className="text-sm text-text-muted">Select policies to rank their contribution.</p>
                       ) : (
-                        <div className="space-y-4">
+                        <ol className="space-y-4">
                           {ranked.map((a, i) => {
                             const share = Math.round((Math.abs(a.dollar_impact || 0) / totalAbs) * 100);
                             return (
-                              <div key={a.id}>
-                                <div className="flex items-center justify-between mb-1.5">
+                              <li key={a.id}>
+                                <div className="flex items-center justify-between gap-3 mb-1.5">
                                   <span className="text-sm text-text-primary truncate flex items-center gap-2">
-                                    <span className="text-[10px] font-mono-data text-text-muted">#{i + 1}</span>{a.policy_title}
+                                    <span className="text-meta font-mono-data text-text-muted" aria-hidden>#{i + 1}</span>{a.policy_title}
                                   </span>
                                   <span className={`font-mono-data text-xs font-bold flex-shrink-0 ${impactTone(a.dollar_impact || 0)}`}>
                                     {formatUSD(a.dollar_impact || 0, { signed: true, suffix: '/yr' })}
+                                    <span className="sr-only">, {share}% of the total</span>
                                   </span>
                                 </div>
-                                <div className="h-2 rounded-full bg-white/6 overflow-hidden">
-                                  <motion.div className="h-full rounded-full" style={{ backgroundColor: (a.dollar_impact || 0) >= 0 ? '#10B981' : '#EF4444' }}
-                                    initial={{ width: 0 }} animate={{ width: `${share}%` }} transition={{ duration: 0.7, delay: i * 0.05 }} />
+                                <div className="h-2 rounded-full bg-white/6 overflow-hidden" aria-hidden>
+                                  <m.div className="h-full rounded-full" style={{ backgroundColor: (a.dollar_impact || 0) >= 0 ? '#10B981' : '#EF4444' }}
+                                    initial={{ width: 0 }} animate={{ width: `${share}%` }} transition={{ duration: 0.7, delay: Math.min(i, 8) * 0.05 }} />
                                 </div>
-                              </div>
+                              </li>
                             );
                           })}
-                        </div>
+                        </ol>
                       )}
                     </GlassCard>
 
                     <GlassCard className="rounded-3xl p-7">
                       <div className="flex items-center gap-2 mb-4">
                         <div className="w-7 h-7 rounded-full bg-primary/20 border border-primary/20 flex items-center justify-center">
-                          <Sparkles className="w-3.5 h-3.5 text-primary" />
+                          <Sparkles className="w-3.5 h-3.5 text-primary-300" aria-hidden />
                         </div>
                         <h2 className="font-display text-xl font-semibold text-text-primary">AI Combined Summary</h2>
                       </div>
-                      {checkedAnalyses.length === 0 ? (
-                        <p className="text-sm text-text-muted">Select policies to generate a combined financial outlook.</p>
-                      ) : cumLoading ? (
-                        <div className="flex items-center gap-2 text-sm text-text-muted">
-                          <Loader2 className="w-4 h-4 animate-spin text-primary" /> Generating combined outlook…
-                        </div>
-                      ) : cumSummary ? (
-                        <>
-                          <p className="text-sm text-text-muted leading-relaxed">{cumSummary}</p>
-                          <AiDisclaimer className="mt-3" />
-                        </>
-                      ) : (
-                        <p className="text-sm text-text-muted">Adjust your selection to generate a combined outlook.</p>
-                      )}
+                      {/* Live region: the outlook arrives a while after the selection changes. */}
+                      <div role="status" aria-live="polite" aria-busy={cumLoading}>
+                        {checkedAnalyses.length === 0 ? (
+                          <p className="text-sm text-text-muted">Select policies to generate a combined financial outlook.</p>
+                        ) : cumLoading ? (
+                          <p className="flex items-center gap-2 text-sm text-text-muted">
+                            <Loader2 className="w-4 h-4 animate-spin text-primary" aria-hidden /> Generating combined outlook…
+                          </p>
+                        ) : cumSummary ? (
+                          <>
+                            <p className="text-sm text-text-muted leading-relaxed">{cumSummary}</p>
+                            <AiDisclaimer className="mt-3" />
+                          </>
+                        ) : (
+                          <p className="text-sm text-text-muted">Adjust your selection to generate a combined outlook.</p>
+                        )}
+                      </div>
                     </GlassCard>
                   </div>
                 </>
               )}
-            </div>
-          )}
+            </TabPanel>
+          </Tabs>
         </main>
       </div>
     </div>
@@ -491,7 +525,12 @@ export default function ImpactPage() {
     <Suspense fallback={
       <div className="min-h-screen relative">
         <AmbientBackground />
-        <div className="relative z-10"><Navbar /></div>
+        <div className="relative z-10">
+          <Navbar />
+          <main id="main" tabIndex={-1} aria-busy="true" className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 pt-28 pb-20">
+            <span className="sr-only">Loading your impact analysis…</span>
+          </main>
+        </div>
       </div>
     }>
       <ImpactContent />

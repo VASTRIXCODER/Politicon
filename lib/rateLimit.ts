@@ -31,7 +31,6 @@ export const RATE_LIMITS = {
   analysisDelete:    { limit: 60,  windowSeconds: 3600, failClosed: false },
   analysisStatus:    { limit: 600, windowSeconds: 3600, failClosed: false },
   feedback:          { limit: 60,  windowSeconds: 3600, failClosed: false },
-  userCount:         { limit: 120, windowSeconds: 60,   failClosed: false },
   health:            { limit: 60,  windowSeconds: 60,   failClosed: false },
 } as const satisfies Record<string, RateLimitConfig>;
 

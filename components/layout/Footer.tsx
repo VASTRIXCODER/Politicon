@@ -1,5 +1,5 @@
 import Link from 'next/link';
-import { Zap } from 'lucide-react';
+import Logo from '@/components/ui/Logo';
 import { SUPPORT_EMAIL } from '@/lib/legal';
 
 const footerLinks = {
@@ -26,14 +26,7 @@ export default function Footer() {
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-5 gap-12">
           {/* Brand */}
           <div className="lg:col-span-2">
-            <Link href="/" className="flex items-center gap-2 mb-4">
-              <div className="w-8 h-8 rounded-lg bg-primary/20 border border-primary/30 flex items-center justify-center">
-                <Zap className="w-4 h-4 text-primary" />
-              </div>
-              <span className="font-display font-semibold text-lg">
-                Politi<span className="text-primary">con</span>
-              </span>
-            </Link>
+            <Logo size="md" className="flex w-fit mb-4" />
             <p className="text-text-muted text-sm leading-relaxed max-w-xs">
               Non-partisan AI that translates government policies into your personal dollar impact. Not political opinion — just the answer.
             </p>
@@ -42,7 +35,7 @@ export default function Footer() {
           {/* Links */}
           {Object.entries(footerLinks).map(([group, links]) => (
             <div key={group}>
-              <h4 className="text-xs font-semibold text-text-muted uppercase tracking-widest mb-4">{group}</h4>
+              <h2 className="text-xs font-semibold text-text-muted uppercase tracking-widest mb-4">{group}</h2>
               <ul className="space-y-3">
                 {links.map(link => (
                   <li key={link.label}>

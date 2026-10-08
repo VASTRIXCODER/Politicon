@@ -1,8 +1,6 @@
-'use client';
-
-import { motion } from 'framer-motion';
 import { BarChart2, Compass, MessageSquare, PieChart, ArrowRight } from 'lucide-react';
 import Link from 'next/link';
+import Reveal from './Reveal';
 
 const features = [
   {
@@ -19,6 +17,7 @@ const features = [
     color: '#7B61FF',
     href: '/policies',
     mockup: 'analysis',
+    preview: 'Example preview: a student loan rate change shown as before-and-after monthly payments and lifetime savings.',
   },
   {
     icon: Compass,
@@ -34,6 +33,7 @@ const features = [
     color: '#00D4FF',
     href: '/policies',
     mockup: 'discovery',
+    preview: 'Example preview: three policies ranked by how relevant they are to a profile, each with its dollar impact.',
   },
   {
     icon: MessageSquare,
@@ -49,6 +49,7 @@ const features = [
     color: '#F5C842',
     href: '/advisor',
     mockup: 'advisor',
+    preview: 'Example preview: a question about capital gains tax and the guide’s answer in dollars for a sample profile.',
   },
   {
     icon: PieChart,
@@ -64,29 +65,35 @@ const features = [
     color: '#7B61FF',
     href: '/impact',
     mockup: 'dashboard',
+    preview: 'Example preview: a net annual impact total with a breakdown by category.',
   },
 ];
 
+// The mockups below are illustrations; FeatureShowcase hides them from screen
+// readers and gives each a one-line summary instead. Inner glass panels skip
+// backdrop-filter: they already sit on a blurred glass-strong panel.
+const nestedGlass = 'glass backdrop-filter-none';
+
 const MockupAnalysis = () => (
-  <div className="glass rounded-2xl p-5 text-left">
-    <p className="text-[10px] font-mono-data text-text-muted uppercase tracking-widest mb-3">Student Loan Rate Adjustment</p>
+  <div className={`${nestedGlass} rounded-2xl p-5 text-left`}>
+    <p className="text-meta font-mono-data text-text-muted uppercase tracking-widest mb-3">Student Loan Rate Adjustment</p>
     <div className="space-y-3">
       {[
-        { label: 'Monthly payment', before: '$487', after: '$402', delta: '-$85/mo', color: '#10B981' },
-        { label: 'Interest (10yr)', before: '$12,580', after: '$7,400', delta: '-$5,180', color: '#10B981' },
-        { label: 'Take-home impact', before: '$0', after: '+$85', delta: '+$85/mo', color: '#10B981' },
+        { label: 'Monthly payment', before: '$487', after: '$402', delta: '-$85/mo' },
+        { label: 'Interest (10yr)', before: '$12,580', after: '$7,400', delta: '-$5,180' },
+        { label: 'Take-home impact', before: '$0', after: '+$85', delta: '+$85/mo' },
       ].map(row => (
         <div key={row.label} className="flex items-center justify-between">
-          <span className="text-[11px] text-text-muted">{row.label}</span>
+          <span className="text-meta text-text-muted">{row.label}</span>
           <div className="flex items-center gap-2">
-            <span className="text-[11px] text-text-muted line-through">{row.before}</span>
-            <span className="text-[11px] font-mono-data font-semibold" style={{ color: row.color }}>{row.delta}</span>
+            <span className="text-meta text-text-muted line-through">{row.before}</span>
+            <span className="text-meta font-mono-data font-semibold text-positive">{row.delta}</span>
           </div>
         </div>
       ))}
     </div>
     <div className="mt-4 p-3 rounded-xl bg-emerald-500/8 border border-emerald-500/15">
-      <p className="text-[10px] text-emerald-400 font-mono-data">+$12,500 lifetime savings at current balance</p>
+      <p className="text-meta text-positive font-mono-data">+$12,500 lifetime savings at current balance</p>
     </div>
   </div>
 );
@@ -94,21 +101,21 @@ const MockupAnalysis = () => (
 const MockupDiscovery = () => (
   <div className="space-y-2">
     {[
-      { title: 'Healthcare Subsidy Extension', score: 96, impact: '+$2,160/yr', color: '#10B981' },
-      { title: 'First-Time Homebuyer Credit', score: 91, impact: '+$15,000', color: '#10B981' },
-      { title: 'Capital Gains Tax Increase', score: 44, impact: '-$340/mo', color: '#EF4444' },
+      { title: 'Healthcare Subsidy Extension', score: 96, impact: '+$2,160/yr', positive: true },
+      { title: 'First-Time Homebuyer Credit', score: 91, impact: '+$15,000', positive: true },
+      { title: 'Capital Gains Tax Increase', score: 44, impact: '-$340/mo', positive: false },
     ].map(item => (
-      <div key={item.title} className="glass rounded-xl p-3 flex items-center justify-between">
+      <div key={item.title} className={`${nestedGlass} rounded-xl p-3 flex items-center justify-between`}>
         <div>
-          <p className="text-[11px] font-medium text-text-primary">{item.title}</p>
+          <p className="text-meta font-medium text-text-primary">{item.title}</p>
           <div className="flex items-center gap-2 mt-1">
             <div className="h-1 w-16 rounded-full bg-white/8 overflow-hidden">
               <div className="h-full rounded-full bg-primary" style={{ width: `${item.score}%` }} />
             </div>
-            <span className="text-[10px] text-text-muted">{item.score}% relevant</span>
+            <span className="text-meta text-text-muted">{item.score}% relevant</span>
           </div>
         </div>
-        <span className="text-xs font-mono-data font-bold" style={{ color: item.color }}>{item.impact}</span>
+        <span className={`text-xs font-mono-data font-bold ${item.positive ? 'text-positive' : 'text-negative'}`}>{item.impact}</span>
       </div>
     ))}
   </div>
@@ -118,43 +125,43 @@ const MockupAdvisor = () => (
   <div className="space-y-3">
     <div className="flex justify-end">
       <div className="bg-primary/20 border border-primary/20 rounded-2xl rounded-tr-sm px-4 py-2.5 max-w-[80%]">
-        <p className="text-[11px] text-primary">How does the new capital gains tax affect my investments?</p>
+        <p className="text-meta text-primary-300">How does the new capital gains tax affect my investments?</p>
       </div>
     </div>
     <div className="flex justify-start">
-      <div className="glass rounded-2xl rounded-tl-sm px-4 py-3 max-w-[90%]">
-        <p className="text-[11px] text-text-muted leading-relaxed">
-          Based on your <span className="text-text-primary">$120k income</span> and investment profile, the proposed 28% capital gains rate would increase your annual tax burden by approximately <span className="text-red-400 font-mono-data font-semibold">$4,080/year</span> on a typical $50k gain...
+      <div className={`${nestedGlass} rounded-2xl rounded-tl-sm px-4 py-3 max-w-[90%]`}>
+        <p className="text-meta text-text-muted leading-relaxed">
+          Based on your <span className="text-text-primary">$120k income</span> and investment profile, the proposed 28% capital gains rate would increase your annual tax burden by approximately <span className="text-negative font-mono-data font-semibold">$4,080/year</span> on a typical $50k gain...
         </p>
       </div>
     </div>
     <div className="flex items-center gap-2 pl-2">
       <span className="w-1.5 h-1.5 rounded-full bg-primary animate-pulse" />
-      <span className="text-[10px] text-text-muted">Analyzing your profile...</span>
+      <span className="text-meta text-text-muted">Analyzing your profile...</span>
     </div>
   </div>
 );
 
 const MockupDashboard = () => (
-  <div className="glass rounded-2xl p-5">
+  <div className={`${nestedGlass} rounded-2xl p-5`}>
     <div className="text-center mb-4">
-      <p className="text-[10px] text-text-muted font-mono-data mb-1">Net Annual Impact</p>
+      <p className="text-meta text-text-muted font-mono-data mb-1">Net Annual Impact</p>
       <p className="font-mono-data text-3xl font-bold gradient-text-gold">+$6,420</p>
-      <p className="text-[10px] text-text-muted mt-1">across 4 tracked policies</p>
+      <p className="text-meta text-text-muted mt-1">across 4 tracked policies</p>
     </div>
     <div className="space-y-2">
       {[
-        { cat: 'Healthcare', pct: 78, val: '+$2,160', color: '#10B981' },
-        { cat: 'Housing', pct: 94, val: '+$3,750', color: '#10B981' },
-        { cat: 'Taxes', pct: 22, val: '+$510', color: '#10B981' },
+        { cat: 'Healthcare', pct: 78, val: '+$2,160' },
+        { cat: 'Housing', pct: 94, val: '+$3,750' },
+        { cat: 'Taxes', pct: 22, val: '+$510' },
       ].map(item => (
         <div key={item.cat}>
           <div className="flex justify-between mb-1">
-            <span className="text-[10px] text-text-muted">{item.cat}</span>
-            <span className="text-[10px] font-mono-data" style={{ color: item.color }}>{item.val}</span>
+            <span className="text-meta text-text-muted">{item.cat}</span>
+            <span className="text-meta font-mono-data text-positive">{item.val}</span>
           </div>
           <div className="h-1.5 rounded-full bg-white/6 overflow-hidden">
-            <div className="h-full rounded-full" style={{ width: `${item.pct}%`, backgroundColor: item.color + '80' }} />
+            <div className="h-full rounded-full bg-positive/50" style={{ width: `${item.pct}%` }} />
           </div>
         </div>
       ))}
@@ -171,22 +178,16 @@ const mockups: Record<string, React.ComponentType> = {
 
 export default function FeatureShowcase() {
   return (
-    <section className="py-32 relative">
+    <section aria-labelledby="features-heading" className="py-32 relative">
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
-        <motion.div
-          initial={{ opacity: 0, y: 24 }}
-          whileInView={{ opacity: 1, y: 0 }}
-          viewport={{ once: true }}
-          transition={{ duration: 0.5 }}
-          className="text-center mb-20"
-        >
+        <Reveal className="text-center mb-20">
           <p className="text-xs font-mono-data text-primary uppercase tracking-widest mb-4">Features</p>
-          <h2 className="font-display text-4xl sm:text-5xl font-bold text-text-primary">
+          <h2 id="features-heading" className="font-display text-4xl sm:text-5xl font-bold text-text-primary">
             Everything you need to
             <br />
             <span className="gradient-text">understand your money</span>
           </h2>
-        </motion.div>
+        </Reveal>
 
         <div className="space-y-24">
           {features.map((feature, i) => {
@@ -195,20 +196,16 @@ export default function FeatureShowcase() {
             const isEven = i % 2 === 0;
 
             return (
-              <motion.div
+              <Reveal
                 key={feature.title}
-                initial={{ opacity: 0, x: isEven ? -32 : 32 }}
-                whileInView={{ opacity: 1, x: 0 }}
-                viewport={{ once: true, margin: '-80px' }}
-                transition={{ duration: 0.6, ease: [0.25, 0.46, 0.45, 0.94] }}
-                className={`grid grid-cols-1 lg:grid-cols-2 gap-12 lg:gap-20 items-center ${
-                  !isEven ? 'lg:direction-rtl' : ''
-                }`}
+                from={isEven ? 'left' : 'right'}
+                className="grid grid-cols-1 lg:grid-cols-2 gap-12 lg:gap-20 items-center"
               >
                 {/* Content */}
                 <div className={!isEven ? 'lg:order-2' : ''}>
                   <div className="flex items-center gap-3 mb-6">
                     <div
+                      aria-hidden="true"
                       className="w-10 h-10 rounded-2xl flex items-center justify-center"
                       style={{ backgroundColor: feature.color + '18', border: `1px solid ${feature.color}25` }}
                     >
@@ -230,6 +227,7 @@ export default function FeatureShowcase() {
                     {feature.bullets.map(bullet => (
                       <li key={bullet} className="flex items-center gap-3">
                         <div
+                          aria-hidden="true"
                           className="w-1.5 h-1.5 rounded-full flex-shrink-0"
                           style={{ backgroundColor: feature.color }}
                         />
@@ -240,26 +238,28 @@ export default function FeatureShowcase() {
 
                   <Link
                     href={feature.href}
-                    className="inline-flex items-center gap-2 text-sm font-medium transition-all group"
+                    className="inline-flex items-center gap-2 rounded-md text-sm font-medium transition-all group"
                     style={{ color: feature.color }}
                   >
-                    Explore feature
-                    <ArrowRight className="w-4 h-4 group-hover:translate-x-1 transition-transform" />
+                    Explore feature<span className="sr-only">: {feature.title}</span>
+                    <ArrowRight className="w-4 h-4 group-hover:translate-x-1 transition-transform" aria-hidden="true" />
                   </Link>
                 </div>
 
-                {/* Mockup */}
+                {/* Mockup (illustrative, so screen readers get a summary instead) */}
                 <div className={`${!isEven ? 'lg:order-1' : ''} relative`}>
                   <div
+                    aria-hidden="true"
                     className="absolute inset-0 rounded-3xl blur-3xl opacity-20"
                     style={{ background: `radial-gradient(circle, ${feature.color}55 0%, transparent 70%)` }}
                   />
-                  <div className="glass-strong rounded-3xl p-8 relative z-10">
-                    <p className="text-[10px] font-mono-data text-text-muted uppercase tracking-widest mb-5">Preview</p>
+                  <p className="sr-only">{feature.preview}</p>
+                  <div aria-hidden="true" className="glass-strong rounded-3xl p-8 relative z-10">
+                    <p className="text-meta font-mono-data text-text-muted uppercase tracking-widest mb-5">Preview</p>
                     <Mockup />
                   </div>
                 </div>
-              </motion.div>
+              </Reveal>
             );
           })}
         </div>

@@ -9,18 +9,24 @@ import ShareableCards from '@/components/landing/ShareableCards';
 import PublicExplorer from '@/components/landing/PublicExplorer';
 import NewsletterSection from '@/components/landing/NewsletterSection';
 import Footer from '@/components/layout/Footer';
+import { getMemberCount } from '@/components/landing/memberCount';
 
-export default function LandingPage() {
+// Static page, regenerated at most every 10 minutes (matches the member-count cache).
+export const revalidate = 600;
+
+export default async function LandingPage() {
+  const memberCount = await getMemberCount();
+
   return (
     <div className="relative min-h-screen">
-      <AmbientBackground />
+      <AmbientBackground animated />
       <div className="relative z-10">
         <Navbar />
-        <main>
+        <main id="main" tabIndex={-1}>
           <HeroSection />
           <MarqueeStrip />
           <HowItWorks />
-          <StatsSection />
+          <StatsSection memberCount={memberCount} />
           <FeatureShowcase />
           <ShareableCards />
           <PublicExplorer />
