@@ -17,6 +17,7 @@ import {
   MAX_DEPENDENTS, OCCUPATIONS, US_STATES, isHomeowner, validOnly as keepAll, validOrEmpty as keep,
 } from '@/lib/profileOptions';
 import { FinancialProfileSchema } from '@/lib/profileSchema';
+import { afterOnboardingPath } from '@/lib/safeNext';
 
 interface Draft {
   state: string;
@@ -300,7 +301,9 @@ export default function OnboardingPage() {
     }
     try { if (userId) localStorage.removeItem(draftKey(userId)); } catch { /* storage unavailable */ }
     setShowDone(true);
-    setTimeout(() => router.push('/dashboard'), 1600);
+    // Back to where they were heading (e.g. a question for the AI Policy Guide), else the dashboard.
+    const after = afterOnboardingPath(new URLSearchParams(window.location.search).get('next')) || '/dashboard';
+    setTimeout(() => router.push(after), 1600);
   };
 
   const next = () => {

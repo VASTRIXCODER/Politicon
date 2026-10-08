@@ -10,7 +10,7 @@ type Check = { ok: boolean; detail?: string };
 
 const TIMEOUT_MS = 3000;
 // Latest migration the code depends on (see supabase/migrations).
-const EXPECTED_SCHEMA_VERSION = '20261008120000';
+const EXPECTED_SCHEMA_VERSION = '20261008150000';
 
 async function probe(fn: (_signal: AbortSignal) => PromiseLike<{ error: { message?: string; code?: string } | null }>): Promise<Check> {
   try {

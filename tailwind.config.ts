@@ -6,7 +6,6 @@ const config: Config = {
     './app/**/*.{ts,tsx}',
     './components/**/*.{ts,tsx}',
     './lib/**/*.{ts,tsx}',
-    './mocks/**/*.{ts,tsx}',
   ],
   theme: {
     extend: {

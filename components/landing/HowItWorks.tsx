@@ -7,35 +7,49 @@ import Reveal from './Reveal';
 
 const STEP_MS = 3000;
 
-const steps = [
-  {
-    number: '01',
-    icon: User,
-    title: 'Build your profile',
-    subtitle: 'Takes 30 seconds',
-    description: 'Tell us your income bracket, location, housing situation, debts, and life stage. We use ranges, not exact figures. Only those ranges (never your name or email) are sent to our AI provider to generate your analyses, and you can export or delete your data anytime.',
-    color: '#7B61FF',
-    details: ['Income & employment', 'Location & state taxes', 'Housing & debt situation', 'Family & dependents'],
-  },
-  {
-    number: '02',
-    icon: Search,
-    title: 'Discover policies that affect you',
-    subtitle: 'AI-curated for your profile',
-    description: 'Our AI scans 2,400+ federal and state policies to surface the ones with the highest dollar impact on your specific situation.',
-    color: '#00D4FF',
-    details: ['Federal & state coverage', 'Relevance scoring', 'Real-time updates', 'Category filters'],
-  },
-  {
-    number: '03',
-    icon: DollarSign,
-    title: 'See your exact dollar impact',
-    subtitle: 'Immediate, ripple, projected',
-    description: "Get a full breakdown: immediate effects, ripple effects, 1/3/5-year projections, and actionable recommendations — all in dollars, not jargon.",
-    color: '#F5C842',
-    details: ['Immediate monthly impact', '5-year projections', 'Trade-off analysis', 'Action steps'],
-  },
-];
+interface Step {
+  number: string;
+  icon: typeof User;
+  title: string;
+  subtitle: string;
+  description: string;
+  color: string;
+  details: string[];
+}
+
+function buildSteps(stateBills: boolean): Step[] {
+  return [
+    {
+      number: '01',
+      icon: User,
+      title: 'Build your profile',
+      subtitle: 'About two minutes',
+      description: 'Tell us your income bracket, location, housing situation, debts, and life stage. We use ranges, not exact figures. Only those ranges (never your name or email) are sent to our AI provider to generate your analyses, and you can export or delete your data anytime.',
+      color: '#7B61FF',
+      details: ['Income & employment', 'Location & state taxes', 'Housing & debt situation', 'Family & dependents'],
+    },
+    {
+      number: '02',
+      icon: Search,
+      title: 'Discover policies that affect you',
+      subtitle: 'From official records',
+      description: stateBills
+        ? 'We start from recent bills in Congress (via Congress.gov) and your state legislature (via Open States), and the AI ranks them by how likely they are to affect you. If those sources are unavailable, any AI-suggested item is marked unverified.'
+        : 'We start from recent bills in Congress (via Congress.gov), and the AI ranks them by how likely they are to affect you. If the source is unavailable, any AI-suggested item is marked unverified.',
+      color: '#00D4FF',
+      details: [stateBills ? 'Federal & state bills' : 'Federal bills', 'Relevance score for your profile', 'Official status & bill links', 'Category filters'],
+    },
+    {
+      number: '03',
+      icon: DollarSign,
+      title: 'See your estimated dollar impact',
+      subtitle: 'Usually ready in about a minute',
+      description: 'Get a full breakdown: immediate effects, ripple effects, 1/3/5-year projections, and the assumptions behind each number — in dollars, not jargon. Each analysis runs in the background, so you can keep browsing while it’s prepared.',
+      color: '#F5C842',
+      details: ['Immediate monthly impact', '1-, 3- and 5-year projections', 'Trade-offs & assumptions', 'Confidence level'],
+    },
+  ];
+}
 
 const DESKTOP_QUERY = '(min-width: 1024px)';
 function subscribeDesktop(onChange: () => void) {
@@ -81,7 +95,13 @@ function StepProgress({ color, running, onDone }: { color: string; running: bool
   return <div ref={ref} aria-hidden="true" className="h-0.5 rounded-full mt-6 origin-left" style={{ backgroundColor: color }} />;
 }
 
-export default function HowItWorks() {
+interface HowItWorksProps {
+  /** True when state bills are loaded (Open States is configured). */
+  stateBills: boolean;
+}
+
+export default function HowItWorks({ stateBills }: HowItWorksProps) {
+  const steps = buildSteps(stateBills);
   const [activeStep, setActiveStep] = useState(0);
   const reduceMotion = useReducedMotion();
   // null = follow the motion preference; true/false = the visitor pressed pause/play.

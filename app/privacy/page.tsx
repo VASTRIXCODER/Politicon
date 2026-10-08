@@ -1,10 +1,10 @@
 import type { Metadata } from 'next';
 import Link from 'next/link';
 import LegalPage, { Section } from '@/components/legal/LegalPage';
-import { SUPPORT_EMAIL } from '@/lib/legal';
+import { PRIVACY_UPDATED, SUPPORT_EMAIL } from '@/lib/legal';
 
 export const metadata: Metadata = {
-  title: 'Privacy Policy — Politicon',
+  title: 'Privacy Policy',
   description: 'What Politicon collects, why, who processes it, how long it is kept, and how to export or delete it.',
 };
 
@@ -13,6 +13,7 @@ export default function PrivacyPage() {
     <LegalPage
       title="Privacy Policy"
       intro="Politicon estimates how government policies may affect your household finances. To do that we ask for a few facts about your situation. This page explains exactly what we collect, why, who processes it, how long we keep it, and how you can download or delete it."
+      updated={PRIVACY_UPDATED}
     >
       <Section title="Who can use Politicon">
         <p>Politicon is for adults aged 18 and over. We don&apos;t knowingly create accounts for anyone younger. If you believe a minor has an account, email us and we will delete it.</p>
@@ -25,6 +26,7 @@ export default function PrivacyPage() {
           <li><strong>What you create:</strong> the policies in your feed, the analyses you generate, and your conversations with the AI policy guide.</li>
           <li><strong>Consent records:</strong> when you accepted these terms and agreed to AI processing.</li>
           <li><strong>Usage and security records:</strong> which AI features you used and when (for spending limits), and short-lived rate-limit counters. IP addresses are stored only as a one-way keyed hash.</li>
+          <li><strong>Update list:</strong> if you join it from the home page, your email address and when you joined. You don&apos;t need an account for this.</li>
         </ul>
         <p>We don&apos;t collect bank or card details, Social Security numbers, or exact account balances, and we don&apos;t use advertising trackers.</p>
       </Section>
@@ -34,6 +36,7 @@ export default function PrivacyPage() {
           <li>To build your personalized policy feed and estimate each policy&apos;s effect on your finances.</li>
           <li>To answer your questions in the AI policy guide.</li>
           <li>To keep the service secure and within its spending limits.</li>
+          <li>If you joined the update list, to email you about Politicon updates. We don&apos;t send a digest or policy alerts yet.</li>
         </ul>
         <p>We don&apos;t sell your data, share it with advertisers, or use it to build a political profile of you.</p>
       </Section>
@@ -59,6 +62,7 @@ export default function PrivacyPage() {
           <li>AI usage records: 13 months.</li>
           <li>Accounts that are never confirmed: 7 days.</li>
           <li>Rate-limit counters: about an hour.</li>
+          <li>Update-list addresses: until you ask to be removed or delete your account.</li>
         </ul>
       </Section>
 
@@ -67,7 +71,8 @@ export default function PrivacyPage() {
           <li><strong>Download your data:</strong> Settings → Security → Download my data.</li>
           <li><strong>Edit your profile:</strong> Settings → Financial Profile. Your feed rebuilds from the new answers.</li>
           <li><strong>Delete an analysis or conversation:</strong> from its page or the conversation list.</li>
-          <li><strong>Delete your account:</strong> Settings → Security → Delete Account. This permanently removes your profile, analyses, feed and conversations.</li>
+          <li><strong>Delete your account:</strong> Settings → Security → Delete Account. This permanently removes your profile, analyses, feed and conversations, and takes your account&apos;s email address off the update list.</li>
+          <li><strong>Leave the update list:</strong> email us from the address you signed up with and we&apos;ll remove it.</li>
         </ul>
         <p>Depending on where you live, you may have further rights to access, correct or delete your data. Email us and we&apos;ll respond within 30 days.</p>
       </Section>

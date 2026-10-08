@@ -1,59 +1,50 @@
-import { Share2, ArrowRight } from 'lucide-react';
+import { ArrowRight } from 'lucide-react';
+import Badge from '@/components/ui/Badge';
 import Button from '@/components/ui/Button';
 import Logo from '@/components/ui/Logo';
 import Reveal from './Reveal';
+import { CATEGORIES, exampleImpact, formatAnnual } from '@/lib/explorerData';
 
+const categoryLabel = (key: string) => CATEGORIES.find(c => c.key === key)?.label ?? key;
+
+// Illustrative designs for a feature that isn't built yet. The figures come
+// from the explorer's illustrative dataset (lib/explorerData) and are chosen
+// to be even-handed: a gain for a higher-income household, a gain for a
+// lower-income one, and a cost that reaches every bracket.
 const exampleCards = [
-  {
-    policy: 'Student Loan Rate Adjustment',
-    impact: '-$85/month',
-    annual: '-$1,020/year',
-    direction: 'positive' as const,
-    category: 'Education',
-    gradient: 'from-primary/20 to-secondary/10',
-    borderColor: 'border-primary/20',
-    tilt: '-rotate-2',
-  },
-  {
-    policy: 'First-Time Homebuyer Credit',
-    impact: '+$15,000',
-    annual: 'One-time credit',
-    direction: 'positive' as const,
-    category: 'Housing',
-    gradient: 'from-emerald-500/20 to-emerald-500/5',
-    borderColor: 'border-emerald-500/20',
-    tilt: '',
-  },
-  {
-    policy: 'Capital Gains Tax Increase',
-    impact: '-$340/month',
-    annual: '-$4,080/year',
-    direction: 'negative' as const,
-    category: 'Taxes',
-    gradient: 'from-red-500/20 to-red-500/5',
-    borderColor: 'border-red-500/15',
-    tilt: 'rotate-2',
-  },
-];
+  { impact: exampleImpact('income-tax-rate-cut', '100kPlus'), tilt: '-rotate-2' },
+  { impact: exampleImpact('premium-subsidy-extension', '25to50k'), tilt: '' },
+  { impact: exampleImpact('import-tariff', '50to75k'), tilt: 'rotate-2' },
+].map(({ impact: { policy, bracket, annual }, tilt }) => ({
+  policy: policy.title,
+  impact: formatAnnual(annual),
+  household: `${bracket.label} household`,
+  direction: annual < 0 ? ('negative' as const) : ('positive' as const),
+  category: categoryLabel(policy.category),
+  gradient: annual < 0 ? 'from-red-500/20 to-red-500/5' : 'from-emerald-500/20 to-emerald-500/5',
+  borderColor: annual < 0 ? 'border-red-500/15' : 'border-emerald-500/20',
+  tilt,
+}));
 
 export default function ShareableCards() {
   return (
     <section aria-labelledby="share-heading" className="py-24 relative">
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
         <Reveal className="text-center mb-16">
-          <p className="text-xs font-mono-data text-secondary uppercase tracking-widest mb-4">Share Your Impact</p>
+          <Badge variant="secondary" size="md" className="mb-4 uppercase tracking-widest">Coming soon</Badge>
           <h2 id="share-heading" className="font-display text-4xl sm:text-5xl font-bold text-text-primary mb-4">
             Your impact,
-            <span className="gradient-text"> shareable in seconds</span>
+            <span className="gradient-text"> as a card you can share</span>
           </h2>
           <p className="text-text-muted text-lg max-w-xl mx-auto">
-            After any analysis, generate a branded card showing your dollar impact. Download as PNG or copy a link.
+            We&apos;re working on turning an analysis into a branded card you can save or share. It isn&apos;t available yet;
+            these are examples of the design.
           </p>
         </Reveal>
 
-        {/* Illustrations of the share card; screen readers get the summary instead. */}
+        {/* Illustrations of the planned card; screen readers get the summary instead. */}
         <p className="sr-only">
-          Example share cards show a policy name, its category, the dollar impact per month or year, and a link back to Politicon.
+          Example card designs, with illustrative figures, show a policy name, its category and an estimated dollar impact.
         </p>
         <div aria-hidden="true" className="flex flex-wrap justify-center gap-6 mb-12">
           {exampleCards.map((card, i) => (
@@ -76,12 +67,11 @@ export default function ShareableCards() {
                   }`}>
                     {card.impact}
                   </div>
-                  <p className="text-meta text-text-muted">{card.annual}</p>
+                  <p className="text-meta text-text-muted">{card.household}</p>
 
-                  <div className="flex items-center gap-1.5 mt-5 pt-4 border-t border-white/6">
-                    <Share2 className="w-3 h-3 text-text-muted" />
-                    <span className="text-meta text-text-muted">politicon.com/impact</span>
-                  </div>
+                  <p className="mt-5 pt-4 border-t border-white/6 text-meta font-mono-data text-text-muted uppercase tracking-wide">
+                    Example · illustrative figures
+                  </p>
                 </div>
               </div>
             </Reveal>
@@ -97,7 +87,7 @@ export default function ShareableCards() {
             iconPosition="end"
             className="rounded-2xl bg-primary/10 border-primary/20 text-primary-300 hover:bg-primary/20 hover:border-primary/40"
           >
-            Generate yours free
+            Get your impact report
           </Button>
         </Reveal>
       </div>

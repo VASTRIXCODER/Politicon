@@ -1,10 +1,10 @@
 import type { Metadata } from 'next';
 import Link from 'next/link';
 import LegalPage, { Section } from '@/components/legal/LegalPage';
-import { SUPPORT_EMAIL } from '@/lib/legal';
+import { SUPPORT_EMAIL, TERMS_UPDATED } from '@/lib/legal';
 
 export const metadata: Metadata = {
-  title: 'Terms of Service — Politicon',
+  title: 'Terms of Service',
   description: 'The terms for using Politicon.',
 };
 
@@ -13,6 +13,7 @@ export default function TermsPage() {
     <LegalPage
       title="Terms of Service"
       intro="These terms govern your use of Politicon. By creating an account you agree to them. Please read them together with our Privacy Policy and Disclaimer."
+      updated={TERMS_UPDATED}
     >
       <Section title="What Politicon is">
         <p>Politicon is an educational tool. It uses AI to explain government policies and to estimate how they might affect a household like yours, based on the ranges you provide. Its estimates are informational only. Politicon is not a financial, tax, legal or investment advisor, and it is not affiliated with any government agency, party or campaign.</p>

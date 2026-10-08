@@ -5,7 +5,7 @@ import Button from '@/components/ui/Button';
 import AmbientBackground from '@/components/landing/AmbientBackground';
 
 export const metadata: Metadata = {
-  title: 'Page not found — Politicon',
+  title: 'Page not found',
   robots: { index: false },
 };
 

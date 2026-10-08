@@ -16,3 +16,21 @@ export function safeNextPath(value: string | null | undefined): string | null {
     return null;
   }
 }
+
+/**
+ * A validated destination for after onboarding: not onboarding itself, an
+ * auth page (both would loop) or the dashboard (the default anyway).
+ */
+export function afterOnboardingPath(value: string | null | undefined): string | null {
+  const next = safeNextPath(value);
+  if (!next) return null;
+  const path = next.split(/[?#]/)[0];
+  const loops = ['/onboarding', '/auth', '/dashboard'].some((r) => path === r || path.startsWith(`${r}/`));
+  return loops ? null : next;
+}
+
+/** The onboarding page, carrying `next` so a new member ends up where they were heading. */
+export function onboardingPath(value: string | null | undefined): string {
+  const next = afterOnboardingPath(value);
+  return next ? `/onboarding?next=${encodeURIComponent(next)}` : '/onboarding';
+}

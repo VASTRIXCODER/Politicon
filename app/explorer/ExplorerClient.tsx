@@ -1,50 +1,31 @@
 'use client';
 
-import { useState } from 'react';
-import { BarChart2 } from 'lucide-react';
+import { useEffect, useState } from 'react';
+import { ArrowRight, BarChart2 } from 'lucide-react';
 import GlassCard from '@/components/ui/GlassCard';
-import Reveal from '@/components/landing/Reveal';
+import Button from '@/components/ui/Button';
+import { BracketChart } from '@/components/landing/PublicExplorer';
+import { createClient } from '@/lib/supabase/client';
+import { CATEGORIES, type CategoryKey } from '@/lib/explorerData';
 
-const brackets = [
-  { label: 'Under $25k', data: { taxes: 18, healthcare: 52, housing: 12, employment: 22 } },
-  { label: '$25k – $50k', data: { taxes: 28, healthcare: 41, housing: 28, employment: 35 } },
-  { label: '$50k – $75k', data: { taxes: 48, healthcare: 32, housing: 52, employment: 48 } },
-  { label: '$75k – $100k', data: { taxes: 58, healthcare: 22, housing: 68, employment: 55 } },
-  { label: '$100k+', data: { taxes: 72, healthcare: 14, housing: 82, employment: 64 } },
-];
+const PILL = 'flex-shrink-0 px-4 py-2 rounded-full text-xs font-medium border transition-all';
+const PILL_ON = 'bg-primary/20 border-primary/40 text-primary-300';
+const PILL_OFF = 'bg-white/4 border-white/8 text-text-muted hover:text-text-primary';
 
-// `textColor` is the pill's label colour on its own tint (all at least 4.5:1);
-// the brand violet is too dark for small text there, so Taxes uses primary-300.
-const categories = [
-  { key: 'taxes', label: 'Taxes', color: '#7B61FF', textColor: '#A996FF', avgImpact: '+$612/yr' },
-  { key: 'healthcare', label: 'Healthcare', color: '#00D4FF', textColor: '#00D4FF', avgImpact: '-$1,800/yr' },
-  { key: 'housing', label: 'Housing', color: '#F5C842', textColor: '#F5C842', avgImpact: '+$3,750 (one-time)' },
-  { key: 'employment', label: 'Employment', color: '#10B981', textColor: '#10B981', avgImpact: '+$2,100/yr' },
-] as const;
-
-type CategoryKey = (typeof categories)[number]['key'];
-
-/** The category filter and bracket chart: the only interactive part of /explorer. */
+/** The category filter and bracket chart: the interactive part of /explorer. */
 export default function ExplorerClient() {
   const [selectedCat, setSelectedCat] = useState<CategoryKey | null>(null);
 
-  const displayCats = selectedCat ? categories.filter(c => c.key === selectedCat) : categories;
+  const displayCats = selectedCat ? CATEGORIES.filter(c => c.key === selectedCat) : CATEGORIES;
 
   return (
     <>
       {/* Category filter pills (toggle buttons) */}
       <div role="group" aria-label="Filter by category" className="flex gap-3 mb-10 overflow-x-auto scrollbar-hide pb-2">
-        <button
-          type="button"
-          aria-pressed={!selectedCat}
-          onClick={() => setSelectedCat(null)}
-          className={`flex-shrink-0 px-4 py-2 rounded-full text-xs font-medium border transition-all ${
-            !selectedCat ? 'bg-primary/20 border-primary/40 text-primary-300' : 'bg-white/4 border-white/8 text-text-muted hover:text-text-primary'
-          }`}
-        >
+        <button type="button" aria-pressed={!selectedCat} onClick={() => setSelectedCat(null)} className={`${PILL} ${!selectedCat ? PILL_ON : PILL_OFF}`}>
           All categories
         </button>
-        {categories.map(cat => {
+        {CATEGORIES.map(cat => {
           const selected = selectedCat === cat.key;
           return (
             <button
@@ -52,10 +33,7 @@ export default function ExplorerClient() {
               type="button"
               aria-pressed={selected}
               onClick={() => setSelectedCat(selected ? null : cat.key)}
-              className={`flex-shrink-0 px-4 py-2 rounded-full text-xs font-medium border transition-all ${
-                selected ? 'text-text-primary' : 'bg-white/4 border-white/8 text-text-muted hover:text-text-primary'
-              }`}
-              style={selected ? { backgroundColor: cat.color + '20', borderColor: cat.color + '50', color: cat.textColor } : undefined}
+              className={`${PILL} ${selected ? PILL_ON : PILL_OFF}`}
             >
               {cat.label}
             </button>
@@ -64,51 +42,85 @@ export default function ExplorerClient() {
       </div>
 
       {/* Main chart */}
-      <GlassCard animate={false} className="rounded-3xl p-8 mb-12">
+      <GlassCard animate={false} className="rounded-3xl p-4 sm:p-8 mb-12">
         <div className="flex items-center gap-3 mb-8">
-          <BarChart2 className="w-5 h-5 text-primary" aria-hidden="true" />
-          <h2 className="font-display text-xl font-semibold text-text-primary">Policy Impact by Income Bracket</h2>
+          <BarChart2 className="w-5 h-5 text-primary-300" aria-hidden="true" />
+          <h2 className="font-display text-xl font-semibold text-text-primary">Example impact by income bracket</h2>
         </div>
-
-        {/* Legend */}
-        <ul className="flex flex-wrap gap-6 mb-8" aria-label="Average impact by category">
-          {displayCats.map(cat => (
-            <li key={cat.key} className="flex items-center gap-2">
-              <div className="w-3 h-3 rounded-sm" style={{ backgroundColor: cat.color }} aria-hidden="true" />
-              <span className="text-xs text-text-muted">{cat.label}</span>
-              <span className="text-xs font-mono-data text-text-primary">{cat.avgImpact}</span>
-            </li>
-          ))}
-        </ul>
-
-        {/* Bars */}
-        <div className="space-y-8">
-          {brackets.map((bracket, i) => (
-            <Reveal key={bracket.label} from="left" delay={i * 80}>
-              <p className="text-sm font-medium text-text-primary mb-3" id={`explorer-bracket-${i}`}>{bracket.label}</p>
-              <ul className="flex gap-2" aria-labelledby={`explorer-bracket-${i}`}>
-                {displayCats.map(cat => {
-                  const pct = bracket.data[cat.key];
-                  return (
-                    <li key={cat.key} className="flex-1">
-                      <div className="h-8 rounded-lg bg-white/4 overflow-hidden relative" aria-hidden="true">
-                        {/* Grows in with its row (see Reveal's group). */}
-                        <div
-                          className="h-full rounded-lg origin-left group-data-[reveal=hidden]/reveal:scale-x-0 group-data-[reveal=shown]/reveal:transition-transform group-data-[reveal=shown]/reveal:duration-700 group-data-[reveal=shown]/reveal:ease-out"
-                          style={{ width: `${pct}%`, backgroundColor: cat.color + 'AA', transitionDelay: `${i * 60 + 200}ms` }}
-                        />
-                      </div>
-                      <p className="text-meta text-text-muted text-center mt-1">
-                        <span className="sr-only">{cat.label}: </span>{pct}%
-                      </p>
-                    </li>
-                  );
-                })}
-              </ul>
-            </Reveal>
-          ))}
-        </div>
+        <BracketChart categories={displayCats} idPrefix="explorer-bracket" size="md" />
       </GlassCard>
+    </>
+  );
+}
+
+/**
+ * Whether this browser has a Supabase session. Starts signed out and stays
+ * that way if auth can't be reached, so the sign-up CTA is the fallback; the
+ * app routes still check auth themselves.
+ */
+function useSignedIn(): boolean {
+  const [signedIn, setSignedIn] = useState(false);
+
+  useEffect(() => {
+    let supabase: ReturnType<typeof createClient>;
+    try {
+      supabase = createClient();
+    } catch {
+      return; // Misconfigured env: keep the sign-up CTA.
+    }
+    // Fires INITIAL_SESSION straight away, then on every sign-in/out.
+    const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, session) => setSignedIn(!!session));
+    return () => subscription.unsubscribe();
+  }, []);
+
+  return signedIn;
+}
+
+/**
+ * The closing call to action: sign up when signed out, back to the app when
+ * signed in. `stateBills` says whether state bills are fetched (Open States is
+ * configured), so the copy only promises them then.
+ */
+export function ExplorerCta({ stateBills = false }: { stateBills?: boolean }) {
+  const signedIn = useSignedIn();
+  const sources = stateBills ? 'Congress and state legislatures' : 'Congress';
+
+  if (signedIn) {
+    return (
+      <>
+        <p className="text-xs font-mono-data text-primary-300 uppercase tracking-widest mb-4">Your estimates</p>
+        <h2 className="font-display text-3xl font-bold text-text-primary mb-4">
+          See <span className="gradient-text">real bills</span> for your situation
+        </h2>
+        <p className="text-text-muted mb-8 max-w-lg mx-auto">
+          Your dashboard lists official bills matched to your profile. Analyze any of them for an estimated dollar
+          impact, with its assumptions and a confidence rating.
+        </p>
+        <div className="flex flex-wrap justify-center gap-3">
+          <Button href="/dashboard" size="lg" icon={<ArrowRight className="w-4 h-4" />} iconPosition="end" className="rounded-2xl">
+            Open my dashboard
+          </Button>
+          <Button href="/policies" variant="ghost" size="lg" className="rounded-2xl">
+            Browse policies
+          </Button>
+        </div>
+      </>
+    );
+  }
+
+  return (
+    <>
+      <p className="text-xs font-mono-data text-primary-300 uppercase tracking-widest mb-4">Go deeper</p>
+      <h2 className="font-display text-3xl font-bold text-text-primary mb-4">
+        See estimates for <span className="gradient-text">your situation</span>
+      </h2>
+      <p className="text-text-muted mb-8 max-w-lg mx-auto">
+        These are made-up examples. Create a free account, tell us about your household, and get AI estimates of how
+        official bills from {sources} could affect you.
+      </p>
+      <Button href="/auth/signup" size="lg" icon={<ArrowRight className="w-4 h-4" />} iconPosition="end" className="rounded-2xl">
+        Create free account
+      </Button>
     </>
   );
 }

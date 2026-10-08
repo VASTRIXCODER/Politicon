@@ -5,6 +5,7 @@ import LenisProvider from '@/components/providers/LenisProvider';
 import MotionProvider from '@/components/providers/MotionProvider';
 import { ReadingModeProvider } from '@/components/providers/ReadingModeProvider';
 import CustomCursor from '@/components/ui/CustomCursor';
+import { SITE_DESCRIPTION, SITE_NAME, SITE_URL } from '@/lib/site';
 
 // Self-hosted at build time; exposed as --font-jetbrains (see --font-mono in globals.css).
 const jetbrainsMono = JetBrains_Mono({
@@ -20,20 +21,24 @@ const FONTSHARE_CSS =
   'https://api.fontshare.com/v2/css?f[]=clash-display@400,500,600,700&f[]=satoshi@400,500,700&display=swap';
 
 export const metadata: Metadata = {
-  title: 'Politicon — Your Money. Every Policy. Crystal Clear.',
-  description: 'AI-powered civic tech platform that translates government policies into personalized financial impact. Not political opinion — just the dollar answer.',
-  keywords: ['policy impact', 'financial analysis', 'AI civic tech', 'government policy', 'personal finance'],
-  authors: [{ name: 'Politicon' }],
+  metadataBase: new URL(SITE_URL),
+  title: {
+    default: `${SITE_NAME} — Your money. Real bills. Crystal clear.`,
+    template: `%s — ${SITE_NAME}`,
+  },
+  description: SITE_DESCRIPTION,
+  applicationName: SITE_NAME,
+  keywords: ['policy impact', 'legislation', 'Congress.gov', 'Open States', 'civic education', 'household budget', 'AI Policy Guide'],
+  authors: [{ name: SITE_NAME }],
+  // Titles and descriptions come from each page's own metadata; the share
+  // image comes from app/opengraph-image.tsx (Twitter reuses it).
   openGraph: {
-    title: 'Politicon — Your Money. Every Policy. Crystal Clear.',
-    description: 'Discover exactly how government policies affect your wallet. Personalized dollar impact, powered by AI.',
     type: 'website',
-    siteName: 'Politicon',
+    siteName: SITE_NAME,
+    locale: 'en_US',
   },
   twitter: {
     card: 'summary_large_image',
-    title: 'Politicon — Policy Impact Calculator',
-    description: 'Personalized financial impact of every government policy, powered by AI.',
   },
 };
 

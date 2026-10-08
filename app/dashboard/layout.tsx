@@ -2,7 +2,7 @@ import type { Metadata } from 'next';
 
 // Private, signed-in pages are kept out of search results.
 export const metadata: Metadata = {
-  title: 'Dashboard — Politicon',
+  title: 'Dashboard',
   robots: { index: false, follow: false },
 };
 

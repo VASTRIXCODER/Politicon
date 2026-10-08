@@ -9,13 +9,16 @@ import ShareableCards from '@/components/landing/ShareableCards';
 import PublicExplorer from '@/components/landing/PublicExplorer';
 import NewsletterSection from '@/components/landing/NewsletterSection';
 import Footer from '@/components/layout/Footer';
-import { getMemberCount } from '@/components/landing/memberCount';
+import { getPublicStats } from '@/lib/server/publicStats';
 
-// Static page, regenerated at most every 10 minutes (matches the member-count cache).
-export const revalidate = 600;
+// Static page, regenerated at most every 15 minutes (matches PUBLIC_STATS_REVALIDATE).
+export const revalidate = 900;
 
 export default async function LandingPage() {
-  const memberCount = await getMemberCount();
+  const stats = await getPublicStats();
+  // State bills are only fetched when Open States is configured; the page
+  // claims state coverage only then.
+  const stateBills = Boolean(process.env.OPENSTATES_API_KEY);
 
   return (
     <div className="relative min-h-screen">
@@ -23,11 +26,11 @@ export default async function LandingPage() {
       <div className="relative z-10">
         <Navbar />
         <main id="main" tabIndex={-1}>
-          <HeroSection />
+          <HeroSection stateBills={stateBills} />
           <MarqueeStrip />
-          <HowItWorks />
-          <StatsSection memberCount={memberCount} />
-          <FeatureShowcase />
+          <HowItWorks stateBills={stateBills} />
+          <StatsSection stats={stats} stateBills={stateBills} />
+          <FeatureShowcase stateBills={stateBills} />
           <ShareableCards />
           <PublicExplorer />
           <NewsletterSection />

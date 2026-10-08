@@ -2,7 +2,7 @@ import type { Metadata } from 'next';
 
 // Sign-in and account pages are kept out of search results.
 export const metadata: Metadata = {
-  title: 'Account — Politicon',
+  title: 'Account',
   robots: { index: false, follow: false },
 };
 

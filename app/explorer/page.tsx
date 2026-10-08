@@ -1,35 +1,30 @@
 import { Metadata } from 'next';
-import { ArrowRight, TrendingUp, TrendingDown } from 'lucide-react';
-import { mockPolicies } from '@/mocks/policies';
+import { TrendingUp, TrendingDown, Minus } from 'lucide-react';
 import GlassCard from '@/components/ui/GlassCard';
 import Badge from '@/components/ui/Badge';
-import Button from '@/components/ui/Button';
 import Navbar from '@/components/layout/Navbar';
 import Footer from '@/components/layout/Footer';
 import AmbientBackground from '@/components/landing/AmbientBackground';
 import Reveal from '@/components/landing/Reveal';
-import { formatUSD, signPrefix } from '@/lib/format';
-import type { PolicyImpact } from '@/types';
-import ExplorerClient from './ExplorerClient';
+import { IllustrativeNote } from '@/components/landing/PublicExplorer';
+import { impactSign } from '@/lib/format';
+import { CATEGORIES, EXAMPLE_COUNT_LABEL, EXAMPLE_POLICIES, formatAnnual, largestEffect } from '@/lib/explorerData';
+import ExplorerClient, { ExplorerCta } from './ExplorerClient';
 
 export const metadata: Metadata = {
-  title: 'Public Impact Explorer — Politicon',
-  description: 'Explore the average financial impact of top US policies across income brackets and states. No login required.',
+  title: 'Public Impact Explorer',
+  description:
+    'Illustrative examples of how different kinds of policy can cost or save households in each income bracket. No login required.',
 };
 
-/**
- * An example impact signed from the user's side: the sample data stores some
- * savings as negative cost changes (−$85 loan payment, marked positive), so
- * the direction decides the sign and the value only the size.
- */
-function exampleImpact(impact: PolicyImpact): string {
-  const signed = (impact.direction === 'negative' ? -1 : 1) * Math.abs(impact.value);
-  if (impact.unit.startsWith('$')) return formatUSD(signed, { signed: true, suffix: impact.unit.slice(1) });
-  const unit = impact.unit.length > 5 ? '' : impact.unit.startsWith('%') ? impact.unit : ` ${impact.unit}`;
-  return `${signPrefix(signed)}${Math.abs(impact.value).toLocaleString()}${unit}`;
-}
+const TONE = { gain: 'text-positive', loss: 'text-negative', neutral: 'text-text-muted' } as const;
+const ICON = { gain: TrendingUp, loss: TrendingDown, neutral: Minus } as const;
+const categoryLabel = (key: string) => CATEGORIES.find(c => c.key === key)?.label ?? key;
 
 export default function ExplorerPage() {
+  // State bills are only fetched when Open States is configured.
+  const stateBills = Boolean(process.env.OPENSTATES_API_KEY);
+
   return (
     <div className="min-h-screen relative">
       <AmbientBackground animated />
@@ -38,7 +33,7 @@ export default function ExplorerPage() {
         <main id="main" tabIndex={-1} className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 pt-28 pb-20">
 
           {/* Header */}
-          <div className="mb-12">
+          <div className="mb-10">
             <div className="flex items-center gap-2 mb-4">
               <Badge variant="gold">No login required</Badge>
               <Badge variant="default">Illustrative examples</Badge>
@@ -46,21 +41,30 @@ export default function ExplorerPage() {
             <h1 className="font-display text-4xl sm:text-5xl font-bold text-text-primary mb-4">
               Public Impact Explorer
             </h1>
-            <p className="text-text-muted text-lg max-w-2xl">
-              Illustrative examples of how policies can affect households across income brackets. The bills and figures below are samples, not real
-              legislation or estimates for you. Sign up to see your personalized numbers for real bills.
+            <p className="text-text-muted text-lg max-w-2xl mb-6">
+              The same policy can help one household and cost another. Explore how {EXAMPLE_COUNT_LABEL} could add up
+              for a typical household in each income bracket. The policies are hypothetical and the dollar figures are
+              made up to show the idea.
             </p>
+            <IllustrativeNote />
           </div>
 
           <ExplorerClient />
 
-          {/* Top policies table */}
+          {/* The policies behind the chart */}
           <section aria-labelledby="example-policies-heading" className="mb-12">
-            <h2 id="example-policies-heading" className="font-display text-2xl font-bold text-text-primary mb-6">Example policies (sample figures)</h2>
+            <h2 id="example-policies-heading" className="font-display text-2xl font-bold text-text-primary mb-2">
+              The {EXAMPLE_POLICIES.length} example policies behind the chart
+            </h2>
+            <p className="text-sm text-text-muted mb-6">
+              Each card shows the bracket the policy affects most. Amounts are $ per year from the household’s side: + is a
+              gain, − is a cost.
+            </p>
             <ul className="grid grid-cols-1 md:grid-cols-2 gap-4">
-              {mockPolicies.map((policy, i) => {
-                const impact = policy.impacts[0];
-                const positive = impact.direction === 'positive';
+              {EXAMPLE_POLICIES.map((policy, i) => {
+                const { bracket, amount } = largestEffect(policy);
+                const sign = impactSign(amount);
+                const Icon = ICON[sign];
                 return (
                   <li key={policy.id}>
                     {/* Repeated cards: no backdrop-filter. */}
@@ -69,22 +73,18 @@ export default function ExplorerPage() {
                         <div className="flex items-start justify-between gap-3">
                           <div className="flex-1 min-w-0">
                             <div className="flex items-center gap-2 mb-2">
-                              <Badge variant="default">{policy.category}</Badge>
-                              <span className="text-meta text-text-muted">{policy.region}</span>
+                              <Badge variant="default">{categoryLabel(policy.category)}</Badge>
+                              <span className="text-meta text-text-muted">{policy.scope} example</span>
                             </div>
                             <h3 className="text-sm font-medium text-text-primary leading-snug">{policy.title}</h3>
-                            <p className="text-meta text-text-muted mt-1 line-clamp-2">{policy.summary}</p>
+                            <p className="text-meta text-text-muted mt-1">{policy.summary}</p>
                           </div>
                           <div className="text-right flex-shrink-0">
                             <div className="flex items-center gap-1 justify-end">
-                              {positive
-                                ? <TrendingUp className="w-3.5 h-3.5 text-positive" aria-hidden="true" />
-                                : <TrendingDown className="w-3.5 h-3.5 text-negative" aria-hidden="true" />}
-                              <p className={`font-mono-data text-sm font-bold ${positive ? 'text-positive' : 'text-negative'}`}>
-                                {exampleImpact(impact)}
-                              </p>
+                              <Icon className={`w-3.5 h-3.5 ${TONE[sign]}`} aria-hidden="true" />
+                              <p className={`font-mono-data text-sm font-bold ${TONE[sign]}`}>{formatAnnual(amount)}</p>
                             </div>
-                            <p className="text-meta text-text-muted">{impact.label}</p>
+                            <p className="text-meta text-text-muted">{bracket.label} households</p>
                           </div>
                         </div>
                       </GlassCard>
@@ -95,24 +95,9 @@ export default function ExplorerPage() {
             </ul>
           </section>
 
-          {/* CTA */}
-          <Reveal className="glass-strong rounded-3xl p-10 text-center">
-            <p className="text-xs font-mono-data text-primary-300 uppercase tracking-widest mb-4">Go deeper</p>
-            <h2 className="font-display text-3xl font-bold text-text-primary mb-4">
-              See your <span className="gradient-text">personalized numbers</span>
-            </h2>
-            <p className="text-text-muted mb-8 max-w-lg mx-auto">
-              These are averages. Sign up free and get impact calculations specific to your income, state, family situation, and financial profile.
-            </p>
-            <Button
-              href="/auth/signup"
-              size="lg"
-              icon={<ArrowRight className="w-4 h-4" />}
-              iconPosition="end"
-              className="rounded-2xl"
-            >
-              Get my personalized report
-            </Button>
+          {/* CTA (auth-aware; signed-out version is rendered on the server) */}
+          <Reveal className="glass-strong rounded-3xl p-6 sm:p-10 text-center">
+            <ExplorerCta stateBills={stateBills} />
           </Reveal>
         </main>
         <Footer />

@@ -6,7 +6,7 @@ import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import { Eye, EyeOff, ArrowLeft } from 'lucide-react';
 import { createClient } from '@/lib/supabase/client';
-import { safeNextPath } from '@/lib/safeNext';
+import { onboardingPath, safeNextPath } from '@/lib/safeNext';
 import ImpactCardDemo from '@/components/landing/ImpactCardDemo';
 import Button from '@/components/ui/Button';
 import Logo from '@/components/ui/Logo';
@@ -29,17 +29,22 @@ export default function SignInPage() {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
   const [checkingSession, setCheckingSession] = useState(true);
+  // Where to go after signing in (e.g. the AI Policy Guide with a question
+  // from the landing page); carried to the sign-up page too.
+  const [next, setNext] = useState<string | null>(null);
   const id = useId();
   const emailId = `${id}-email`;
   const passwordId = `${id}-password`;
   const errorId = `${id}-error`;
 
-  // If already logged in, redirect to dashboard or onboarding
   useEffect(() => {
-    const code = new URLSearchParams(window.location.search).get('error');
+    const params = new URLSearchParams(window.location.search);
+    const code = params.get('error');
     if (code && LINK_ERRORS[code]) setError(LINK_ERRORS[code]);
+    setNext(safeNextPath(params.get('next')));
   }, []);
 
+  // If already logged in, redirect to the requested page (or the dashboard), or to onboarding
   useEffect(() => {
     supabase.auth.getUser().then(async ({ data: { user } }) => {
       if (user) {
@@ -49,9 +54,9 @@ export default function SignInPage() {
           .eq('id', user.id)
           .single();
         if (profile?.has_completed_onboarding) {
-          router.replace('/dashboard');
+          router.replace(safeNextPath(new URLSearchParams(window.location.search).get('next')) || '/dashboard');
         } else {
-          router.replace('/onboarding');
+          router.replace(onboardingPath(new URLSearchParams(window.location.search).get('next')));
         }
       } else {
         setCheckingSession(false);
@@ -75,12 +80,8 @@ export default function SignInPage() {
         .select('has_completed_onboarding')
         .eq('id', data.user.id)
         .single();
-      if (profile?.has_completed_onboarding) {
-        const next = safeNextPath(new URLSearchParams(window.location.search).get('next'));
-        router.push(next || '/dashboard');
-      } else {
-        router.push('/onboarding');
-      }
+      const next = new URLSearchParams(window.location.search).get('next');
+      router.push(profile?.has_completed_onboarding ? safeNextPath(next) || '/dashboard' : onboardingPath(next));
     }
   };
 
@@ -167,7 +168,7 @@ export default function SignInPage() {
 
           <p className="text-center text-sm text-text-muted mt-6">
             Don&apos;t have an account?{' '}
-            <Link href="/auth/signup" className="text-primary-300 hover:text-text-primary font-medium rounded">Sign up free</Link>
+            <Link href={next ? `/auth/signup?next=${encodeURIComponent(next)}` : '/auth/signup'} className="text-primary-300 hover:text-text-primary font-medium rounded">Sign up free</Link>
           </p>
         </m.div>
       </main>
@@ -175,7 +176,7 @@ export default function SignInPage() {
       {/* Right: Animated card */}
       <aside aria-label="Example analysis preview" className="hidden lg:flex flex-1 items-center justify-center p-16 relative z-10">
         <div className="text-center">
-          <p className="text-text-muted text-sm mb-8 font-mono-data">Live policy analysis preview</p>
+          <p className="text-text-muted text-sm mb-8 font-mono-data">Example analysis, illustrative figures</p>
           <ImpactCardDemo />
         </div>
       </aside>

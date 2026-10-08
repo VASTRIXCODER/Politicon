@@ -6,6 +6,7 @@ import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import { Eye, EyeOff, ArrowLeft, Mail } from 'lucide-react';
 import { createClient } from '@/lib/supabase/client';
+import { onboardingPath, safeNextPath } from '@/lib/safeNext';
 import ImpactCardDemo from '@/components/landing/ImpactCardDemo';
 import Button from '@/components/ui/Button';
 import Logo from '@/components/ui/Logo';
@@ -20,6 +21,17 @@ const RESEND_COOLDOWN_S = 60;
 
 const supabase = createClient();
 
+const nextParam = () => new URLSearchParams(window.location.search).get('next');
+/** Where an already-onboarded member goes: a validated ?next, else the dashboard. */
+const afterSignIn = () => safeNextPath(nextParam()) || '/dashboard';
+/** Where a member who hasn't finished their profile goes: onboarding, then ?next. */
+const toOnboarding = () => onboardingPath(nextParam());
+/** The confirmation email's link: the auth callback, then on to ?next (via onboarding for a new account). */
+const confirmRedirect = () => {
+  const next = safeNextPath(nextParam());
+  return `${window.location.origin}/auth/callback${next ? `?next=${encodeURIComponent(next)}` : ''}`;
+};
+
 export default function SignUpPage() {
   const router = useRouter();
 
@@ -30,6 +42,9 @@ export default function SignUpPage() {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
   const [checkingSession, setCheckingSession] = useState(true);
+  // Where a returning member goes once signed in (carried from the sign-in
+  // page). A brand-new account always goes through onboarding first.
+  const [next, setNext] = useState<string | null>(null);
   // When Supabase requires email confirmation, show a waiting screen instead of
   // silently pushing the user somewhere they can't do anything.
   const [awaitingConfirmation, setAwaitingConfirmation] = useState(false);
@@ -69,6 +84,10 @@ export default function SignUpPage() {
   // come back once they're 18.
   const tooYoung = !!birthYear && THIS_YEAR - Number(birthYear) <= MIN_AGE;
 
+  useEffect(() => {
+    setNext(safeNextPath(new URLSearchParams(window.location.search).get('next')));
+  }, []);
+
   // On mount: if the user is already fully signed in, route them appropriately.
   // We only redirect existing sessions — a brand-new signup always goes to onboarding.
   useEffect(() => {
@@ -79,7 +98,7 @@ export default function SignUpPage() {
           .select('has_completed_onboarding')
           .eq('id', user.id)
           .single();
-        router.replace(profile?.has_completed_onboarding ? '/dashboard' : '/onboarding');
+        router.replace(profile?.has_completed_onboarding ? afterSignIn() : toOnboarding());
       } else {
         setCheckingSession(false);
       }
@@ -96,7 +115,7 @@ export default function SignUpPage() {
           .select('has_completed_onboarding')
           .eq('id', session.user.id)
           .single();
-        router.push(profile?.has_completed_onboarding ? '/dashboard' : '/onboarding');
+        router.push(profile?.has_completed_onboarding ? afterSignIn() : toOnboarding());
       }
     });
     return () => subscription.unsubscribe();
@@ -116,8 +135,9 @@ export default function SignUpPage() {
         // Recorded on the profile by the handle_new_user trigger.
         data: { first_name: firstName.trim().slice(0, 80), terms_version: TERMS_VERSION, ai_processing_consent: true },
         // After clicking the confirmation email, redirect back to the OAuth
-        // callback which already routes new vs. returning users correctly.
-        emailRedirectTo: `${window.location.origin}/auth/callback`,
+        // callback which already routes new vs. returning users correctly
+        // (a ?next destination is reached after onboarding).
+        emailRedirectTo: confirmRedirect(),
       },
     });
 
@@ -138,7 +158,7 @@ export default function SignUpPage() {
     if (data.session) {
       // Email confirmation is disabled — user is immediately signed in.
       // Push straight to onboarding.
-      router.push('/onboarding');
+      router.push(toOnboarding());
     } else {
       // Email confirmation is enabled — Supabase sent a confirmation link.
       // Show a "check your email" screen and wait for the SIGNED_IN event.
@@ -154,7 +174,7 @@ export default function SignUpPage() {
     const { error: resendError } = await supabase.auth.resend({
       type: 'signup',
       email: confirmedEmail,
-      options: { emailRedirectTo: `${window.location.origin}/auth/callback` },
+      options: { emailRedirectTo: confirmRedirect() },
     });
     setResendNote(resendError
       ? friendlyAuthError(resendError, 'We couldn’t resend the email. Please try again in a minute.')
@@ -355,7 +375,7 @@ export default function SignUpPage() {
 
           <p className="text-center text-sm text-text-muted mt-6">
             Already have an account?{' '}
-            <Link href="/auth/signin" className="text-primary-300 hover:text-text-primary font-medium rounded">Sign in</Link>
+            <Link href={next ? `/auth/signin?next=${encodeURIComponent(next)}` : '/auth/signin'} className="text-primary-300 hover:text-text-primary font-medium rounded">Sign in</Link>
           </p>
         </m.div>
       </main>

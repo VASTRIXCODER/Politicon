@@ -4,14 +4,18 @@ import LegalPage, { Section } from '@/components/legal/LegalPage';
 import { SUPPORT_EMAIL } from '@/lib/legal';
 
 export const metadata: Metadata = {
-  title: 'Help — Politicon',
+  title: 'Help',
   description: 'Answers to common questions about Politicon, and how to reach support.',
 };
 
-const FAQ: { q: string; a: React.ReactNode }[] = [
+// State bills are only fetched when Open States is configured, so the answer
+// about sources depends on it (as on the landing page).
+const buildFaq = (stateBills: boolean): { q: string; a: React.ReactNode }[] => [
   {
     q: 'Where do the policies come from?',
-    a: <>Federal bills and laws come from Congress.gov and state bills from Open States. Each policy links to its official record and shows its status and latest action. The AI picks the ones most relevant to your profile and explains them.</>,
+    a: stateBills
+      ? <>Federal bills and laws come from Congress.gov and state bills from Open States. Each policy links to its official record and shows its status and latest action. The AI picks the ones most relevant to your profile and explains them.</>
+      : <>Federal bills and laws come from Congress.gov; state legislature bills aren&apos;t included at the moment. Each policy links to its official record and shows its status and latest action. The AI picks the ones most relevant to your profile and explains them.</>,
   },
   {
     q: 'How are the dollar estimates made?',
@@ -36,9 +40,10 @@ const FAQ: { q: string; a: React.ReactNode }[] = [
 ];
 
 export default function HelpPage() {
+  const faq = buildFaq(Boolean(process.env.OPENSTATES_API_KEY));
   return (
-    <LegalPage title="Help" intro="Quick answers to common questions. If you can't find what you need, email us and a person will reply." showUpdated={false}>
-      {FAQ.map(({ q, a }) => (
+    <LegalPage title="Help" intro="Quick answers to common questions. If you can't find what you need, email us and a person will reply.">
+      {faq.map(({ q, a }) => (
         <Section key={q} title={q}>
           <p>{a}</p>
         </Section>
