@@ -12,6 +12,7 @@ import Navbar from '@/components/layout/Navbar';
 import AmbientBackground from '@/components/landing/AmbientBackground';
 import { apiFetch } from '@/lib/api';
 import ViewFullImpactButton from '@/components/ViewFullImpactButton';
+import AiDisclaimer from '@/components/ui/AiDisclaimer';
 import { CumulativeStackedBar, CumulativeProjectionLines } from '@/components/charts/Charts';
 import Link from 'next/link';
 
@@ -104,7 +105,7 @@ function AnalysisBody({ row, headingTag = 'h4' }: { row: PolicyAnalysisRow; head
       )}
       {recs.length > 0 && (
         <div>
-          <H className={heading}>Recommendations</H>
+          <H className={heading}>Things to consider</H>
           <ul className="list-disc pl-5 space-y-1 text-sm text-text-muted">
             {recs.map((r, i) => <li key={i}>{r.step}</li>)}
           </ul>
@@ -280,7 +281,7 @@ function ImpactContent() {
                   <p className="text-sm text-text-muted mb-6 max-w-sm mx-auto">Browse the policy feed on your dashboard to get started.</p>
                   <div className="flex gap-3 justify-center">
                     <Link href="/dashboard"><button className="bg-primary/20 hover:bg-primary/30 border border-primary/20 text-primary px-5 py-3 rounded-xl text-sm font-medium transition-all">Go to Dashboard</button></Link>
-                    <Link href="/advisor"><button className="glass hover:border-white/16 text-text-muted px-5 py-3 rounded-xl text-sm transition-all">Ask Advisor</button></Link>
+                    <Link href="/advisor"><button className="glass hover:border-white/16 text-text-muted px-5 py-3 rounded-xl text-sm transition-all">Ask the Policy Guide</button></Link>
                   </div>
                 </GlassCard>
               ) : (
@@ -463,7 +464,10 @@ function ImpactContent() {
                           <Loader2 className="w-4 h-4 animate-spin text-primary" /> Generating combined outlook…
                         </div>
                       ) : cumSummary ? (
-                        <p className="text-sm text-text-muted leading-relaxed">{cumSummary}</p>
+                        <>
+                          <p className="text-sm text-text-muted leading-relaxed">{cumSummary}</p>
+                          <AiDisclaimer className="mt-3" />
+                        </>
                       ) : (
                         <p className="text-sm text-text-muted">Adjust your selection to generate a combined outlook.</p>
                       )}

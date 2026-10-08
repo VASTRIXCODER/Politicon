@@ -90,6 +90,19 @@ async function startGeneration(req: NextRequest, ctx: RequestContext, row: FeedR
   return generatingResponse(row);
 }
 
+/** Policies the user marked "Not relevant to me" — kept out of future feeds. */
+async function dismissedPolicyIds(userId: string): Promise<Set<string>> {
+  const { data, error } = await createAdminClient()
+    .from('ai_feedback')
+    .select('target_id')
+    .eq('user_id', userId)
+    .eq('target_type', 'feed_item')
+    .eq('rating', 'not_relevant')
+    .limit(500);
+  if (error) return new Set(); // feedback table not migrated yet
+  return new Set((data || []).map((r) => r.target_id as string));
+}
+
 /** Background worker: build the feed and store it, or record the failure. */
 async function runGeneration(profile: UserProfile, meta: { feature: 'feed'; userId: string; usageId: number }, lock: string) {
   const admin = createAdminClient();
@@ -103,7 +116,8 @@ async function runGeneration(profile: UserProfile, meta: { feature: 'feed'; user
       .from('analyzed_policies')
       .select('policy_id, policy_title, bill_number')
       .eq('user_id', meta.userId);
-    const policies = reconcilePolicyIds(generated, analyzed || []);
+    const dismissed = await dismissedPolicyIds(meta.userId);
+    const policies = reconcilePolicyIds(generated, analyzed || []).filter((p) => !dismissed.has(p.id));
     const { data: written, error } = await admin
       .from('user_policy_feed')
       .update({ policies, updated_at: new Date().toISOString(), generating_until: null, failed_until: null })

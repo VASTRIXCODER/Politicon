@@ -7,6 +7,7 @@ import { rateLimit } from '@/lib/rateLimit';
 import { checkAiBudget } from '@/lib/server/aiGuard';
 import { aiFailure } from '@/lib/server/aiErrors';
 import { resolvePolicy } from '@/lib/server/policies';
+import { classifyGuardrail, GUARDRAIL_REPLIES } from '@/lib/guardrails';
 
 export const dynamic = 'force-dynamic';
 export const maxDuration = 60;
@@ -38,6 +39,13 @@ export async function POST(req: NextRequest) {
     return apiError(400, 'invalid_request', 'The last message must be from the user.');
   }
   const simple = body.data.simpleMode ?? auth.ctx.simpleMode;
+
+  // Voting-advice requests and signs of crisis get a fixed, reviewed reply —
+  // never a model's judgment — and use no AI budget.
+  const guardrail = policyId ? null : classifyGuardrail(history[history.length - 1].content);
+  if (guardrail) {
+    return NextResponse.json({ response: GUARDRAIL_REPLIES[guardrail], hasFullAnalysis: false, guardrail });
+  }
 
   const limited = await rateLimit(req, 'advisor', { userId: user.id });
   if (!limited.ok) return limited.response;

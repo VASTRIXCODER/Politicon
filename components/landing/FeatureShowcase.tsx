@@ -37,8 +37,8 @@ const features = [
   },
   {
     icon: MessageSquare,
-    tag: 'AI Advisor',
-    title: 'Your Financial Policy Advisor',
+    tag: 'AI Policy Guide',
+    title: 'Your AI Policy Guide',
     description: "Ask anything about how policies affect your life. The AI knows your profile and answers with dollar specifics, not political talking points.",
     bullets: [
       'Full profile context in every answer',

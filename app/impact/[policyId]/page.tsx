@@ -13,6 +13,8 @@ import { EMPLOYMENT_STATUSES, FILING_STATUSES, HOUSING_SITUATIONS, INCOME_RANGES
 import { requestAnalysis } from '@/lib/analysisClient';
 import { coerceFullAnalysis } from '@/lib/analysisSchema';
 import PolicyProvenance from '@/components/PolicyProvenance';
+import FeedbackControls from '@/components/FeedbackControls';
+import AiDisclaimer, { confidenceLabel } from '@/components/ui/AiDisclaimer';
 import { apiFetch } from '@/lib/api';
 import { createClient } from '@/lib/supabase/client';
 import { FullAnalysis, ImpactDirection, Policy } from '@/types';
@@ -46,7 +48,7 @@ const TAB_LABELS: Record<Tab, string> = {
   timeline: 'Timeline',
   economic: 'Economic Context',
   deepdive: 'Deep Dive',
-  action: 'Action Plan',
+  action: 'Things to Consider',
 };
 
 /** Look up a Simple Mode "What this means for you" summary for a page section. */
@@ -294,7 +296,7 @@ export default function PolicyDetailPage({ params }: { params: Promise<{ policyI
     <DetailView
       analysis={analysis} profile={profile} analyzedAt={analyzedAt} tab={tab} setTab={setTab} onBack={() => router.back()}
       stale={stale} reanalyzing={generating} reanalyzeError={generateError} onReanalyze={() => generate(true)}
-      onDelete={deleteAnalysis}
+      onDelete={deleteAnalysis} policyId={policyId}
     />
   );
 }
@@ -315,11 +317,12 @@ function Shell({ children }: { children: React.ReactNode }) {
 // DETAIL VIEW
 // ===========================================================================
 function DetailView({
-  analysis: a, profile, analyzedAt, tab, setTab, onBack, stale, reanalyzing, reanalyzeError, onReanalyze, onDelete,
+  analysis: a, profile, analyzedAt, tab, setTab, onBack, stale, reanalyzing, reanalyzeError, onReanalyze, onDelete, policyId,
 }: {
   analysis: FullAnalysis; profile: ProfileSnapshot | null; analyzedAt: string | null;
   tab: Tab; setTab: (_t: Tab) => void; onBack: () => void;
   stale: boolean; reanalyzing: boolean; reanalyzeError: string | null; onReanalyze: () => void; onDelete: () => void;
+  policyId: string;
 }) {
   const { simple } = useReadingMode();
   const income = useMemo(() => incomeMidpoint({ incomeRange: profile?.incomeRange || '' } as Parameters<typeof incomeMidpoint>[0]), [profile]);
@@ -330,6 +333,8 @@ function DetailView({
       .filter((d) => d.value !== 0),
     [a.categoryImpacts]
   );
+
+  const confidence = confidenceLabel(a.confidenceScore);
 
   const profileChips = useMemo(() => {
     if (!profile) return [];
@@ -369,8 +374,11 @@ function DetailView({
             <Badge variant="primary">{titleCase(a.category)}</Badge>
             <span className={`text-[11px] font-mono-data px-2.5 py-0.5 rounded-full border capitalize ${getStatusColor(a.status)}`}>{a.status}</span>
             {a.billNumber && <Badge variant="default">{a.billNumber}</Badge>}
-            <span className="text-[11px] text-text-muted font-mono-data flex items-center gap-1 ml-1">
-              <Sparkles className="w-3 h-3 text-primary" /> {a.confidenceScore}% confidence
+            <span
+              className={`text-[11px] font-mono-data flex items-center gap-1 ml-1 ${confidence.tone}`}
+              title={a.confidenceScore ? `Model-rated confidence: ${a.confidenceScore} out of 100` : undefined}
+            >
+              <Sparkles className="w-3 h-3" aria-hidden /> {confidence.label}
             </span>
           </div>
           <h1 className="font-display text-3xl sm:text-4xl font-bold text-text-primary leading-tight">{a.policyTitle}</h1>
@@ -380,6 +388,7 @@ function DetailView({
           <div className="mt-3 max-w-3xl">
             <PolicyProvenance record={a.record} />
           </div>
+          <AiDisclaimer className="mt-3 max-w-3xl" />
         </motion.div>
 
         {stale && (
@@ -444,6 +453,15 @@ function DetailView({
         {tab === 'economic' && <EconomicContextTab a={a} simple={simple} income={income} />}
         {tab === 'deepdive' && <DeepDiveTab a={a} />}
         {tab === 'action' && <ActionTab a={a} />}
+
+        <div className="mt-10 pt-6 border-t border-white/5">
+          <FeedbackControls
+            key={analyzedAt || 'analysis'}
+            targetType="analysis"
+            targetId={policyId}
+            onReanalyze={reanalyzing ? undefined : onReanalyze}
+          />
+        </div>
 
         {/* Jargon Buster sidebar — only in Simple Mode */}
         {simple && (
@@ -522,7 +540,7 @@ function OverviewTab({ a, categoryBars, simple, income }: { a: FullAnalysis; cat
 
       {/* Top recommendations */}
       <GlassCard className="rounded-3xl p-7" animate={false}>
-        <h3 className="font-display text-base font-semibold text-text-primary mb-4">Top Recommendations</h3>
+        <h3 className="font-display text-base font-semibold text-text-primary mb-4">Things to consider</h3>
         <div className="space-y-3">
           {a.recommendations.slice(0, 3).map((r, i) => (
             <div key={i} className="flex items-start gap-3">
@@ -865,7 +883,7 @@ function DeepDiveTab({ a }: { a: FullAnalysis }) {
   );
 }
 
-// ----- Tab 5: Action Plan -----
+// ----- Tab 5: Things to consider -----
 const PRIORITY_STYLES: Record<string, string> = {
   high: 'bg-red-500/10 border-red-500/20 text-red-400',
   medium: 'bg-amber-500/10 border-amber-500/20 text-amber-400',
@@ -912,7 +930,7 @@ function ActionTab({ a }: { a: FullAnalysis }) {
     <div className="space-y-6">
       <GlassCard className="rounded-3xl p-7" animate={false}>
         <div className="flex items-center justify-between mb-5">
-          <h3 className="font-display text-base font-semibold text-text-primary">Your Action Plan</h3>
+          <h3 className="font-display text-base font-semibold text-text-primary">Things you could consider</h3>
           <span className="text-xs font-mono-data text-text-muted">{doneCount}/{a.recommendations.length} done</span>
         </div>
         <div className="space-y-3">

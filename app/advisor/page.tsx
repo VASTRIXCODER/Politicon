@@ -12,6 +12,8 @@ import { ChatMessage, DiscoveredPolicy } from '@/types';
 import Navbar from '@/components/layout/Navbar';
 import AmbientBackground from '@/components/landing/AmbientBackground';
 import ViewFullImpactButton from '@/components/ViewFullImpactButton';
+import FeedbackControls from '@/components/FeedbackControls';
+import AiDisclaimer from '@/components/ui/AiDisclaimer';
 import ReadingModeToggle from '@/components/ui/ReadingModeToggle';
 import { useReadingMode } from '@/components/providers/ReadingModeProvider';
 import { apiFetch } from '@/lib/api';
@@ -49,6 +51,8 @@ interface ExtendedMessage extends ChatMessage {
   compiling?: boolean;
   /** UI-only messages (greeting, errors) are never sent to the model or saved. */
   local?: boolean;
+  /** Set when the reply is a fixed safety response rather than model output. */
+  guardrail?: string;
 }
 
 function TypingIndicator() {
@@ -70,8 +74,9 @@ function TypingIndicator() {
   );
 }
 
-function MessageBubble({ message }: { message: ExtendedMessage }) {
+function MessageBubble({ message, sessionId }: { message: ExtendedMessage; sessionId: string | null }) {
   const isUser = message.role === 'user';
+  const isModelReply = !isUser && !message.local && !message.guardrail;
   const isPolicyReply = !isUser && (!!message.dollarLine || !!message.policyId);
 
   return (
@@ -121,6 +126,13 @@ function MessageBubble({ message }: { message: ExtendedMessage }) {
         <p className={`text-[10px] mt-2 ${isUser ? 'text-primary/60' : 'text-text-muted/50'}`}>
           {new Date(message.timestamp).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
         </p>
+        {isModelReply && (
+          <FeedbackControls
+            targetType="chat_reply"
+            targetId={`${sessionId || 'unsaved'}:${message.id}`}
+            className="mt-1"
+          />
+        )}
       </div>
     </motion.div>
   );
@@ -169,7 +181,7 @@ const INITIAL_MESSAGE: ExtendedMessage = {
   id: '0',
   local: true,
   role: 'assistant',
-  content: "Hi! I'm your Politicon AI Financial Advisor. I have your profile loaded and can tell you exactly how any policy affects your wallet — in real dollars.\n\nPick a policy from the feed on the right, or ask me anything.",
+  content: "Hi! I'm Politicon's AI Policy Guide. I can explain how policies may affect your finances, using the ranges in your profile. My numbers are educational estimates, not financial advice.\n\nPick a policy from the feed on the right, or ask me anything.",
   timestamp: new Date(),
 };
 
@@ -298,7 +310,7 @@ function AdvisorInner() {
       .map(m => ({ role: m.role, content: m.content.slice(0, MAX_TURN_CHARS) }));
     const res = await apiFetch<{
       response: string; summary?: string; dollarLine?: string; policyId?: string;
-      policyTitle?: string; category?: string; hasFullAnalysis?: boolean;
+      policyTitle?: string; category?: string; hasFullAnalysis?: boolean; guardrail?: string;
     }>('/api/advisor', {
       body: { messages: history, ...(policyMeta ? { policyId: policyMeta.policyId } : {}), simpleMode: simple },
     });
@@ -325,6 +337,7 @@ function AdvisorInner() {
       policyTitle: data.policyTitle || policyMeta?.policyTitle || undefined,
       category: data.category || policyMeta?.category || undefined,
       hasFullAnalysis: data.hasFullAnalysis || false,
+      guardrail: data.guardrail || undefined,
     };
     const finalMessages = [...newMessages, aiMsg];
     setMessages(finalMessages);
@@ -454,7 +467,7 @@ function AdvisorInner() {
                   <Zap className="w-5 h-5 text-primary" />
                 </div>
                 <div className="flex-1">
-                  <h1 className="font-display text-xl font-bold text-text-primary">AI Financial Advisor</h1>
+                  <h1 className="font-display text-xl font-bold text-text-primary">AI Policy Guide</h1>
                   <div className="flex items-center gap-1.5">
                     <span className="w-2 h-2 rounded-full bg-emerald-400 animate-pulse" />
                     <p className="text-xs text-text-muted">Profile loaded • Non-partisan • Dollar-specific answers</p>
@@ -481,7 +494,7 @@ function AdvisorInner() {
 
               {/* Messages */}
               <div className="flex-1 overflow-y-auto pr-1" style={{ scrollbarWidth: 'thin' }}>
-                {messages.map(msg => <MessageBubble key={msg.id} message={msg} />)}
+                {messages.map(msg => <MessageBubble key={msg.id} message={msg} sessionId={activeSessionId} />)}
                 {isTyping && <TypingIndicator />}
                 <div ref={messagesEndRef} />
               </div>
@@ -517,7 +530,7 @@ function AdvisorInner() {
                   </button>
                 </div>
               </div>
-              <p className="text-[10px] text-text-muted text-center mt-2">Not financial advice. For informational purposes only.</p>
+              <AiDisclaimer className="mt-2 justify-center text-center" />
             </div>
           </div>
 
