@@ -378,11 +378,9 @@ function DetailView({
             <Badge variant="primary">{titleCase(a.category)}</Badge>
             <span className={`text-[11px] font-mono-data px-2.5 py-0.5 rounded-full border capitalize ${getStatusColor(a.status)}`}>{a.status}</span>
             {a.billNumber && <Badge variant="default">{a.billNumber}</Badge>}
-            <span
-              className={`text-[11px] font-mono-data flex items-center gap-1 ml-1 ${confidence.tone}`}
-              title={a.confidenceScore ? `Model-rated confidence: ${a.confidenceScore} out of 100` : undefined}
-            >
+            <span className={`text-[11px] font-mono-data flex items-center gap-1 ml-1 ${confidence.tone}`}>
               <Sparkles className="w-3 h-3" aria-hidden /> {confidence.label}
+              {a.confidenceScore ? <> · {a.confidenceScore}/100<span className="sr-only"> (model-rated)</span></> : null}
             </span>
           </div>
           <h1 className="font-display text-3xl sm:text-4xl font-bold text-text-primary leading-tight">{a.policyTitle}</h1>
@@ -390,7 +388,7 @@ function DetailView({
             <p className="text-xs text-text-muted mt-2">Last analyzed {new Date(analyzedAt).toLocaleString()}</p>
           )}
           <div className="mt-3 max-w-3xl">
-            <PolicyProvenance record={a.record} />
+            <PolicyProvenance record={a.record} snapshotLabel />
           </div>
           <AiDisclaimer className="mt-3 max-w-3xl" />
         </motion.div>
@@ -463,8 +461,19 @@ function DetailView({
             key={analyzedAt || 'analysis'}
             targetType="analysis"
             targetId={policyId}
-            onReanalyze={reanalyzing ? undefined : onReanalyze}
+            // Kept mounted while a re-analysis runs (so focus stays put); repeat clicks are ignored.
+            onReanalyze={() => { if (!reanalyzing) onReanalyze(); }}
           />
+          {/* Progress and errors for a re-analysis started from here or from the banner above. */}
+          <div role="status" className="mt-2 text-xs">
+            {reanalyzing ? (
+              <span className="flex items-center gap-2 text-text-muted">
+                <Loader2 className="w-3.5 h-3.5 animate-spin text-primary" aria-hidden /> Re-analyzing with your current profile…
+              </span>
+            ) : reanalyzeError && !stale ? (
+              <span className="text-red-300">{reanalyzeError}</span>
+            ) : null}
+          </div>
         </div>
 
         {/* Jargon Buster sidebar — only in Simple Mode */}
@@ -783,7 +792,7 @@ function EconomicContextTab({ a, simple, income, applies }: { a: FullAnalysis; s
             <StatRow label={simple ? 'Spendable money each month' : 'Disposable income'} value={`${money(personal.disposableIncomeMonthly)}/mo`} positive={personal.disposableIncomeMonthly >= 0} />
             <StatRow label={simple ? 'Your net worth (1 year)' : 'Net worth (1yr)'} value={pct(personal.netWorthChange1yrPct)} positive={personal.netWorthChange1yrPct >= 0} />
             <StatRow label={simple ? 'Your net worth (3 years)' : 'Net worth (3yr)'} value={pct(personal.netWorthChange3yrPct)} positive={personal.netWorthChange3yrPct >= 0} />
-            {applies.homeEquity && (
+            {(applies.homeEquity || personal.realEstateEquityDollar !== 0) && (
               <StatRow label={simple ? 'Your home’s value' : 'Real estate equity'} value={money(personal.realEstateEquityDollar)} positive={personal.realEstateEquityDollar >= 0} />
             )}
           </div>

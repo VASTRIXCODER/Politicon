@@ -647,7 +647,7 @@ export default function DashboardPage() {
                             <p className="text-xs text-text-muted leading-relaxed">{portfolioInsight}</p>
                           </div>
                           <AiDisclaimer className="mt-3" />
-                          <FeedbackControls targetType="insight" targetId="portfolio" className="mt-1" />
+                          <FeedbackControls targetType="insight" targetId="portfolio" excerpt={portfolioInsight.slice(0, 500)} className="mt-1" />
                         </GlassCard>
                       ) : (
                         <GlassCard className="rounded-2xl p-5">

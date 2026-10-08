@@ -6,8 +6,9 @@ import { rateLimit } from '@/lib/rateLimit';
 import { checkAiBudget } from '@/lib/server/aiGuard';
 import type { UserProfile } from '@/types';
 import { createAdminClient } from '@/lib/supabase/admin';
-import { reconcilePolicyIds } from '@/lib/policyId';
+import { congressForDate, reconcilePolicyIds } from '@/lib/policyId';
 import { candidatesFor } from '@/lib/server/legislation';
+import { validRecord } from '@/lib/analysisSchema';
 
 export const dynamic = 'force-dynamic';
 // Generation runs after the response is sent (see after() below).
@@ -103,21 +104,52 @@ async function dismissedPolicyIds(userId: string): Promise<Set<string>> {
   return new Set((data || []).map((r) => r.target_id as string));
 }
 
+/**
+ * The user's analyses, for keeping feed ids stable (see reconcilePolicyIds).
+ * An analysis without a stored record is dated to the Congress it was made in.
+ */
+async function analyzedPolicies(userId: string) {
+  const { data } = await createAdminClient()
+    .from('analyzed_policies')
+    .select('policy_id, policy_title, bill_number, created_at, analysis->record')
+    .eq('user_id', userId);
+  return (data || []).map((row) => {
+    const record = validRecord(row.record);
+    return {
+      policy_id: row.policy_id as string,
+      policy_title: (row.policy_title as string | null) ?? null,
+      bill_number: (row.bill_number as string | null) ?? null,
+      region: record?.region ?? null,
+      congress: record?.congress ?? congressForDate(row.created_at as string | null),
+      session: record?.session ?? null,
+    };
+  });
+}
+
 /** Background worker: build the feed and store it, or record the failure. */
 async function runGeneration(profile: UserProfile, meta: { feature: 'feed'; userId: string; usageId: number }, lock: string) {
   const admin = createAdminClient();
   try {
     const signal = AbortSignal.timeout(GENERATION_TIMEOUT_MS);
     // Official records first; the model chooses among them and explains them.
-    const candidates = await candidatesFor(profile.state);
-    const generated = await discoverPolicyFeed(profile, meta, signal, candidates);
+    const [candidates, analyzed, dismissed] = await Promise.all([
+      candidatesFor(profile.state), analyzedPolicies(meta.userId), dismissedPolicyIds(meta.userId),
+    ]);
+    // Dismissed policies are never offered to the model. A dismissed id can be
+    // an older analysis's id that a record reconciles to, so check those too.
+    const exclude = new Set(dismissed);
+    if (dismissed.size) {
+      for (const c of candidates) {
+        if (dismissed.has(reconcilePolicyIds([c], analyzed)[0]?.id)) exclude.add(c.id);
+      }
+    }
+    const generated = await discoverPolicyFeed(profile, meta, signal, candidates, exclude);
+    // Read again: the user may have dismissed a policy while the model ran.
+    const dismissedSince = await dismissedPolicyIds(meta.userId);
     // Keep ids stable against analyses the user already has.
-    const { data: analyzed } = await admin
-      .from('analyzed_policies')
-      .select('policy_id, policy_title, bill_number')
-      .eq('user_id', meta.userId);
-    const dismissed = await dismissedPolicyIds(meta.userId);
-    const policies = reconcilePolicyIds(generated, analyzed || []).filter((p) => !dismissed.has(p.id));
+    const policies = reconcilePolicyIds(generated, analyzed).filter((p) => !dismissed.has(p.id) && !dismissedSince.has(p.id));
+    // An empty feed would be read as "no feed" and regenerated on every visit; back off instead.
+    if (policies.length === 0) throw new Error('Every policy in the generated feed was dismissed');
     const { data: written, error } = await admin
       .from('user_policy_feed')
       .update({ policies, updated_at: new Date().toISOString(), generating_until: null, failed_until: null })

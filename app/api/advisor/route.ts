@@ -41,8 +41,9 @@ export async function POST(req: NextRequest) {
   const simple = body.data.simpleMode ?? auth.ctx.simpleMode;
 
   // Voting-advice requests and signs of crisis get a fixed, reviewed reply —
-  // never a model's judgment — and use no AI budget.
-  const guardrail = policyId ? null : classifyGuardrail(history[history.length - 1].content);
+  // never a model's judgment — and use no AI budget. This applies with a
+  // policyId too: the user can replace the pre-filled policy question.
+  const guardrail = classifyGuardrail(history[history.length - 1].content);
   if (guardrail) {
     return NextResponse.json({ response: GUARDRAIL_REPLIES[guardrail], hasFullAnalysis: false, guardrail });
   }
@@ -57,9 +58,9 @@ export async function POST(req: NextRequest) {
     const budget = await checkAiBudget('advisor_policy', user.id);
     if (!budget.ok) return budget.response;
     try {
+      // The resolved policy carries its official record (bill, jurisdiction, status, latest action).
       const reply = await advisorPolicyReply(
-        policy.title, policy.summary, profile,
-        { feature: 'advisor_policy', userId: user.id, usageId: budget.usageId }, simple, requestDeadline(req),
+        policy, profile, { feature: 'advisor_policy', userId: user.id, usageId: budget.usageId }, simple, requestDeadline(req),
       );
       return NextResponse.json({
         response: reply.fullResponse,

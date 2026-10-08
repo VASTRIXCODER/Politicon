@@ -9,9 +9,20 @@ describe('applicability', () => {
 
   it('hides home equity for renters and people living with family', () => {
     expect(applicability({ housingSituation: 'rent' }).homeEquity).toBe(false);
+    expect(applicability({ housingSituation: 'rent_assisted' }).homeEquity).toBe(false);
     expect(applicability({ housingSituation: 'live_with_family' }).homeEquity).toBe(false);
+    expect(applicability({ housingSituation: 'campus' }).homeEquity).toBe(false);
     expect(applicability({ housingSituation: 'own_mortgage' }).homeEquity).toBe(true);
     expect(applicability({ housingSituation: 'own_outright' }).homeEquity).toBe(true);
+  });
+
+  it('keeps home equity when housing is unknown or the user has a mortgage', () => {
+    expect(applicability({ housingSituation: 'other' }).homeEquity).toBe(true);
+    expect(applicability({ housingSituation: '' }).homeEquity).toBe(true);
+    expect(applicability({ housingSituation: null }).homeEquity).toBe(true);
+    expect(applicability({ housingSituation: 'rent', debtTypes: ['mortgage'] }).homeEquity).toBe(true);
+    expect(applicability({ housingSituation: 'live_with_family', debtTypes: ['student_loans', 'mortgage'] }).homeEquity).toBe(true);
+    expect(applicability({ housingSituation: 'rent', debtTypes: ['student_loans'] }).homeEquity).toBe(false);
   });
 
   it('hides debt rows only when the user said they have no debt', () => {

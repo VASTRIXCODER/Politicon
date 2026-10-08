@@ -46,7 +46,7 @@ export interface Policy {
   summary: string;
   description: string;
   category: string;
-  status: 'proposed' | 'passed' | 'enacted' | 'rejected';
+  status: 'proposed' | 'passed' | 'enacted' | 'repealed' | 'rejected';
   date: string;
   source: string;
   sourceUrl: string;
@@ -166,9 +166,15 @@ export interface PolicyRecord {
   latestAction?: string | null;
   /** When the feed was built. */
   asOf: string;
+  /** The official status, bill number and jurisdiction (absent on records saved before they were kept). */
+  status?: 'proposed' | 'passed' | 'enacted' | 'repealed' | 'rejected';
+  billNumber?: string;
+  region?: string;
   congress?: number;
   billType?: string;
   number?: string;
+  /** State legislative session, where the source gives one. */
+  session?: string;
   abstract?: string;
 }
 

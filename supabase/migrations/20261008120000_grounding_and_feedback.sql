@@ -42,6 +42,24 @@ drop policy if exists "Users add own feedback" on public.ai_feedback;
 create policy "Users add own feedback" on public.ai_feedback
   for insert with check (auth.uid() = user_id);
 
+-- "Not relevant to me" takes one policy out of the stored feed in a single
+-- statement, so it can't overwrite a feed the generator wrote meanwhile.
+create or replace function public.remove_feed_item(p_user uuid, p_policy_id text)
+returns void
+language sql
+security definer
+set search_path = ''
+as $$
+  update public.user_policy_feed
+     set policies = coalesce(
+       (select jsonb_agg(e) from jsonb_array_elements(policies) e where e->>'id' is distinct from p_policy_id),
+       '[]'::jsonb)
+   where user_id = p_user and jsonb_typeof(policies) = 'array';
+$$;
+
+revoke execute on function public.remove_feed_item(uuid, text) from public, anon, authenticated;
+grant execute on function public.remove_feed_item(uuid, text) to service_role;
+
 create or replace function public.schema_version()
 returns text language sql immutable set search_path = ''
 as $$ select '20261008120000'::text $$;

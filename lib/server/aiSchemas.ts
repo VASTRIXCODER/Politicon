@@ -43,7 +43,7 @@ export const FeedSelectionOutput = z.object({
   policies: z
     .array(
       z.object({
-        ref: z.string().describe('The ref of a record from the list, e.g. "P12"'),
+        ref: z.string().describe('The ref of a record from the lists, e.g. "F12" or "S3"'),
         category: z
           .enum(['taxes', 'healthcare', 'housing', 'employment', 'education', 'retirement', 'energy', 'trade', 'transportation', 'consumer', 'other'])
           .catch('other'),

@@ -1,7 +1,7 @@
 import 'server-only';
 import Anthropic from '@anthropic-ai/sdk';
 import type { z } from 'zod/v4';
-import type { UserProfile, Policy, DiscoveredPolicy, FullAnalysis } from '@/types';
+import type { UserProfile, Policy, DiscoveredPolicy, FullAnalysis, PolicyRecord } from '@/types';
 import { incomeMidpoint } from '@/lib/simpleMode';
 import { canonicalPolicyId } from '@/lib/policyId';
 import {
@@ -9,7 +9,7 @@ import {
   FILING_STATUSES, HOME_VALUE_BANDS, HOUSING_SITUATIONS, INCOME_RANGES, INVESTMENT_TYPES, OCCUPATIONS,
   isHomeowner, isRenter, labelOf,
 } from '@/lib/profileOptions';
-import { ANALYSIS_SCHEMA_VERSION, coerceFullAnalysis, policyStatus } from '@/lib/analysisSchema';
+import { ANALYSIS_SCHEMA_VERSION, coerceFullAnalysis, officialBillNumber, policyStatus } from '@/lib/analysisSchema';
 import { recordAiUsage, type AiFeature } from '@/lib/server/aiGuard';
 import { AI_MODEL, FEATURES } from '@/lib/server/aiConfig';
 import { AnalysisOutput, FeedOutput, FeedSelectionOutput, PolicyReplyOutput, toStrictJsonSchema } from '@/lib/server/aiSchemas';
@@ -72,6 +72,10 @@ function fence(text: string, max = 2000): string {
   return text.replace(/<\/?policy>/gi, '').slice(0, max);
 }
 
+function sourceName(record: PolicyRecord): string {
+  return record.source === 'congress.gov' ? 'Congress.gov' : 'Open States';
+}
+
 /** Today's date for prompts, so "current" is anchored to now rather than training data. */
 function today(): string {
   return new Date().toLocaleDateString('en-US', { year: 'numeric', month: 'long', day: 'numeric', timeZone: 'America/New_York' });
@@ -126,6 +130,12 @@ DERIVED DOLLAR ANCHORS (use these to ground every estimate — never produce a n
 // ---------------------------------------------------------------------------
 // One place every Claude call goes through
 // ---------------------------------------------------------------------------
+
+/**
+ * A cache breakpoint only helps on a prefix long enough to be cached
+ * (Sonnet 5.5 minimum: 512 tokens ≈ 2,000 characters).
+ */
+const MIN_CACHEABLE_CHARS = 2400;
 
 /** Effort is supported on current models; older ones reject it. */
 function supportsEffort(model: string): boolean {
@@ -203,10 +213,8 @@ async function run<T = never>(meta: CallMeta, opts: RunOptions<T>): Promise<{ te
   let message: Anthropic.Message | null = null;
   let stream: ReturnType<typeof client.messages.stream> | null = null;
   try {
-    // A cache breakpoint only helps on a block long enough to be cached
-    // (Sonnet 5.5 minimum: 512 tokens ≈ 2,000 characters).
     const system: Anthropic.TextBlockParam[] = [
-      { type: 'text', text: opts.system, ...(opts.system.length >= 2400 ? { cache_control: { type: 'ephemeral' as const } } : {}) },
+      { type: 'text', text: opts.system, ...(opts.system.length >= MIN_CACHEABLE_CHARS ? { cache_control: { type: 'ephemeral' as const } } : {}) },
       ...(opts.userSystem ? [{ type: 'text' as const, text: opts.userSystem }] : []),
     ];
     const outputConfig = {
@@ -254,13 +262,16 @@ async function run<T = never>(meta: CallMeta, opts: RunOptions<T>): Promise<{ te
 // ===========================================================================
 /** Grounded mode needs at least this many official records to choose from. */
 const MIN_GROUNDED_CANDIDATES = 5;
-/** Records offered to the model (state first, then federal). */
+/** Records offered to the model: up to MAX_STATE from the user's state, the rest federal. */
 const MAX_CANDIDATES = 240;
+const MAX_STATE = 60;
+/** Federal places reserved for the most recently enacted laws. */
+const MAX_LAWS = 60;
 
-const GROUNDED_FEED_SYSTEM = `You are Politicon's policy discovery engine. You are given a list of official legislative records (federal bills and laws from Congress.gov, and bills from the user's state legislature). Choose the ones that most materially affect this household's finances and explain each in plain, non-partisan language.
+const GROUNDED_FEED_SYSTEM = `You are Politicon's policy discovery engine. You are given lists of official legislative records: federal bills and laws from Congress.gov (refs F1, F2, …) and bills from the user's state legislature (refs S1, S2, …). Choose the ones that most materially affect this household's finances and explain each in plain, non-partisan language.
 
 Rules:
-- Choose only records from the list, by their ref. The list is the authority for titles, bill numbers, status and dates; never restate or change them.
+- Choose only records from the lists, by their ref (for example "F12" or "S3"). The lists are the authority for titles, bill numbers, status and dates; never restate or change them.
 - Prefer enacted laws and bills with recent action that change taxes, benefits, prices, wages, housing, health care, education costs or retirement for households like this one. Skip ceremonial, procedural, and narrowly technical bills.
 - relevanceScore reflects real personal exposure for THIS user, not general newsworthiness.
 - summary: one sentence on what the policy does, supported by its title and latest action. If the title is vague, describe it at that level — never invent provisions.
@@ -285,47 +296,88 @@ function relevanceLabel(score: number): DiscoveredPolicy['relevance'] {
   return score >= 70 ? 'High' : score >= 40 ? 'Medium' : 'Low';
 }
 
-/** Order the records shown to the model: the user's state first, then federal; recent action first. */
-function rankCandidates(candidates: LegislationItem[]): LegislationItem[] {
+/** The records shown to the model, each list in the order it is shown (refs F1…, S1…). */
+export interface RankedCandidates {
+  federal: LegislationItem[];
+  state: LegislationItem[];
+}
+
+/**
+ * Choose the records shown to the model, recent action first. The federal list
+ * has a fixed size and doesn't depend on the user's state, so it is the same
+ * for every user and can be prompt-cached. A law's latest action is its
+ * enactment, so recency alone would push laws out behind newly referred bills:
+ * the most recent laws get reserved places.
+ */
+export function rankCandidates(candidates: LegislationItem[]): RankedCandidates {
   const byRecency = (a: LegislationItem, b: LegislationItem) => (b.latestActionDate || '').localeCompare(a.latestActionDate || '');
-  const state = candidates.filter((c) => c.region !== 'Federal').sort(byRecency).slice(0, 60);
+  const state = candidates.filter((c) => c.region !== 'Federal').sort(byRecency).slice(0, MAX_STATE);
   const federal = candidates.filter((c) => c.region === 'Federal').sort(byRecency);
-  return [...state, ...federal].slice(0, MAX_CANDIDATES);
+  const laws = new Set(federal.filter((c) => c.status === 'enacted').slice(0, MAX_LAWS));
+  return { federal: [...laws, ...federal.filter((c) => !laws.has(c))].slice(0, MAX_CANDIDATES - MAX_STATE), state };
+}
+
+/**
+ * The record a model's ref points to: "F3" in the federal list, "S2" in the
+ * state list. "P5" (one combined list, as refs were once numbered) is still
+ * understood, counting through the lists in the order they are shown.
+ */
+export function recordForRef(ref: string, { federal, state }: RankedCandidates): LegislationItem | undefined {
+  const m = ref.trim().match(/^([FSP])-?\s*(\d{1,4})$/i);
+  if (!m) return undefined;
+  const kind = m[1].toUpperCase();
+  const list = kind === 'F' ? federal : kind === 'S' ? state : [...federal, ...state];
+  return list[Number(m[2]) - 1];
 }
 
 /**
  * Build the user's policy feed. With official records available, the model
  * only selects and explains them (verified items). If every official source
  * is unavailable, it falls back to the model's own knowledge, and the items
- * are marked unverified so the UI can say so.
+ * are marked unverified so the UI can say so. Policies whose id is in
+ * `exclude` (the ones the user dismissed) are never offered or returned.
  */
 export async function discoverPolicyFeed(
   profile: UserProfile,
   meta: CallMeta,
   signal?: AbortSignal,
   candidates: LegislationItem[] = [],
+  exclude: ReadonlySet<string> = new Set(),
 ): Promise<DiscoveredPolicy[]> {
   const asOf = new Date().toISOString();
-  return candidates.length >= MIN_GROUNDED_CANDIDATES
-    ? groundedFeed(profile, meta, rankCandidates(candidates), asOf, signal)
-    : fallbackFeed(profile, meta, asOf, signal);
+  const pool = candidates.filter((c) => !exclude.has(c.id));
+  return pool.length >= MIN_GROUNDED_CANDIDATES
+    ? groundedFeed(profile, meta, rankCandidates(pool), asOf, signal)
+    : fallbackFeed(profile, meta, asOf, signal, exclude);
+}
+
+const RECORD_COLUMNS = 'ref | jurisdiction | bill | status | latest action | title';
+
+function recordLine(ref: string, r: LegislationItem): string {
+  const action = r.latestActionDate ? `${r.latestActionDate}: ${fence(r.latestActionText || '', 200)}` : 'no recorded action';
+  return `${ref} | ${r.region} | ${r.billNumber} | ${r.status} | ${action} | ${fence(r.title, 300)}`;
 }
 
 async function groundedFeed(
-  profile: UserProfile, meta: CallMeta, records: LegislationItem[], asOf: string, signal?: AbortSignal,
+  profile: UserProfile, meta: CallMeta, records: RankedCandidates, asOf: string, signal?: AbortSignal,
 ): Promise<DiscoveredPolicy[]> {
-  const list = records
-    .map((r, i) => {
-      const action = r.latestActionDate ? `${r.latestActionDate}: ${fence(r.latestActionText || '', 200)}` : 'no recorded action';
-      return `P${i + 1} | ${r.region} | ${r.billNumber} | ${r.status} | ${action} | ${fence(r.title, 300)}`;
-    })
-    .join('\n');
+  // The federal list is the same for every user, so it comes first, behind a
+  // cache breakpoint; the date, the profile and the state list follow it.
+  const federal = records.federal.map((r, i) => recordLine(`F${i + 1}`, r)).join('\n');
+  const state = records.state.map((r, i) => recordLine(`S${i + 1}`, r)).join('\n');
+  const federalBlock = `OFFICIAL FEDERAL RECORDS (${RECORD_COLUMNS}):\n<policy>\n${federal || 'none available'}\n</policy>`;
+  const stateBlock = state
+    ? `OFFICIAL STATE RECORDS (${RECORD_COLUMNS}):\n<policy>\n${state}\n</policy>`
+    : 'OFFICIAL STATE RECORDS: none available.';
 
   const { parsed } = await run(meta, {
     system: GROUNDED_FEED_SYSTEM,
     messages: [{
       role: 'user',
-      content: `Today is ${today()}.\n\n${buildUserContext(profile)}\n\nOFFICIAL RECORDS (ref | jurisdiction | bill | status | latest action | title):\n<policy>\n${list}\n</policy>\n\n${UNTRUSTED_DATA_RULE}`,
+      content: [
+        { type: 'text', text: federalBlock, ...(federalBlock.length >= MIN_CACHEABLE_CHARS ? { cache_control: { type: 'ephemeral' as const } } : {}) },
+        { type: 'text', text: `Today is ${today()}.\n\n${buildUserContext(profile)}\n\n${stateBlock}\n\n${UNTRUSTED_DATA_RULE}` },
+      ],
     }],
     schema: FeedSelectionOutput,
     signal,
@@ -334,8 +386,7 @@ async function groundedFeed(
   const seen = new Set<string>();
   const items: DiscoveredPolicy[] = [];
   for (const pick of parsed!.policies) {
-    const index = Number(pick.ref.replace(/^P/i, '')) - 1;
-    const r = records[index];
+    const r = recordForRef(pick.ref, records);
     if (!r || seen.has(r.id)) continue; // unknown refs are dropped; nothing is taken from the model but the explanation
     seen.add(r.id);
     const score = Math.max(0, Math.min(100, Math.round(pick.relevanceScore)));
@@ -357,10 +408,14 @@ async function groundedFeed(
         verified: true,
         source: r.source,
         sourceUrl: r.sourceUrl,
+        status: r.status,
+        billNumber: r.billNumber,
+        region: r.region,
         latestActionDate: r.latestActionDate,
         latestAction: r.latestActionText,
         asOf,
         ...(r.congress ? { congress: r.congress, billType: r.billType, number: r.number } : {}),
+        ...(r.session ? { session: r.session } : {}),
         ...(r.abstract ? { abstract: r.abstract } : {}),
       },
     });
@@ -370,7 +425,9 @@ async function groundedFeed(
   return items;
 }
 
-async function fallbackFeed(profile: UserProfile, meta: CallMeta, asOf: string, signal?: AbortSignal): Promise<DiscoveredPolicy[]> {
+async function fallbackFeed(
+  profile: UserProfile, meta: CallMeta, asOf: string, signal?: AbortSignal, exclude: ReadonlySet<string> = new Set(),
+): Promise<DiscoveredPolicy[]> {
   const { parsed } = await run(meta, {
     system: FALLBACK_FEED_SYSTEM,
     messages: [{
@@ -387,7 +444,7 @@ async function fallbackFeed(profile: UserProfile, meta: CallMeta, asOf: string, 
     const title = p.title.trim();
     if (!title) continue;
     const id = canonicalPolicyId({ billNumber: p.billNumber, region: p.region, title });
-    if (seen.has(id)) continue;
+    if (seen.has(id) || exclude.has(id)) continue;
     seen.add(id);
     const score = Math.max(0, Math.min(100, Math.round(p.relevanceScore)));
     items.push({
@@ -451,7 +508,7 @@ export async function analyzePolicyFull(
 ): Promise<FullAnalysis> {
   const record = policy.record;
   const officialBlock = record?.verified
-    ? `\nOFFICIAL RECORD (${record.source === 'congress.gov' ? 'Congress.gov' : 'Open States'}):
+    ? `\nOFFICIAL RECORD (${sourceName(record)}):
 Status: ${policy.status}
 Latest action: ${record.latestActionDate || 'unknown date'} — ${fence(record.latestAction || 'not recorded', 300)}
 Source: ${record.sourceUrl || 'n/a'}
@@ -497,24 +554,42 @@ export interface AdvisorPolicyReply {
 
 const POLICY_REPLY_SYSTEM = `You are Politicon's AI policy guide — non-partisan, dollar-specific, speaking like a knowledgeable friend. For the policy the user asks about, give a short summary of what it does and its likely direction for this user, and one line with a concrete, hedged dollar estimate derived from their income data (for example: "Based on your profile, this could cost you roughly $340 a month.").
 
+OFFICIAL RECORD: When the policy comes with an official record, its bill number, jurisdiction, status and latest action are authoritative — never contradict or change them — and its abstract, title and latest action are the source for what the policy does. Where the record doesn't say something, describe it at that level and hedge the estimate rather than inventing provisions. If the policy was not verified against an official source, say its details may be incomplete.
+
 ${GUARDRAILS}
 
 ${UNTRUSTED_DATA_RULE}`;
 
+/** The policy as the advisor sees it (see resolvePolicy). */
+export type AdvisorPolicy = Pick<Policy, 'title' | 'summary' | 'governingBody' | 'region' | 'status' | 'record'>;
+
 export async function advisorPolicyReply(
-  policyTitle: string,
-  policyContext: string,
+  policy: AdvisorPolicy,
   profile: UserProfile,
   meta: CallMeta,
   simpleMode = false,
   signal?: AbortSignal,
 ): Promise<AdvisorPolicyReply> {
+  const record = policy.record?.verified ? policy.record : undefined;
+  const bill = officialBillNumber(policy);
+  const details = [
+    `Title: ${fence(policy.title, 300)}`,
+    bill ? `Bill: ${fence(bill, 100)}` : '',
+    `Jurisdiction: ${fence(record?.region || policy.region || 'Federal', 100)}`,
+    `Status: ${fence(record?.status || policy.status, 30)}`,
+    record
+      ? `Official record (${sourceName(record)}) — latest action: ${record.latestActionDate || 'unknown date'} — ${fence(record.latestAction || 'not recorded', 300)}`
+      : 'Official record: none — this policy was not verified against an official source.',
+    record?.abstract ? `Official abstract: ${fence(record.abstract, 1500)}` : '',
+    policy.summary ? `Feed summary: ${fence(policy.summary)}` : '',
+  ].filter(Boolean).join('\n');
+
   const { parsed } = await run(meta, {
     system: POLICY_REPLY_SYSTEM,
     userSystem: `${buildUserContext(profile)}${simpleMode ? `\n\n${SIMPLE_MODE_INSTRUCTION}` : ''}`,
     messages: [{
       role: 'user',
-      content: `Policy the user asked about:\n<policy>\n${fence(policyTitle, 300)}\n${policyContext ? fence(policyContext) : ''}\n</policy>`,
+      content: `Policy the user asked about:\n<policy>\n${details}\n</policy>`,
     }],
     schema: PolicyReplyOutput,
     signal,

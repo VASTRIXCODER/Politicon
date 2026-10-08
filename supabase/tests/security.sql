@@ -300,3 +300,29 @@ do $$ begin
   if exists (select 1 from public.ai_feedback) then raise exception 'feedback visible to another user'; end if;
 end $$;
 commit;
+
+-- Feed dismissal is server-only and removes just the one policy.
+do $$
+declare
+  a constant uuid := '11111111-1111-1111-1111-111111111111';
+  b constant uuid := '22222222-2222-2222-2222-222222222222';
+begin
+  perform pg_temp.denied('anon', null, format($q$select public.remove_feed_item(%L, 'us-hr-1')$q$, a));
+  perform pg_temp.denied('authenticated', a::text, format($q$select public.remove_feed_item(%L, 'us-hr-1')$q$, a));
+
+  delete from public.user_policy_feed where user_id in (a, b);
+  insert into public.user_policy_feed (user_id, policies) values
+    (a, '[{"id":"us-hr-1"},{"id":"us-hr-2"},{"title":"no id"}]'),
+    (b, '[{"id":"us-hr-1"}]');
+  perform public.remove_feed_item(a, 'us-hr-1');
+  if (select policies from public.user_policy_feed where user_id = a) <> '[{"id":"us-hr-2"},{"title":"no id"}]'::jsonb then
+    raise exception 'remove_feed_item did not remove exactly the one policy';
+  end if;
+  if (select policies from public.user_policy_feed where user_id = b) <> '[{"id":"us-hr-1"}]'::jsonb then
+    raise exception 'remove_feed_item touched another user''s feed';
+  end if;
+  perform public.remove_feed_item(b, 'us-hr-1');
+  if (select policies from public.user_policy_feed where user_id = b) <> '[]'::jsonb then
+    raise exception 'removing the last policy should leave an empty list';
+  end if;
+end $$;

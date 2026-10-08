@@ -67,10 +67,20 @@ function clamp100(v: unknown): number {
   return Math.max(0, Math.min(100, Math.round(num(v))));
 }
 
-/** Keep a stored official record only if it has the expected shape. */
-function validRecord(v: unknown): PolicyRecord | undefined {
+/** A non-empty string, trimmed and bounded; undefined otherwise. */
+function text(v: unknown, max: number): string | undefined {
+  return typeof v === 'string' && v.trim() ? v.trim().slice(0, max) : undefined;
+}
+
+/**
+ * Keep a stored official record only if it has the expected shape. The
+ * Congress.gov coordinates go into a URL when the official summary is
+ * fetched, so they must look like one.
+ */
+export function validRecord(v: unknown): PolicyRecord | undefined {
   const r = obj(v);
   if (typeof r.verified !== 'boolean' || typeof r.source !== 'string') return undefined;
+  const congress = typeof r.congress === 'number' && Number.isInteger(r.congress) && r.congress > 0 && r.congress < 1000 ? r.congress : undefined;
   return {
     verified: r.verified,
     source: (['congress.gov', 'openstates', 'ai'] as const).find((s) => s === r.source) || 'ai',
@@ -78,7 +88,20 @@ function validRecord(v: unknown): PolicyRecord | undefined {
     latestActionDate: typeof r.latestActionDate === 'string' ? r.latestActionDate : null,
     latestAction: typeof r.latestAction === 'string' ? r.latestAction : null,
     asOf: str(r.asOf),
+    status: POLICY_STATUSES.find((s) => s === r.status),
+    billNumber: text(r.billNumber, 40),
+    region: text(r.region, 100),
+    congress,
+    billType: typeof r.billType === 'string' && /^[a-z]{1,8}$/.test(r.billType) ? r.billType : undefined,
+    number: typeof r.number === 'string' && /^\d{1,6}$/.test(r.number) ? r.number : undefined,
+    session: text(r.session, 40),
+    abstract: text(r.abstract, 1500),
   };
+}
+
+/** A policy's bill number: the official record's, else governingBody when it holds one (it falls back to the region). */
+export function officialBillNumber(policy: Pick<Policy, 'governingBody' | 'record'>): string {
+  return policy.record?.billNumber || (/\d/.test(policy.governingBody || '') ? policy.governingBody : '');
 }
 
 export function coerceFullAnalysis(p: Record<string, unknown>, policy: Policy): FullAnalysis {
@@ -144,12 +167,16 @@ export function coerceFullAnalysis(p: Record<string, unknown>, policy: Policy): 
 
   // No invented default: an analysis without a confidence score reports 0 (unknown).
   const score = Math.max(0, Math.min(100, Math.round(num(p.confidenceScore, num(risk.confidence, 0)))));
+  // For a verified policy the official record, not the model, is the authority on bill number and status.
+  const official = policy.record?.verified ? policy.record : undefined;
 
   return {
     policyId: policy.id,
     policyTitle: policy.title,
-    billNumber: str(p.billNumber, policy.governingBody && /\b(H\.?R\.?|S\.?)\s*\d/i.test(policy.governingBody) ? policy.governingBody : ''),
-    status: policyStatus(p.status, policy.status),
+    billNumber: official
+      ? officialBillNumber(policy)
+      : str(p.billNumber, policy.governingBody && /\b(H\.?R\.?|S\.?)\s*\d/i.test(policy.governingBody) ? policy.governingBody : ''),
+    status: official ? policyStatus(official.status, policy.status) : policyStatus(p.status, policy.status),
     category: policy.category || 'taxes',
     confidenceScore: score,
     direction: dir(p.direction !== undefined ? p.direction : netAnnual > 0 ? 'positive' : netAnnual < 0 ? 'negative' : 'neutral'),

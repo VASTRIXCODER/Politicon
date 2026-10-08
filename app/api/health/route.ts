@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { createAdminClient } from '@/lib/supabase/admin';
 import { rateLimit } from '@/lib/rateLimit';
 import { AI_MODEL, modelPrice } from '@/lib/server/aiConfig';
-import { legislationHealth } from '@/lib/server/legislation';
+import { legislationHealth, stateLegislationHealth } from '@/lib/server/legislation';
 
 export const dynamic = 'force-dynamic';
 
@@ -91,8 +91,7 @@ export async function GET(req: NextRequest) {
   // upstream). They are reported but do not fail the overall check: without them the
   // feed falls back to clearly labeled, unverified items.
   if (authorized) {
-    checks.legislation = await legislationHealth();
-    if (!process.env.OPENSTATES_API_KEY) checks.stateLegislation = { ok: true, detail: 'OPENSTATES_API_KEY not set; state bills are skipped' };
+    [checks.legislation, checks.stateLegislation] = await Promise.all([legislationHealth(), stateLegislationHealth()]);
   }
   return NextResponse.json(authorized ? { ok, env, checks } : { ok }, {
     status: ok ? 200 : 503,

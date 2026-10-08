@@ -126,10 +126,12 @@ function MessageBubble({ message, sessionId }: { message: ExtendedMessage; sessi
         <p className={`text-[10px] mt-2 ${isUser ? 'text-primary/60' : 'text-text-muted/50'}`}>
           {new Date(message.timestamp).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
         </p>
-        {isModelReply && (
+        {/* Rated replies are tied to a saved conversation, with a copy of the reply's start. */}
+        {isModelReply && sessionId && (
           <FeedbackControls
             targetType="chat_reply"
-            targetId={`${sessionId || 'unsaved'}:${message.id}`}
+            targetId={`${sessionId}:${message.id}`}
+            excerpt={message.content.slice(0, 500)}
             className="mt-1"
           />
         )}
