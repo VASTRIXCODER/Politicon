@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { z } from 'zod';
 import { cumulativeSummary } from '@/lib/claude';
 import { getRequestContext } from '@/lib/server/requestContext';
-import { readJson, apiError } from '@/lib/server/http';
+import { readJson, apiError, requestDeadline } from '@/lib/server/http';
 import { rateLimit } from '@/lib/rateLimit';
 import { checkAiBudget } from '@/lib/server/aiGuard';
 import { aiFailure } from '@/lib/server/aiErrors';
@@ -33,7 +33,10 @@ export async function POST(req: NextRequest) {
   if (!budget.ok) return budget.response;
 
   try {
-    const summary = await cumulativeSummary(loaded.lines, profile, { feature: 'cumulative_summary', userId: user.id, usageId: budget.usageId });
+    const summary = await cumulativeSummary(
+      loaded.lines, profile, { feature: 'cumulative_summary', userId: user.id, usageId: budget.usageId },
+      auth.ctx.simpleMode, requestDeadline(req),
+    );
     return NextResponse.json({ summary });
   } catch (e) {
     return aiFailure(e, 'Cumulative summary');

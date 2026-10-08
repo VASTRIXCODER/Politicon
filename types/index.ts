@@ -188,6 +188,10 @@ export interface FullAnalysis {
   confidenceScore: number; // 0-100
   direction: ImpactDirection;
   plainEnglishSummary: string;
+  /** What the estimate assumed about the user or the policy (shown with the result). */
+  assumptions: string[];
+  /** ANALYSIS_SCHEMA_VERSION the analysis was produced with. */
+  schemaVersion?: number;
 
   netAnnualImpact: number;
   netMonthlyImpact: number;

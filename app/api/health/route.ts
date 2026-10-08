@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { createAdminClient } from '@/lib/supabase/admin';
 import { rateLimit } from '@/lib/rateLimit';
+import { AI_MODEL, modelPrice } from '@/lib/server/aiConfig';
 
 export const dynamic = 'force-dynamic';
 
@@ -8,7 +9,7 @@ type Check = { ok: boolean; detail?: string };
 
 const TIMEOUT_MS = 3000;
 // Latest migration the code depends on (see supabase/migrations).
-const EXPECTED_SCHEMA_VERSION = '20261007150000';
+const EXPECTED_SCHEMA_VERSION = '20261008090000';
 
 async function probe(fn: (_signal: AbortSignal) => PromiseLike<{ error: { message?: string; code?: string } | null }>): Promise<Check> {
   try {
@@ -63,17 +64,22 @@ export async function GET(req: NextRequest) {
   }
   if (env.ANTHROPIC_API_KEY) {
     try {
-      // Listing models validates the key without spending tokens.
-      const res = await fetch('https://api.anthropic.com/v1/models?limit=1', {
+      // Looking up the configured model validates the key and the model id without spending tokens.
+      const res = await fetch(`https://api.anthropic.com/v1/models/${encodeURIComponent(AI_MODEL)}`, {
         headers: { 'x-api-key': process.env.ANTHROPIC_API_KEY!, 'anthropic-version': '2023-06-01' },
         cache: 'no-store',
         signal: AbortSignal.timeout(TIMEOUT_MS),
       });
-      checks.anthropic = res.ok ? { ok: true } : { ok: false, detail: `HTTP ${res.status}` };
+      checks.anthropic = res.ok ? { ok: true } : { ok: false, detail: `HTTP ${res.status} for model ${AI_MODEL}` };
     } catch (e) {
       checks.anthropic = { ok: false, detail: (e as Error).message };
     }
   }
+
+  // AI calls are refused when the model's price is unknown (spend can't be tracked).
+  checks.aiPricing = modelPrice(AI_MODEL)
+    ? { ok: true }
+    : { ok: false, detail: `No price for ${AI_MODEL}; set AI_PRICE_INPUT_PER_MTOK and AI_PRICE_OUTPUT_PER_MTOK` };
 
   const required = [env.NEXT_PUBLIC_SUPABASE_URL, env.NEXT_PUBLIC_SUPABASE_ANON_KEY, env.SUPABASE_SERVICE_ROLE_KEY, env.ANTHROPIC_API_KEY];
   const ok = required.every(Boolean) && Object.values(checks).every((c) => c.ok);

@@ -70,7 +70,9 @@ export async function resolvePolicy(supabase: SupabaseClient, userId: string, po
     .eq('user_id', userId)
     .eq('policy_id', policyId)
     .maybeSingle();
-  if (row) {
+  // A placeholder for a job that never produced an analysis isn't a source of policy details.
+  const hasAnalysis = !!row?.analysis && Object.keys(row.analysis as object).length > 0;
+  if (row && hasAnalysis) {
     const analysis = (row.analysis || {}) as { plainEnglishSummary?: string };
     return toPolicy({
       id: row.policy_id,

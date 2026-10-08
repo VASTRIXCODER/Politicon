@@ -15,15 +15,16 @@ export async function GET(req: NextRequest) {
   const limited = await rateLimit(req, 'accountExport', { userId: user.id });
   if (!limited.ok) return limited.response;
 
-  const [profile, analyses, feed, chats, usage] = await Promise.all([
+  const [profile, analyses, feed, chats, insight, usage] = await Promise.all([
     supabase.from('user_profiles').select('*').eq('id', user.id).maybeSingle(),
     supabase.from('analyzed_policies').select('*').eq('user_id', user.id).order('updated_at', { ascending: false }),
     supabase.from('user_policy_feed').select('policies, updated_at').eq('user_id', user.id).maybeSingle(),
     supabase.from('chat_sessions').select('*').eq('user_id', user.id).order('created_at', { ascending: false }),
+    supabase.from('ai_insights').select('insight, created_at').eq('user_id', user.id).maybeSingle(),
     // The usage ledger is server-only; include the user's own rows without token internals.
     createAdminClient().from('ai_usage').select('feature, model, created_at').eq('user_id', user.id).order('created_at', { ascending: false }),
   ]);
-  const failed = [profile, analyses, feed, chats, usage].find((r) => r.error);
+  const failed = [profile, analyses, feed, chats, insight, usage].find((r) => r.error);
   if (failed) {
     console.error('Export failed:', failed.error);
     return apiError(503, 'export_failed', 'Could not prepare your export. Please try again.');
@@ -36,6 +37,7 @@ export async function GET(req: NextRequest) {
     analyses: analyses.data,
     policyFeed: feed.data,
     chats: chats.data,
+    dashboardInsight: insight.data,
     aiRequests: usage.data,
   };
   return new NextResponse(JSON.stringify(body, null, 2), {

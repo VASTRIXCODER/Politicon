@@ -13,6 +13,15 @@ export function apiError(status: number, code: string, message: string, retryAft
 const DEFAULT_MAX_BODY_BYTES = 32 * 1024;
 
 /**
+ * Abort signal for an AI call made inside a request: fires if the client goes
+ * away or shortly before the function's time limit, so the call is always
+ * finalized (and its usage recorded) rather than killed mid-flight.
+ */
+export function requestDeadline(req: Request, ms = 50_000): AbortSignal {
+  return AbortSignal.any([req.signal, AbortSignal.timeout(ms)]);
+}
+
+/**
  * Read and validate a JSON request body. Rejects non-JSON content types,
  * oversized bodies (32 KB unless overridden) and anything that fails the schema.
  */

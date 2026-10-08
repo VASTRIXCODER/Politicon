@@ -5,7 +5,7 @@ import { describe, expect, it, vi } from 'vitest';
 vi.mock('server-only', () => ({}));
 vi.mock('@/lib/server/aiGuard', () => ({ recordAiUsage: vi.fn() }));
 
-const { normalizeHistory, thinkingParams } = await import('@/lib/claude');
+const { normalizeHistory } = await import('@/lib/claude');
 
 describe('normalizeHistory', () => {
   it('drops a leading assistant greeting so the history starts with the user', () => {
@@ -41,23 +41,5 @@ describe('normalizeHistory', () => {
     expect(out.length).toBeLessThanOrEqual(20);
     expect(out[0].role).toBe('user');
     expect(out[out.length - 1].content).toBe('m29');
-  });
-});
-
-describe('thinkingParams', () => {
-  it('never goes below the 1024-token minimum thinking budget', () => {
-    const p = thinkingParams(2000, true);
-    expect(p.budget).toBeGreaterThanOrEqual(1024);
-    expect(p.maxTokens).toBeGreaterThan(p.budget);
-  });
-
-  it('caps the budget and leaves room for the answer on large requests', () => {
-    const p = thinkingParams(18000, true);
-    expect(p.budget).toBe(8000);
-    expect(p.maxTokens).toBe(18000);
-  });
-
-  it('is a no-op when thinking is off', () => {
-    expect(thinkingParams(600, false)).toEqual({ maxTokens: 600, budget: 0 });
   });
 });

@@ -24,7 +24,7 @@ interface ViewFullImpactButtonProps {
 // On click:
 //   1. Look up an existing analysis for (user, policy_id) in analyzed_policies.
 //   2. If found -> navigate to /impact/<id> (no re-analysis).
-//   3. If missing -> POST /api/analyze (which upserts), then navigate.
+//   3. If missing -> start a background analysis, then navigate.
 //   4. If generation fails, show the reason under the button.
 export default function ViewFullImpactButton({
   policyId,
@@ -51,7 +51,7 @@ export default function ViewFullImpactButton({
       try {
         const { data: existing, error: checkErr } = await supabase
           .from('analyzed_policies')
-          .select('id')
+          .select('generation_status, analysis_title:analysis->>policyTitle, legacy:analysis->legacy')
           .eq('user_id', user.id)
           .eq('policy_id', policyId)
           .maybeSingle();
@@ -59,7 +59,10 @@ export default function ViewFullImpactButton({
         if (checkErr && (checkErr as { code?: string }).code !== '42P01') {
           console.error('View full impact lookup error:', checkErr);
         }
-        if (existing) {
+        // Open the detail page if there's a result or a job is already running;
+        // it shows progress for a running job.
+        const hasResult = !!existing?.analysis_title || !!existing?.legacy;
+        if (existing && (hasResult || existing.generation_status === 'pending')) {
           router.push(target);
           return;
         }
@@ -67,7 +70,8 @@ export default function ViewFullImpactButton({
         console.error('View full impact lookup error:', e);
       }
 
-      // No existing analysis -> generate it, then navigate.
+      // No existing analysis -> start one (it runs in the background) and open
+      // the detail page, which shows progress until it's ready.
       const res = await apiFetch('/api/analyze', { body: { policyId } });
       if (res.ok) router.push(target);
       else setError(res.message);

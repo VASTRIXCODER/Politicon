@@ -213,3 +213,67 @@ begin
     raise exception 'profile email not synced';
   end if;
 end $$;
+
+-- Background jobs: placeholder rows stay out of lists and totals; the insight
+-- cache is server-written and readable only by its owner.
+insert into public.analyzed_policies (user_id, policy_id, analysis, generation_status, generation_started_at)
+values ('11111111-1111-1111-1111-111111111111', 'us-hr-2', '{}', 'pending', now());
+
+begin;
+set local role authenticated;
+select set_config('request.jwt.claim.sub', '11111111-1111-1111-1111-111111111111', true) \g /dev/null
+do $$ begin
+  if exists (select 1 from public.policy_analyses where policy_id = 'us-hr-2') then
+    raise exception 'pending placeholder shows in the analyses list';
+  end if;
+  if (select analysis_count from public.analysis_totals()) <> 1 then
+    raise exception 'pending placeholder counted in totals';
+  end if;
+  if not exists (select 1 from public.analyzed_policies where policy_id = 'us-hr-2' and generation_status = 'pending') then
+    raise exception 'owner cannot see their pending job';
+  end if;
+end $$;
+commit;
+
+do $$
+declare
+  a constant text := '11111111-1111-1111-1111-111111111111';
+begin
+  perform pg_temp.denied('authenticated', a, format($q$insert into public.ai_insights (user_id, cache_key, insight) values (%L, 'k', 'x')$q$, a));
+  perform pg_temp.denied('authenticated', a, $q$update public.analyzed_policies set generation_status = 'ready'$q$);
+  perform pg_temp.denied('anon', null, 'select * from public.ai_insights');
+  begin
+    update public.analyzed_policies set generation_status = 'done' where policy_id = 'us-hr-2';
+    raise exception 'invalid generation_status accepted';
+  exception when check_violation then null;
+  end;
+end $$;
+
+-- Reservations carry an estimated cost that counts against the global ceiling
+-- until the real cost replaces it; abandoned reservations stay counted.
+do $$
+declare
+  u constant uuid := '22222222-2222-2222-2222-222222222222';
+  ok boolean;
+  why text;
+  v_usage bigint;
+begin
+  delete from public.ai_usage;
+  select r.allowed, r.usage_id into ok, v_usage from public.reserve_ai_call(u, 'analyze', 'm', 10, 1.00, 0.40) r;
+  if not ok or (select cost_usd from public.ai_usage where ai_usage.id = v_usage) <> 0.40 then
+    raise exception 'estimate not reserved';
+  end if;
+  select r.allowed into ok from public.reserve_ai_call(u, 'analyze', 'm', 10, 1.00, 0.40) r;
+  if not ok then raise exception 'second in-flight call should still fit under $1'; end if;
+  select r.allowed, r.reason into ok, why from public.reserve_ai_call(u, 'analyze', 'm', 10, 1.00, 0.40) r;
+  if ok or why <> 'global_budget' then raise exception 'in-flight estimates ignored by the ceiling'; end if;
+
+  -- The 5-argument call shape used by older code still works.
+  select r.allowed into ok from public.reserve_ai_call(u, 'feed', 'm', 10, 100) r;
+  if not ok then raise exception '5-argument call broke'; end if;
+
+  update public.ai_usage set created_at = now() - interval '20 minutes' where pending;
+  perform public.purge_expired_data();
+  if exists (select 1 from public.ai_usage where pending) then raise exception 'abandoned reservation not closed'; end if;
+  if (select sum(cost_usd) from public.ai_usage) < 0.80 then raise exception 'abandoned reservation lost its cost'; end if;
+end $$;
