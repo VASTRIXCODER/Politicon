@@ -1,12 +1,11 @@
 'use client';
 
 import { apiFetch } from '@/lib/api';
-import { createClient } from '@/lib/supabase/client';
 import type { FullAnalysis } from '@/types';
 
 const POLL_MS = 3000;
-/** Matches the server: a job pending longer than this has died. */
-const MAX_WAIT_MS = 6 * 60 * 1000 + POLL_MS;
+/** A little longer than the server's own limit for a pending job. */
+const MAX_WAIT_MS = 6 * 60 * 1000 + 2 * POLL_MS;
 
 export type AnalysisResult =
   | {
@@ -30,27 +29,37 @@ function sleep(ms: number, signal?: AbortSignal): Promise<boolean> {
   });
 }
 
-/** Wait for the user's analysis row for this policy to finish generating. */
-async function followJob(policyId: string, signal?: AbortSignal): Promise<AnalysisResult> {
-  const supabase = createClient();
+interface JobStatus {
+  status: 'none' | 'pending' | 'ready' | 'failed';
+  error?: string | null;
+  analysis?: FullAnalysis | null;
+  profileSnapshot?: Record<string, unknown> | null;
+}
+
+/**
+ * Wait for the user's analysis job for this policy to finish. The server
+ * judges whether a pending job is still alive, so client clock skew can't
+ * matter. With checkFirst, the first check happens immediately (used when
+ * following a job that may already be dead).
+ */
+async function followJob(policyId: string, signal: AbortSignal | undefined, checkFirst: boolean): Promise<AnalysisResult> {
   const startedWaiting = Date.now();
+  let first = true;
   while (Date.now() - startedWaiting < MAX_WAIT_MS) {
-    if (!(await sleep(POLL_MS, signal))) return cancelled();
-    let query = supabase
-      .from('analyzed_policies')
-      .select('analysis, generation_status, generation_error, profile_snapshot')
-      .eq('policy_id', policyId);
-    if (signal) query = query.abortSignal(signal);
-    const { data, error } = await query.maybeSingle();
+    if (!(first && checkFirst) && !(await sleep(POLL_MS, signal))) return cancelled();
+    first = false;
+    const res = await apiFetch<JobStatus>(`/api/analyze?policyId=${encodeURIComponent(policyId)}`, { signal });
     if (signal?.aborted) return cancelled();
-    if (error) continue; // transient; keep waiting
-    if (!data) return failed('The analysis could not be started. Please try again.');
-    if (data.generation_status === 'ready' && data.analysis && Object.keys(data.analysis).length > 0) {
-      return { ok: true, analysis: data.analysis as FullAnalysis, profileSnapshot: data.profile_snapshot ?? null, fresh: true };
+    if (!res.ok) {
+      if (res.status === 0 || res.status >= 500 || res.status === 429) continue; // transient; keep waiting
+      return failed(res.message);
     }
-    if (data.generation_status === 'failed') {
-      return failed(data.generation_error || 'The analysis failed. Please try again.');
+    const job = res.data;
+    if (job.status === 'ready' && job.analysis) {
+      return { ok: true, analysis: job.analysis, profileSnapshot: job.profileSnapshot ?? null, fresh: true };
     }
+    if (job.status === 'failed') return failed(job.error || 'The analysis failed. Please try again.');
+    if (job.status === 'none') return failed('The analysis could not be started. Please try again.');
   }
   return failed('The analysis took too long. Please try again.');
 }
@@ -65,7 +74,7 @@ export async function requestAnalysis(
   policyId: string,
   opts: { force?: boolean; followOnly?: boolean; signal?: AbortSignal; onPending?: () => void } = {},
 ): Promise<AnalysisResult> {
-  if (opts.followOnly) return followJob(policyId, opts.signal);
+  if (opts.followOnly) return followJob(policyId, opts.signal, true);
 
   const res = await apiFetch<{ status: string; analysis?: FullAnalysis; profileSnapshot?: Record<string, unknown> | null }>(
     '/api/analyze',
@@ -78,5 +87,5 @@ export async function requestAnalysis(
   }
 
   opts.onPending?.();
-  return followJob(policyId, opts.signal);
+  return followJob(policyId, opts.signal, false);
 }

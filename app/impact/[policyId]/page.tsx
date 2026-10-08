@@ -189,12 +189,10 @@ export default function PolicyDetailPage({ params }: { params: Promise<{ policyI
         if (rowError) throw rowError;
 
         const stored = row?.analysis as (FullAnalysis & { legacy?: boolean }) | undefined;
-        // Generous window (vs. the server's 6 minutes) so clock differences
-        // don't matter; following a dead job just times out.
-        const startedAgo = row?.generation_started_at ? Date.now() - new Date(row.generation_started_at).getTime() : Infinity;
-        const jobRunning = row?.generation_status === 'pending' && startedAgo < 30 * 60 * 1000;
-        // Report a failed attempt only while it's recent.
-        if (row?.generation_status === 'failed' && row.generation_error && startedAgo < 24 * 60 * 60 * 1000) {
+        // A pending row is followed; the server's status check decides right away
+        // whether that job is still alive, so no clock comparison happens here.
+        const jobRunning = row?.generation_status === 'pending';
+        if (row?.generation_status === 'failed' && row.generation_error) {
           setGenerateError(`The last attempt to analyze this failed: ${row.generation_error}`);
         }
 

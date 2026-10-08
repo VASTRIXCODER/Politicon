@@ -163,13 +163,22 @@ export default function DashboardPage() {
   const feedUpdatedAtRef = useRef<string | null>(null);
   const [feedRefreshing, setFeedRefreshing] = useState(false);
   const [analyzingIds, setAnalyzingIds] = useState<Set<string>>(() => new Set());
-  // Everything in flight (analysis jobs, feed polling) stops when the page unmounts.
-  const unmounted = useRef(new AbortController());
+  // Everything in flight (analysis jobs, feed polling) stops when the page
+  // unmounts. The controller is created per mount, so React Strict Mode's
+  // mount → unmount → mount in development gets a fresh one.
+  const unmounted = useRef<AbortController>(new AbortController());
   const feedTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const hasFeed = useRef(false);
-  useEffect(() => () => {
-    unmounted.current.abort();
-    if (feedTimer.current) clearTimeout(feedTimer.current);
+  useEffect(() => {
+    const controller = new AbortController();
+    unmounted.current = controller;
+    loadFeed(false);
+    return () => {
+      controller.abort();
+      if (feedTimer.current) clearTimeout(feedTimer.current);
+    };
+    // Runs once per mount; loadFeed reads the controller from the ref.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
   const [toast, setToast] = useState<{ message: string; type: 'success' | 'error' } | null>(null);
   const [activeTab, setActiveTab] = useState<'analyzed' | 'cumulative'>('analyzed');
@@ -335,7 +344,6 @@ export default function DashboardPage() {
     setFeedRefreshing(false);
   }
 
-  useEffect(() => { loadFeed(false); }, []);
 
   async function handleAnalyze(policy: FeedPolicy) {
     if (analyzingIds.has(policy.id)) return;

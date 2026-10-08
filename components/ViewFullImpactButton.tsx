@@ -51,7 +51,7 @@ export default function ViewFullImpactButton({
       try {
         const { data: existing, error: checkErr } = await supabase
           .from('analyzed_policies')
-          .select('analysis, generation_status')
+          .select('generation_status, analysis_title:analysis->>policyTitle, legacy:analysis->legacy')
           .eq('user_id', user.id)
           .eq('policy_id', policyId)
           .maybeSingle();
@@ -61,7 +61,7 @@ export default function ViewFullImpactButton({
         }
         // Open the detail page if there's a result or a job is already running;
         // it shows progress for a running job.
-        const hasResult = !!existing?.analysis && Object.keys(existing.analysis).length > 0;
+        const hasResult = !!existing?.analysis_title || !!existing?.legacy;
         if (existing && (hasResult || existing.generation_status === 'pending')) {
           router.push(target);
           return;

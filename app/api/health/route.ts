@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { createAdminClient } from '@/lib/supabase/admin';
 import { rateLimit } from '@/lib/rateLimit';
-import { AI_MODEL } from '@/lib/server/aiConfig';
+import { AI_MODEL, modelPrice } from '@/lib/server/aiConfig';
 
 export const dynamic = 'force-dynamic';
 
@@ -75,6 +75,11 @@ export async function GET(req: NextRequest) {
       checks.anthropic = { ok: false, detail: (e as Error).message };
     }
   }
+
+  // AI calls are refused when the model's price is unknown (spend can't be tracked).
+  checks.aiPricing = modelPrice(AI_MODEL)
+    ? { ok: true }
+    : { ok: false, detail: `No price for ${AI_MODEL}; set AI_PRICE_INPUT_PER_MTOK and AI_PRICE_OUTPUT_PER_MTOK` };
 
   const required = [env.NEXT_PUBLIC_SUPABASE_URL, env.NEXT_PUBLIC_SUPABASE_ANON_KEY, env.SUPABASE_SERVICE_ROLE_KEY, env.ANTHROPIC_API_KEY];
   const ok = required.every(Boolean) && Object.values(checks).every((c) => c.ok);

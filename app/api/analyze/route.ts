@@ -50,6 +50,51 @@ function profileSnapshot(p: UserProfile) {
   };
 }
 
+const StatusQuery = z.object({ policyId: z.string().min(1).max(80) });
+
+/**
+ * Status of the caller's analysis job for a policy. Liveness is judged here,
+ * with the server's clock, so clients never compare their own clock with
+ * generation_started_at. The analysis itself is included once it's ready.
+ */
+export async function GET(req: NextRequest) {
+  const auth = await getRequestContext();
+  if (!auth.ok) return auth.response;
+  const { supabase, user } = auth.ctx;
+
+  const parsed = StatusQuery.safeParse({ policyId: req.nextUrl.searchParams.get('policyId') });
+  if (!parsed.success) return apiError(400, 'invalid_request', 'policyId is required.');
+
+  const limited = await rateLimit(req, 'analysisStatus', { userId: user.id });
+  if (!limited.ok) return limited.response;
+
+  const { data, error } = await supabase
+    .from('analyzed_policies')
+    .select('analysis, generation_status, generation_error, generation_started_at, profile_snapshot')
+    .eq('user_id', user.id)
+    .eq('policy_id', parsed.data.policyId)
+    .maybeSingle();
+  if (error) return apiError(503, 'lookup_failed', 'Could not check the analysis. Please try again.');
+  if (!data) return NextResponse.json({ status: 'none' });
+
+  const row = data as ExistingRow & { generation_error: string | null };
+  if (row.generation_status === 'pending') {
+    const alive = !!row.generation_started_at && Date.now() - new Date(row.generation_started_at).getTime() < STALE_PENDING_MS;
+    return NextResponse.json(
+      alive ? { status: 'pending' } : { status: 'failed', error: 'The analysis stopped unexpectedly. Please try again.' },
+    );
+  }
+  if (row.generation_status === 'failed' && !hasResult(row)) {
+    return NextResponse.json({ status: 'failed', error: row.generation_error || 'The analysis failed. Please try again.' });
+  }
+  return NextResponse.json({
+    status: row.generation_status === 'failed' ? 'failed' : 'ready',
+    error: row.generation_status === 'failed' ? row.generation_error : null,
+    analysis: hasResult(row) ? row.analysis : null,
+    profileSnapshot: row.profile_snapshot ?? null,
+  });
+}
+
 /**
  * Generate (or regenerate) a full analysis. Returns 200 with a stored result,
  * or 202 when a generation is running in the background; the client then

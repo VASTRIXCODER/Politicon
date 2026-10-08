@@ -28,12 +28,14 @@ interface PolicyAnalysisRow {
   tradeoffs: { gains?: { label: string; value: number }[]; losses?: { label: string; value: number }[] } | null;
   recommendations: { step: string; priority?: string }[] | null;
   legacy: boolean | null;
+  /** Present on every generated analysis; absent on placeholders for jobs still running. */
+  analysis_title: string | null;
 }
 
 const ROW_COLUMNS =
   'id, policy_id, policy_title, category, created_at, dollar_impact:net_annual_impact, ' +
   'summary:analysis->>plainEnglishSummary, timeline:analysis->timeline, tradeoffs:analysis->tradeoffs, ' +
-  'recommendations:analysis->recommendations, legacy:analysis->legacy';
+  'recommendations:analysis->recommendations, legacy:analysis->legacy, analysis_title:analysis->>policyTitle';
 
 const signedUSD = (n: number) => `${n < 0 ? '−' : '+'}$${Math.abs(Math.round(n)).toLocaleString()}`;
 
@@ -128,8 +130,9 @@ function ImpactContent() {
           if (dbErr) {
             console.error('Analyses load error:', dbErr);
           } else {
-            // Rows still being generated (no analysis yet) aren't shown.
-            const rows = ((data || []) as unknown as PolicyAnalysisRow[]).filter(r => r.summary || r.legacy);
+            // Placeholders for jobs still running (no analysis yet) aren't shown,
+            // matching the dashboard totals.
+            const rows = ((data || []) as unknown as PolicyAnalysisRow[]).filter(r => r.analysis_title || r.legacy);
             setAnalyses(rows);
             setCheckedIds(new Set(rows.map(r => r.id)));
             if (policyParam) {
