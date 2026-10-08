@@ -23,14 +23,16 @@ export function WhatThisMeans({ text }: { text?: string }) {
 export function JargonBuster({ terms }: { terms: JargonTerm[] }) {
   const [open, setOpen] = useState(true);
 
-  // Merge model-supplied terms with the built-in dictionary (model wins on conflicts).
-  const merged = new Map<string, string>();
-  for (const [term, definition] of Object.entries(BASE_JARGON)) merged.set(term.toLowerCase(), definition);
-  for (const t of terms) if (t.term) merged.set(t.term.toLowerCase(), t.definition);
-
-  const list = terms.length > 0
-    ? terms
-    : Array.from(merged.entries()).map(([term, definition]) => ({ term, definition }));
+  // The analysis's own terms first, then the built-in dictionary; one entry per
+  // term regardless of case, keeping the original spelling (e.g. "GDP").
+  const merged = new Map<string, JargonTerm>();
+  for (const t of terms) {
+    if (t.term && t.definition && !merged.has(t.term.toLowerCase())) merged.set(t.term.toLowerCase(), t);
+  }
+  for (const [term, definition] of Object.entries(BASE_JARGON)) {
+    if (!merged.has(term.toLowerCase())) merged.set(term.toLowerCase(), { term, definition });
+  }
+  const list = Array.from(merged.values());
 
   if (list.length === 0) return null;
 
@@ -38,6 +40,7 @@ export function JargonBuster({ terms }: { terms: JargonTerm[] }) {
     <div className="glass rounded-2xl overflow-hidden">
       <button
         onClick={() => setOpen((o) => !o)}
+        aria-expanded={open}
         className="w-full flex items-center justify-between px-4 py-3 text-left"
       >
         <span className="flex items-center gap-2 text-sm font-medium text-text-primary">
@@ -48,8 +51,8 @@ export function JargonBuster({ terms }: { terms: JargonTerm[] }) {
       {open && (
         <div className="px-4 pb-4 space-y-3 max-h-[420px] overflow-y-auto">
           {list.map((t) => (
-            <div key={t.term} className="border-t border-white/6 pt-3 first:border-0 first:pt-0">
-              <p className="text-xs font-semibold text-secondary capitalize">{t.term}</p>
+            <div key={t.term.toLowerCase()} className="border-t border-white/6 pt-3 first:border-0 first:pt-0">
+              <p className="text-xs font-semibold text-secondary">{t.term}</p>
               <p className="text-xs text-text-muted leading-relaxed mt-0.5">{t.definition}</p>
             </div>
           ))}

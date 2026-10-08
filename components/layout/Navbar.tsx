@@ -3,16 +3,21 @@
 import { useState, useEffect, useRef } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import Link from 'next/link';
-import { useRouter } from 'next/navigation';
-import { Menu, X, Zap, User, LogOut, LayoutDashboard, Settings, ChevronDown } from 'lucide-react';
+import { usePathname, useRouter } from 'next/navigation';
+import { Menu, X, Zap, LogOut, LayoutDashboard, Settings, ChevronDown } from 'lucide-react';
 import { createClient } from '@/lib/supabase/client';
 import Button from '@/components/ui/Button';
 import type { User as SupabaseUser } from '@supabase/supabase-js';
 
-const navLinks = [
+const PUBLIC_LINKS = [
   { label: 'How It Works', href: '/#how-it-works' },
-  { label: 'Policies', href: '/policies' },
   { label: 'Explorer', href: '/explorer' },
+  { label: 'Help', href: '/help' },
+];
+const APP_LINKS = [
+  { label: 'Dashboard', href: '/dashboard' },
+  { label: 'Policies', href: '/policies' },
+  { label: 'My Impact', href: '/impact' },
   { label: 'Policy Guide', href: '/advisor' },
 ];
 
@@ -86,6 +91,9 @@ export default function Navbar() {
   const [user, setUser] = useState<SupabaseUser | null>(null);
   const [authLoading, setAuthLoading] = useState(true);
   const router = useRouter();
+  const pathname = usePathname();
+  const navLinks = user ? APP_LINKS : PUBLIC_LINKS;
+  const isActive = (href: string) => !href.includes('#') && (pathname === href || pathname.startsWith(`${href}/`));
 
   useEffect(() => {
     const handler = () => setScrolled(window.scrollY > 80);
@@ -94,12 +102,20 @@ export default function Navbar() {
   }, []);
 
   useEffect(() => {
-    const supabase = createClient();
-    // Get initial user
-    supabase.auth.getUser().then(({ data: { user } }) => {
-      setUser(user);
+    let supabase: ReturnType<typeof createClient>;
+    try {
+      supabase = createClient();
+    } catch (e) {
+      // Misconfigured env: render the signed-out nav rather than crash every page.
+      console.error('Navbar auth unavailable:', e);
       setAuthLoading(false);
-    });
+      return;
+    }
+    // Get initial user
+    supabase.auth.getUser()
+      .then(({ data: { user } }) => setUser(user))
+      .catch(() => setUser(null))
+      .finally(() => setAuthLoading(false));
     // Listen for auth changes
     const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, session) => {
       setUser(session?.user ?? null);
@@ -109,9 +125,15 @@ export default function Navbar() {
   }, []);
 
   const handleSignOut = async () => {
-    const supabase = createClient();
-    await supabase.auth.signOut();
+    // Sign out this device only; clear per-user UI state kept in the browser.
+    const { error } = await createClient().auth.signOut({ scope: 'local' });
+    if (error) console.error('Sign-out failed:', error);
+    try {
+      Object.keys(localStorage).filter((k) => k.startsWith('politicon')).forEach((k) => localStorage.removeItem(k));
+    } catch { /* storage unavailable */ }
+    setUser(null);
     router.push('/');
+    router.refresh();
   };
 
   return (
@@ -139,11 +161,12 @@ export default function Navbar() {
 
           {/* Desktop links */}
           <div className="hidden md:flex items-center gap-8">
-            {navLinks.map(link => (
+            {!authLoading && navLinks.map(link => (
               <Link
                 key={link.label}
                 href={link.href}
-                className="nav-underline text-sm text-text-muted hover:text-text-primary transition-colors duration-200 font-body"
+                aria-current={isActive(link.href) ? 'page' : undefined}
+                className={`nav-underline text-sm transition-colors duration-200 font-body ${isActive(link.href) ? 'text-text-primary' : 'text-text-muted hover:text-text-primary'}`}
               >
                 {link.label}
               </Link>
@@ -203,6 +226,7 @@ export default function Navbar() {
                 </span>
                 <button
                   onClick={() => setMobileOpen(false)}
+                  aria-label="Close menu"
                   className="text-text-muted hover:text-text-primary transition-colors p-2"
                 >
                   <X className="w-5 h-5" />
@@ -218,7 +242,8 @@ export default function Navbar() {
                   >
                     <Link
                       href={link.href}
-                      className="block py-3 px-4 text-text-muted hover:text-text-primary hover:bg-white/5 rounded-xl transition-all duration-200 font-body"
+                      aria-current={isActive(link.href) ? 'page' : undefined}
+                      className={`block py-3 px-4 hover:text-text-primary hover:bg-white/5 rounded-xl transition-all duration-200 font-body ${isActive(link.href) ? 'text-text-primary bg-white/5' : 'text-text-muted'}`}
                       onClick={() => setMobileOpen(false)}
                     >
                       {link.label}
@@ -228,10 +253,6 @@ export default function Navbar() {
                 {user && (
                   <>
                     <div className="my-2 h-px bg-white/8" />
-                    <Link href="/dashboard" onClick={() => setMobileOpen(false)}
-                      className="flex items-center gap-3 py-3 px-4 text-text-muted hover:text-text-primary hover:bg-white/5 rounded-xl transition-all">
-                      <LayoutDashboard className="w-4 h-4" /> Dashboard
-                    </Link>
                     <Link href="/settings" onClick={() => setMobileOpen(false)}
                       className="flex items-center gap-3 py-3 px-4 text-text-muted hover:text-text-primary hover:bg-white/5 rounded-xl transition-all">
                       <Settings className="w-4 h-4" /> Settings

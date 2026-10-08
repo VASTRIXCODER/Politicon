@@ -2,15 +2,17 @@
 
 import { use, useState, useEffect, useMemo, useCallback, useRef } from 'react';
 import { useRouter } from 'next/navigation';
+import Link from 'next/link';
 import { motion } from 'framer-motion';
 import {
-  ArrowLeft, TrendingUp, TrendingDown, Minus, Check, ChevronDown, ExternalLink,
+  TrendingUp, TrendingDown, Minus, Check, ChevronDown, ExternalLink,
   Home, Briefcase, Heart, PiggyBank, GraduationCap, Landmark, Waves, ShieldAlert,
   Target, Sparkles, Loader2,
   Trash2,
 } from 'lucide-react';
 import { EMPLOYMENT_STATUSES, FILING_STATUSES, HOUSING_SITUATIONS, INCOME_RANGES, labelOf } from '@/lib/profileOptions';
 import { requestAnalysis } from '@/lib/analysisClient';
+import { formatPct, formatPts, formatUSD, impactTone, impactWords, signPrefix } from '@/lib/format';
 import { applicability, type Applicability } from '@/lib/applicability';
 import { coerceFullAnalysis } from '@/lib/analysisSchema';
 import PolicyProvenance from '@/components/PolicyProvenance';
@@ -37,8 +39,9 @@ import { RADAR_LABELS, TIMELINE_LABELS, CHART_DESCRIPTIONS, incomeMidpoint, pctT
 // ---------------------------------------------------------------------------
 // formatting helpers
 // ---------------------------------------------------------------------------
-const money = (n: number) => `${n >= 0 ? '+' : '-'}$${Math.abs(Math.round(n)).toLocaleString()}`;
-const pct = (n: number) => `${n >= 0 ? '+' : ''}${n}%`;
+// Dollar fields are signed from the user's point of view: + saves them money, − costs them.
+const money = (n: number, suffix = '') => formatUSD(n, { signed: true, suffix });
+const pct = (n: number) => formatPct(n, { digits: 2 });
 const titleCase = (s: string) => s.replace(/[-_]+/g, ' ').replace(/\b\w/g, (c) => c.toUpperCase());
 
 const TABS = ['overview', 'breakdown', 'timeline', 'economic', 'deepdive', 'action'] as const;
@@ -107,12 +110,18 @@ function DirIcon({ d, className = 'w-5 h-5' }: { d: ImpactDirection; className?:
   return <Minus className={`${className} text-text-muted`} />;
 }
 
-function StatRow({ label, value, positive }: { label: string; value: string; positive?: boolean }) {
+/**
+ * One labelled figure. `cue` is the signed dollar amount behind the value; when
+ * set, "saves you" / "costs you" is spelled out so direction never relies on colour.
+ */
+function StatRow({ label, value, positive, cue }: { label: string; value: string; positive?: boolean; cue?: number }) {
+  const neutral = cue !== undefined && Math.round(cue) === 0;
   return (
-    <div className="flex items-center justify-between py-2 border-b border-white/6 last:border-0">
+    <div className="flex items-center justify-between gap-4 py-2 border-b border-white/6 last:border-0">
       <span className="text-xs text-text-muted">{label}</span>
-      <span className={`font-mono-data text-sm font-semibold ${positive === undefined ? 'text-text-primary' : positive ? 'text-emerald-400' : 'text-red-400'}`}>
+      <span className={`font-mono-data text-sm font-semibold text-right ${positive === undefined || neutral ? 'text-text-primary' : positive ? 'text-emerald-400' : 'text-red-400'}`}>
         {value}
+        {cue !== undefined && !neutral && <span className="block text-[10px] font-normal text-text-muted">{impactWords(cue)}</span>}
       </span>
     </div>
   );
@@ -297,7 +306,7 @@ export default function PolicyDetailPage({ params }: { params: Promise<{ policyI
 
   return (
     <DetailView
-      analysis={analysis} profile={profile} analyzedAt={analyzedAt} tab={tab} setTab={setTab} onBack={() => router.back()}
+      analysis={analysis} profile={profile} analyzedAt={analyzedAt} tab={tab} setTab={setTab}
       stale={stale} reanalyzing={generating} reanalyzeError={generateError} onReanalyze={() => generate(true)}
       onDelete={deleteAnalysis} policyId={policyId}
     />
@@ -320,10 +329,10 @@ function Shell({ children }: { children: React.ReactNode }) {
 // DETAIL VIEW
 // ===========================================================================
 function DetailView({
-  analysis: a, profile, analyzedAt, tab, setTab, onBack, stale, reanalyzing, reanalyzeError, onReanalyze, onDelete, policyId,
+  analysis: a, profile, analyzedAt, tab, setTab, stale, reanalyzing, reanalyzeError, onReanalyze, onDelete, policyId,
 }: {
   analysis: FullAnalysis; profile: ProfileSnapshot | null; analyzedAt: string | null;
-  tab: Tab; setTab: (_t: Tab) => void; onBack: () => void;
+  tab: Tab; setTab: (_t: Tab) => void;
   stale: boolean; reanalyzing: boolean; reanalyzeError: string | null; onReanalyze: () => void; onDelete: () => void;
   policyId: string;
 }) {
@@ -357,9 +366,15 @@ function DetailView({
     <Shell>
       <main className="max-w-6xl mx-auto px-4 sm:px-6 lg:px-8 pt-28 pb-24">
         <div className="flex items-center justify-between mb-6 gap-4">
-          <button onClick={onBack} className="inline-flex items-center gap-2 text-text-muted hover:text-text-primary transition-colors group text-sm">
-            <ArrowLeft className="w-4 h-4 group-hover:-translate-x-1 transition-transform" /> Back
-          </button>
+          <nav aria-label="Breadcrumb" className="min-w-0">
+            <ol className="flex items-center gap-1.5 text-sm text-text-muted min-w-0">
+              <li><Link href="/dashboard" className="hover:text-text-primary transition-colors">Dashboard</Link></li>
+              <li aria-hidden>/</li>
+              <li><Link href="/impact" className="hover:text-text-primary transition-colors">My Impact</Link></li>
+              <li aria-hidden>/</li>
+              <li aria-current="page" className="text-text-primary truncate max-w-[40vw] sm:max-w-xs">{a.billNumber || a.policyTitle}</li>
+            </ol>
+          </nav>
           <div className="flex items-center gap-2">
             <button
               onClick={onDelete}
@@ -414,13 +429,13 @@ function DetailView({
           <div className="relative z-10 grid md:grid-cols-[1.2fr_1fr] gap-8 items-center">
             <div>
               <p className="text-xs font-mono-data text-text-muted uppercase tracking-widest mb-3">Net Annual Impact</p>
-              <div className={`font-mono-data text-5xl sm:text-6xl font-bold flex items-center gap-3 ${a.netAnnualImpact >= 0 ? 'gradient-text-gold' : 'text-red-400'}`}>
-                <span>{a.netAnnualImpact >= 0 ? '+' : '-'}</span>
-                <GsapCounter value={Math.abs(a.netAnnualImpact)} prefix="$" />
+              <div className={`font-mono-data text-5xl sm:text-6xl font-bold ${a.netAnnualImpact >= 0 ? 'gradient-text-gold' : 'text-red-400'}`}>
+                <span aria-hidden><GsapCounter value={Math.abs(Math.round(a.netAnnualImpact))} prefix={`${signPrefix(a.netAnnualImpact)}$`} /></span>
+                <span className="sr-only">{formatUSD(a.netAnnualImpact, { signed: true })} per year</span>
               </div>
               <div className="flex items-center gap-4 mt-3">
                 <p className="text-sm text-text-muted">
-                  <span className={`font-mono-data font-semibold ${a.netMonthlyImpact >= 0 ? 'text-emerald-400' : 'text-red-400'}`}>{money(a.netMonthlyImpact)}</span> / month
+                  <span className={`font-mono-data font-semibold ${impactTone(a.netMonthlyImpact)}`}>{money(a.netMonthlyImpact)}</span> / month · {impactWords(a.netAnnualImpact)}
                 </p>
                 <span className="flex items-center gap-1.5 text-sm capitalize">
                   <DirIcon d={a.direction} className="w-4 h-4" />
@@ -510,10 +525,10 @@ function OverviewTab({ a, categoryBars, simple, income, applies }: {
       <div className="grid lg:grid-cols-2 gap-6">
         <GlassCard className="rounded-3xl p-7" animate={false}>
           <h3 className="font-display text-base font-semibold text-text-primary mb-4">Immediate Effects</h3>
-          <StatRow label="Monthly budget impact" value={`${money(a.immediate.monthlyBudgetImpact)}/mo`} positive={a.immediate.monthlyBudgetImpact >= 0} />
-          <StatRow label="Annual budget impact" value={`${money(a.immediate.annualBudgetImpact)}/yr`} positive={a.immediate.annualBudgetImpact >= 0} />
+          <StatRow label="Monthly budget impact" value={money(a.immediate.monthlyBudgetImpact, '/mo')} positive={a.immediate.monthlyBudgetImpact >= 0} cue={a.immediate.monthlyBudgetImpact} />
+          <StatRow label="Annual budget impact" value={money(a.immediate.annualBudgetImpact, '/yr')} positive={a.immediate.annualBudgetImpact >= 0} cue={a.immediate.annualBudgetImpact} />
           {(applies.paycheck || a.immediate.takeHomePerPaycheck !== 0) && (
-            <StatRow label="Take-home per paycheck" value={money(a.immediate.takeHomePerPaycheck)} positive={a.immediate.takeHomePerPaycheck >= 0} />
+            <StatRow label="Take-home per paycheck" value={money(a.immediate.takeHomePerPaycheck)} positive={a.immediate.takeHomePerPaycheck >= 0} cue={a.immediate.takeHomePerPaycheck} />
           )}
           <StatRow
             label={simple ? 'Change to your tax bill' : 'Effective tax rate change'}
@@ -521,7 +536,7 @@ function OverviewTab({ a, categoryBars, simple, income, applies }: {
             positive={a.immediate.effectiveTaxRateChange <= 0}
           />
           {a.immediate.spendingCategories.slice(0, 5).map((s, i) => (
-            <StatRow key={i} label={s.label} value={money(s.value)} positive={s.value >= 0} />
+            <StatRow key={i} label={s.label} value={money(s.value)} positive={s.value >= 0} cue={s.value} />
           ))}
         </GlassCard>
 
@@ -541,7 +556,7 @@ function OverviewTab({ a, categoryBars, simple, income, applies }: {
               {a.tradeoffs.gains.length ? a.tradeoffs.gains.map((g, i) => (
                 <div key={i} className="flex items-center justify-between gap-3 glass rounded-xl px-4 py-2.5">
                   <span className="text-sm text-text-primary">{g.label}</span>
-                  <span className="font-mono-data text-sm font-semibold text-emerald-400">{money(g.value)}</span>
+                  <span className="font-mono-data text-sm font-semibold text-emerald-400">{money(Math.abs(g.value))}</span>
                 </div>
               )) : <p className="text-xs text-text-muted">No notable gains identified.</p>}
             </div>
@@ -552,7 +567,7 @@ function OverviewTab({ a, categoryBars, simple, income, applies }: {
               {a.tradeoffs.losses.length ? a.tradeoffs.losses.map((l, i) => (
                 <div key={i} className="flex items-center justify-between gap-3 glass rounded-xl px-4 py-2.5">
                   <span className="text-sm text-text-primary">{l.label}</span>
-                  <span className="font-mono-data text-sm font-semibold text-red-400">{money(l.value)}</span>
+                  <span className="font-mono-data text-sm font-semibold text-red-400">{money(-Math.abs(l.value))}</span>
                 </div>
               )) : <p className="text-xs text-text-muted">No notable losses identified.</p>}
             </div>
@@ -604,10 +619,10 @@ function BreakdownTab({ a, categoryBars, simple }: { a: FullAnalysis; categoryBa
           <h3 className="font-display text-base font-semibold text-text-primary mb-4">Before vs After — Effective Tax Rate</h3>
           <BeforeAfterBar items={beforeAfter} unit="%" height={240} />
           <div className="mt-4 space-y-1">
-            <StatRow label="Take-home per paycheck" value={money(a.immediate.takeHomePerPaycheck)} positive={a.immediate.takeHomePerPaycheck >= 0} />
-            <StatRow label="Monthly budget" value={`${money(a.immediate.monthlyBudgetImpact)}/mo`} positive={a.immediate.monthlyBudgetImpact >= 0} />
-            <StatRow label="Federal tax liability" value={money(a.tax.federalLiabilityChange)} positive={a.tax.federalLiabilityChange >= 0} />
-            <StatRow label="State tax liability" value={money(a.tax.stateLiabilityChange)} positive={a.tax.stateLiabilityChange >= 0} />
+            <StatRow label="Take-home per paycheck" value={money(a.immediate.takeHomePerPaycheck)} positive={a.immediate.takeHomePerPaycheck >= 0} cue={a.immediate.takeHomePerPaycheck} />
+            <StatRow label="Monthly budget" value={money(a.immediate.monthlyBudgetImpact, '/mo')} positive={a.immediate.monthlyBudgetImpact >= 0} cue={a.immediate.monthlyBudgetImpact} />
+            <StatRow label="Federal income tax" value={money(a.tax.federalLiabilityChange)} positive={a.tax.federalLiabilityChange >= 0} cue={a.tax.federalLiabilityChange} />
+            <StatRow label="State income tax" value={money(a.tax.stateLiabilityChange)} positive={a.tax.stateLiabilityChange >= 0} cue={a.tax.stateLiabilityChange} />
           </div>
         </GlassCard>
       </div>
@@ -649,7 +664,7 @@ function TimelineTab({ a, simple }: { a: FullAnalysis; simple: boolean }) {
                 <div className={`absolute -left-[22px] top-0.5 w-3.5 h-3.5 rounded-full border-2 ${m.value >= 0 ? 'border-emerald-400 bg-emerald-400/20' : 'border-red-400 bg-red-400/20'}`} />
                 <div className="flex items-center justify-between">
                   <span className="text-sm text-text-primary font-medium">{m.label}</span>
-                  <span className={`font-mono-data text-sm font-semibold ${m.value >= 0 ? 'text-emerald-400' : 'text-red-400'}`}>{money(m.value)}</span>
+                  <span className={`font-mono-data text-sm font-semibold ${impactTone(m.value)}`}>{money(m.value)}</span>
                 </div>
               </div>
             ))}
@@ -789,20 +804,20 @@ function EconomicContextTab({ a, simple, income, applies }: { a: FullAnalysis; s
         <h3 className="font-display text-base font-semibold text-text-primary mb-4">{simple ? 'The bottom line for you' : 'Personal Financial Data'}</h3>
         <div className="grid sm:grid-cols-2 gap-x-8">
           <div>
-            <StatRow label={simple ? 'Spendable money each month' : 'Disposable income'} value={`${money(personal.disposableIncomeMonthly)}/mo`} positive={personal.disposableIncomeMonthly >= 0} />
+            <StatRow label={simple ? 'Spendable money each month' : 'Disposable income'} value={money(personal.disposableIncomeMonthly, '/mo')} positive={personal.disposableIncomeMonthly >= 0} cue={personal.disposableIncomeMonthly} />
             <StatRow label={simple ? 'Your net worth (1 year)' : 'Net worth (1yr)'} value={pct(personal.netWorthChange1yrPct)} positive={personal.netWorthChange1yrPct >= 0} />
             <StatRow label={simple ? 'Your net worth (3 years)' : 'Net worth (3yr)'} value={pct(personal.netWorthChange3yrPct)} positive={personal.netWorthChange3yrPct >= 0} />
             {(applies.homeEquity || personal.realEstateEquityDollar !== 0) && (
-              <StatRow label={simple ? 'Your home’s value' : 'Real estate equity'} value={money(personal.realEstateEquityDollar)} positive={personal.realEstateEquityDollar >= 0} />
+              <StatRow label={simple ? 'Change in your home’s value' : 'Real estate equity change'} value={money(personal.realEstateEquityDollar)} positive={personal.realEstateEquityDollar >= 0} />
             )}
           </div>
           <div>
-            <StatRow label={simple ? 'How much more you can save' : 'Savings rate change'} value={`${personal.savingsRateChangePct >= 0 ? '+' : ''}${personal.savingsRateChangePct}pts`} positive={personal.savingsRateChangePct >= 0} />
+            <StatRow label={simple ? 'How much more you can save' : 'Savings rate change'} value={formatPts(personal.savingsRateChangePct)} positive={personal.savingsRateChangePct >= 0} />
             {(applies.debt || personal.debtToIncomeChangePct !== 0) && (
-              <StatRow label={simple ? 'Share of paycheck going to debt' : 'Debt-to-income change'} value={`${personal.debtToIncomeChangePct >= 0 ? '+' : ''}${personal.debtToIncomeChangePct}pts`} positive={personal.debtToIncomeChangePct <= 0} />
+              <StatRow label={simple ? 'Share of paycheck going to debt' : 'Debt-to-income change'} value={formatPts(personal.debtToIncomeChangePct)} positive={personal.debtToIncomeChangePct <= 0} />
             )}
             {applies.debt && personal.debtImpacts.slice(0, 4).map((d, i) => (
-              <StatRow key={i} label={d.label} value={money(d.value)} positive={d.value >= 0} />
+              <StatRow key={i} label={d.label} value={money(d.value)} positive={d.value >= 0} cue={d.value} />
             ))}
           </div>
         </div>
@@ -837,10 +852,10 @@ const SECTION_DEFS = [
 function DeepDiveTab({ a }: { a: FullAnalysis }) {
   const [open, setOpen] = useState<Record<string, boolean>>({ housing: true });
 
-  function rows(key: string): { label: string; value: string; positive?: boolean }[] {
+  function rows(key: string): { label: string; value: string; positive?: boolean; cue?: number }[] {
     switch (key) {
       case 'housing': return [
-        { label: 'Monthly housing effect', value: `${money(a.housing.monthlyHousingEffect)}/mo`, positive: a.housing.monthlyHousingEffect >= 0 },
+        { label: 'Housing costs, per month', value: money(a.housing.monthlyHousingEffect, '/mo'), positive: a.housing.monthlyHousingEffect >= 0, cue: a.housing.monthlyHousingEffect },
         { label: 'Property value change', value: pct(a.housing.propertyValueChangePct), positive: a.housing.propertyValueChangePct >= 0 },
         { label: 'Affordability index change', value: `${a.housing.affordabilityIndexChange >= 0 ? '+' : ''}${a.housing.affordabilityIndexChange}` },
         ...(a.housing.firstTimeBuyerImpact ? [{ label: 'First-time buyer', value: a.housing.firstTimeBuyerImpact }] : []),
@@ -848,28 +863,28 @@ function DeepDiveTab({ a }: { a: FullAnalysis }) {
       case 'employment': return [
         { label: 'Job security risk', value: `${a.employment.jobSecurityRisk}/100` },
         { label: 'Wage growth projection', value: pct(a.employment.wageGrowthPct), positive: a.employment.wageGrowthPct >= 0 },
-        { label: 'Benefit change value', value: money(a.employment.benefitChangeValue), positive: a.employment.benefitChangeValue >= 0 },
+        { label: 'Job benefits', value: money(a.employment.benefitChangeValue), positive: a.employment.benefitChangeValue >= 0, cue: a.employment.benefitChangeValue },
         ...(a.employment.industryEffects ? [{ label: 'Industry effects', value: a.employment.industryEffects }] : []),
       ];
       case 'healthcare': return [
-        { label: 'Monthly premium change', value: `${money(a.healthcare.monthlyPremiumChange)}/mo`, positive: a.healthcare.monthlyPremiumChange >= 0 },
-        { label: 'Out-of-pocket max change', value: money(a.healthcare.outOfPocketMaxChange), positive: a.healthcare.outOfPocketMaxChange >= 0 },
-        { label: 'Prescription cost change', value: money(a.healthcare.prescriptionCostChange), positive: a.healthcare.prescriptionCostChange >= 0 },
+        { label: 'Health premiums, per month', value: money(a.healthcare.monthlyPremiumChange, '/mo'), positive: a.healthcare.monthlyPremiumChange >= 0, cue: a.healthcare.monthlyPremiumChange },
+        { label: 'Out-of-pocket maximum', value: money(a.healthcare.outOfPocketMaxChange), positive: a.healthcare.outOfPocketMaxChange >= 0, cue: a.healthcare.outOfPocketMaxChange },
+        { label: 'Prescription costs', value: money(a.healthcare.prescriptionCostChange), positive: a.healthcare.prescriptionCostChange >= 0, cue: a.healthcare.prescriptionCostChange },
         ...(a.healthcare.coverageChange ? [{ label: 'Coverage', value: a.healthcare.coverageChange }] : []),
       ];
       case 'retirement': return [
-        { label: '401k / IRA limit change', value: money(a.retirement.contributionLimitChange), positive: a.retirement.contributionLimitChange >= 0 },
-        { label: 'Social Security change', value: money(a.retirement.socialSecurityChange), positive: a.retirement.socialSecurityChange >= 0 },
+        { label: '401(k) / IRA contribution limit', value: money(a.retirement.contributionLimitChange), positive: a.retirement.contributionLimitChange >= 0 },
+        { label: 'Social Security benefits', value: money(a.retirement.socialSecurityChange), positive: a.retirement.socialSecurityChange >= 0, cue: a.retirement.socialSecurityChange },
         { label: 'Retirement timeline', value: `${a.retirement.timelineImpactYears >= 0 ? '+' : ''}${a.retirement.timelineImpactYears} yrs`, positive: a.retirement.timelineImpactYears <= 0 },
       ];
       case 'education': return [
-        { label: 'Student loan payment', value: `${money(a.education.studentLoanPaymentChange)}/mo`, positive: a.education.studentLoanPaymentChange >= 0 },
-        { label: 'Tuition assistance change', value: money(a.education.tuitionAssistanceChange), positive: a.education.tuitionAssistanceChange >= 0 },
-        { label: 'Child education cost change', value: money(a.education.childEducationCostChange), positive: a.education.childEducationCostChange >= 0 },
+        { label: 'Student loan payments, per month', value: money(a.education.studentLoanPaymentChange, '/mo'), positive: a.education.studentLoanPaymentChange >= 0, cue: a.education.studentLoanPaymentChange },
+        { label: 'Tuition assistance', value: money(a.education.tuitionAssistanceChange), positive: a.education.tuitionAssistanceChange >= 0, cue: a.education.tuitionAssistanceChange },
+        { label: 'Child education costs', value: money(a.education.childEducationCostChange), positive: a.education.childEducationCostChange >= 0, cue: a.education.childEducationCostChange },
       ];
       case 'tax': return [
-        { label: 'Federal liability change', value: money(a.tax.federalLiabilityChange), positive: a.tax.federalLiabilityChange >= 0 },
-        { label: 'State liability change', value: money(a.tax.stateLiabilityChange), positive: a.tax.stateLiabilityChange >= 0 },
+        { label: 'Federal income tax', value: money(a.tax.federalLiabilityChange), positive: a.tax.federalLiabilityChange >= 0, cue: a.tax.federalLiabilityChange },
+        { label: 'State income tax', value: money(a.tax.stateLiabilityChange), positive: a.tax.stateLiabilityChange >= 0, cue: a.tax.stateLiabilityChange },
         { label: 'Effective rate', value: `${a.tax.effectiveRateBefore}% → ${a.tax.effectiveRateAfter}%`, positive: a.tax.effectiveRateAfter <= a.tax.effectiveRateBefore },
         ...(a.tax.bracketChange ? [{ label: 'Bracket', value: a.tax.bracketChange }] : []),
         ...(a.tax.deductionChanges ? [{ label: 'Deductions', value: a.tax.deductionChanges }] : []),
@@ -877,8 +892,8 @@ function DeepDiveTab({ a }: { a: FullAnalysis }) {
       ];
       case 'ripple': return [
         { label: 'Inflation impact', value: pct(a.ripple.inflationImpactPct), positive: a.ripple.inflationImpactPct <= 0 },
-        { label: 'Cost of living change', value: `${money(a.ripple.costOfLivingChange)}/yr`, positive: a.ripple.costOfLivingChange >= 0 },
-        { label: 'Purchasing power change', value: `${money(a.ripple.purchasingPowerChange)}/yr`, positive: a.ripple.purchasingPowerChange >= 0 },
+        { label: 'Cost of living, per year', value: money(a.ripple.costOfLivingChange, '/yr'), positive: a.ripple.costOfLivingChange >= 0, cue: a.ripple.costOfLivingChange },
+        { label: 'Purchasing power, per year', value: money(a.ripple.purchasingPowerChange, '/yr'), positive: a.ripple.purchasingPowerChange >= 0, cue: a.ripple.purchasingPowerChange },
         ...(a.ripple.interestRateEffect ? [{ label: 'Interest rates on debt', value: a.ripple.interestRateEffect }] : []),
       ];
       default: return [];
@@ -934,25 +949,28 @@ function resourceLinks(category: string, billNumber: string) {
 }
 
 function ActionTab({ a }: { a: FullAnalysis }) {
+  // Kept in this browser only (cleared on sign-out), keyed by the item's text so
+  // a re-analysis with different suggestions never inherits old ticks.
   const storageKey = `politicon:checklist:${a.policyId}`;
-  const [checked, setChecked] = useState<Record<number, boolean>>({});
+  const [done, setDone] = useState<Record<string, boolean>>({});
 
   useEffect(() => {
     try {
-      const saved = localStorage.getItem(storageKey);
-      if (saved) setChecked(JSON.parse(saved));
-    } catch { /* ignore */ }
+      const saved = JSON.parse(localStorage.getItem(storageKey) || '{}');
+      setDone(saved && typeof saved === 'object' && !Array.isArray(saved) ? saved : {});
+    } catch { setDone({}); }
   }, [storageKey]);
 
-  const toggle = useCallback((i: number) => {
-    setChecked((prev) => {
-      const next = { ...prev, [i]: !prev[i] };
+  const toggle = useCallback((step: string) => {
+    setDone((prev) => {
+      const next = { ...prev, [step]: !prev[step] };
       try { localStorage.setItem(storageKey, JSON.stringify(next)); } catch { /* ignore */ }
       return next;
     });
   }, [storageKey]);
 
-  const doneCount = a.recommendations.filter((_, i) => checked[i]).length;
+  const checked = a.recommendations.map((r) => !!done[r.step]);
+  const doneCount = checked.filter(Boolean).length;
   const links = resourceLinks(a.category, a.billNumber);
 
   return (
@@ -964,7 +982,7 @@ function ActionTab({ a }: { a: FullAnalysis }) {
         </div>
         <div className="space-y-3">
           {a.recommendations.map((r, i) => (
-            <button key={i} onClick={() => toggle(i)}
+            <button key={i} onClick={() => toggle(r.step)} role="checkbox" aria-checked={checked[i]}
               className={`w-full flex items-start gap-3 p-4 rounded-2xl text-left transition-all ${checked[i] ? 'glass opacity-60' : 'glass hover:border-white/16'}`}>
               <span className={`mt-0.5 w-5 h-5 rounded-md border flex items-center justify-center flex-shrink-0 transition-all ${checked[i] ? 'bg-primary border-primary' : 'border-white/20'}`}>
                 {checked[i] && <Check className="w-3.5 h-3.5 text-white" />}

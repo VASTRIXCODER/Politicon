@@ -4,8 +4,10 @@ import Navbar from '@/components/layout/Navbar';
 import Footer from '@/components/layout/Footer';
 import { LEGAL_UPDATED } from '@/lib/legal';
 
-/** Shared layout for the Privacy, Terms and Disclaimer pages. */
-export default function LegalPage({ title, intro, children }: { title: string; intro: string; children: React.ReactNode }) {
+/** Shared layout for the Privacy, Terms, Disclaimer and Help pages. */
+export default function LegalPage({ title, intro, children, showUpdated = true }: {
+  title: string; intro: string; children: React.ReactNode; showUpdated?: boolean;
+}) {
   return (
     <div className="min-h-screen relative bg-base">
       <Navbar />
@@ -14,7 +16,7 @@ export default function LegalPage({ title, intro, children }: { title: string; i
           <ArrowLeft className="w-4 h-4" /> Back to home
         </Link>
         <h1 className="font-display text-3xl sm:text-4xl font-bold text-text-primary mb-3">{title}</h1>
-        <p className="text-sm text-text-muted mb-10">Last updated {LEGAL_UPDATED}</p>
+        {showUpdated ? <p className="text-sm text-text-muted mb-10">Last updated {LEGAL_UPDATED}</p> : <div className="mb-6" />}
         <p className="text-base text-text-primary/90 leading-relaxed mb-10">{intro}</p>
         <div className="legal-prose space-y-8 text-sm sm:text-base leading-relaxed text-text-primary/85">{children}</div>
       </main>

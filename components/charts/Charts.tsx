@@ -5,6 +5,7 @@ import {
   Cell, PieChart, Pie, AreaChart, Area, LineChart, Line, Legend, ReferenceLine,
   RadarChart, Radar, PolarGrid, PolarAngleAxis, PolarRadiusAxis,
 } from 'recharts';
+import { formatUSD } from '@/lib/format';
 
 // ---------------------------------------------------------------------------
 // Shared palette + helpers (matches the Politicon design system)
@@ -33,12 +34,8 @@ export const CATEGORY_COLOR: Record<string, string> = {
 const PALETTE = ['#7B61FF', '#00D4FF', '#F5C842', '#10B981', '#EC4899', '#F97316', '#8B5CF6', '#06B6D4', '#FB7185', '#A3E635'];
 export const seriesColor = (i: number) => PALETTE[i % PALETTE.length];
 
-const fmtAxis = (n: number) => {
-  const a = Math.abs(n);
-  if (a >= 1000) return `${n < 0 ? '-' : ''}$${(a / 1000).toFixed(a >= 10000 ? 0 : 1)}k`;
-  return `${n < 0 ? '-' : ''}$${a}`;
-};
-const fmtMoney = (n: number) => `${n >= 0 ? '+' : '-'}$${Math.abs(Math.round(n)).toLocaleString()}`;
+const fmtAxis = (n: number) => formatUSD(n, { compact: true });
+const fmtMoney = (n: number) => formatUSD(n, { signed: true });
 
 interface TooltipEntry { name?: string; value?: number; color?: string; dataKey?: string | number; payload?: Record<string, unknown> }
 function GlassTooltip({ active, payload, label, unit = '$' }: { active?: boolean; payload?: TooltipEntry[]; label?: string | number; unit?: string }) {
@@ -409,7 +406,7 @@ export function SpendingHeatmap(
         >
           <p className="text-xs font-medium text-text-primary mb-1">{it.category}</p>
           <p className={`font-mono-data text-sm font-bold ${it.dollarImpact > 0 ? 'text-emerald-300' : it.dollarImpact < 0 ? 'text-red-300' : 'text-text-muted'}`}>
-            {it.dollarImpact >= 0 ? '+' : '-'}${Math.abs(Math.round(it.dollarImpact)).toLocaleString()}/mo
+            {formatUSD(it.dollarImpact, { signed: true, suffix: '/mo' })}
           </p>
         </div>
       ))}

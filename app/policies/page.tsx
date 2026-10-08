@@ -1,237 +1,253 @@
 'use client';
 
-import { useState } from 'react';
-import { motion, AnimatePresence } from 'framer-motion';
-import { Search, Filter, X, ChevronRight, GitCompare, ExternalLink, CheckCircle2 } from 'lucide-react';
-import { mockPolicies } from '@/mocks/policies';
-import { Policy, PolicyCategory } from '@/types';
-import GlassCard from '@/components/ui/GlassCard';
-import Badge from '@/components/ui/Badge';
+import { useEffect, useMemo, useRef, useState } from 'react';
+import Link from 'next/link';
+import { useRouter } from 'next/navigation';
+import { Search, X, RefreshCw } from 'lucide-react';
 import Navbar from '@/components/layout/Navbar';
 import AmbientBackground from '@/components/landing/AmbientBackground';
-import { getStatusColor, getCategoryIcon, formatCurrency } from '@/lib/utils';
+import GlassCard from '@/components/ui/GlassCard';
+import PolicyFeedCard, { FeedSkeletonCard } from '@/components/PolicyFeedCard';
+import { useToast } from '@/components/ui/Toast';
 import { apiFetch } from '@/lib/api';
-import type { FullAnalysis } from '@/types';
+import { requestAnalysis } from '@/lib/analysisClient';
+import { createClient } from '@/lib/supabase/client';
+import type { DiscoveredPolicy } from '@/types';
 
-const categories: PolicyCategory[] = ['All', 'Taxes', 'Healthcare', 'Housing', 'Employment', 'Education', 'Energy', 'Social Security'];
+const POLL_MS = 5000;
+const POLL_ATTEMPTS = 60; // ~5 minutes
 
+type Show = 'all' | 'analyzed' | 'not_analyzed';
+const SHOW_LABELS: Record<Show, string> = { all: 'All', analyzed: 'Analyzed', not_analyzed: 'Not analyzed yet' };
+
+/**
+ * Every policy in the user's personalized feed, searchable and filterable.
+ * Policies come from official records (see the dashboard to refresh the feed).
+ */
 export default function PoliciesPage() {
+  const router = useRouter();
+  const { toast, showToast } = useToast();
+  const [policies, setPolicies] = useState<DiscoveredPolicy[]>([]);
+  const [impacts, setImpacts] = useState<Map<string, number>>(new Map());
+  const [loading, setLoading] = useState(true);
+  const [preparing, setPreparing] = useState(false);
+  const [error, setError] = useState<string | null>(null);
   const [search, setSearch] = useState('');
-  const [category, setCategory] = useState<PolicyCategory>('All');
-  const [selectedPolicy, setSelectedPolicy] = useState<Policy | null>(null);
-  const [compareMode, setCompareMode] = useState(false);
-  const [compareList, setCompareList] = useState<Policy[]>([]);
-  const [analyzing, setAnalyzing] = useState(false);
-  const [analysis, setAnalysis] = useState('');
+  const [category, setCategory] = useState('All');
+  const [show, setShow] = useState<Show>('all');
+  const [analyzingIds, setAnalyzingIds] = useState<Set<string>>(new Set());
+  const abort = useRef<AbortController | null>(null);
+  const timer = useRef<ReturnType<typeof setTimeout> | null>(null);
 
-  const filtered = mockPolicies.filter(p => {
-    const matchSearch = !search || p.title.toLowerCase().includes(search.toLowerCase()) || p.tags.some(t => t.includes(search.toLowerCase()));
-    const matchCat = category === 'All' || p.category === category;
-    return matchSearch && matchCat;
-  });
+  async function loadImpacts() {
+    const { data } = await createClient()
+      .from('analyzed_policies')
+      .select('policy_id, net_annual_impact')
+      .eq('generation_status', 'ready');
+    setImpacts(new Map((data || []).map((r) => [r.policy_id as string, Number(r.net_annual_impact) || 0])));
+  }
 
-  const handleAnalyze = async (policy: Policy) => {
-    setSelectedPolicy(policy);
-    setAnalyzing(true);
-    setAnalysis('');
-    // The server only analyzes policies from the user's own feed; these
-    // sample policies resolve to a friendly "not in your feed" message.
-    const res = await apiFetch<{ analysis: FullAnalysis }>('/api/analyze', { body: { policyId: policy.id } });
-    setAnalysis(res.ok ? res.data.analysis.plainEnglishSummary : res.message);
-    setAnalyzing(false);
-  };
+  async function loadFeed(attempt = 0) {
+    const signal = abort.current?.signal;
+    if (attempt === 0) { setLoading(true); setError(null); }
+    const res = await apiFetch<{ policies?: DiscoveredPolicy[]; generating?: boolean }>('/api/policies/feed', { signal });
+    if (signal?.aborted) return;
+    if (res.ok) {
+      if (Array.isArray(res.data.policies)) setPolicies(res.data.policies);
+      if (res.status === 202) {
+        setPreparing(true);
+        if (attempt < POLL_ATTEMPTS) {
+          if (res.data.policies?.length) setLoading(false);
+          timer.current = setTimeout(() => loadFeed(attempt + 1), POLL_MS);
+          return;
+        }
+        setError('Your feed is taking longer than usual. Please check back in a few minutes.');
+      }
+      setPreparing(false);
+    } else if (res.code === 'needs_onboarding') {
+      router.replace('/onboarding');
+      return;
+    } else {
+      setError(res.message);
+    }
+    setLoading(false);
+  }
 
-  const toggleCompare = (policy: Policy) => {
-    setCompareList(prev => {
-      if (prev.find(p => p.id === policy.id)) return prev.filter(p => p.id !== policy.id);
-      if (prev.length >= 2) return [prev[1], policy];
-      return [...prev, policy];
+  useEffect(() => {
+    abort.current = new AbortController();
+    loadFeed();
+    loadImpacts();
+    return () => {
+      abort.current?.abort();
+      if (timer.current) clearTimeout(timer.current);
+    };
+    // Runs once per mount; loadFeed reads only refs and state setters.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  async function handleAnalyze(policy: DiscoveredPolicy) {
+    if (analyzingIds.has(policy.id)) return;
+    setAnalyzingIds((prev) => new Set(prev).add(policy.id));
+    const res = await requestAnalysis(policy.id, { signal: abort.current?.signal });
+    if (abort.current?.signal.aborted) return;
+    if (res.ok) {
+      setImpacts((prev) => new Map(prev).set(policy.id, res.analysis.netAnnualImpact));
+      showToast(`Analysis ready for “${policy.title}”.`);
+    } else if (!res.cancelled) {
+      showToast(res.message, 'error');
+    }
+    setAnalyzingIds((prev) => {
+      const next = new Set(prev);
+      next.delete(policy.id);
+      return next;
     });
-  };
+  }
+
+  async function handleDismiss(policy: DiscoveredPolicy): Promise<string | null> {
+    const res = await apiFetch('/api/feedback', { body: { targetType: 'feed_item', targetId: policy.id, rating: 'not_relevant' } });
+    if (!res.ok) return res.message;
+    setPolicies((prev) => prev.filter((p) => p.id !== policy.id));
+    return null;
+  }
+
+  const categories = useMemo(
+    () => ['All', ...Array.from(new Set(policies.map((p) => p.category).filter(Boolean))).sort()],
+    [policies],
+  );
+
+  const filtered = useMemo(() => {
+    const q = search.trim().toLowerCase();
+    return policies.filter((p) => {
+      if (category !== 'All' && p.category !== category) return false;
+      const analyzed = impacts.has(p.id);
+      if (show === 'analyzed' && !analyzed) return false;
+      if (show === 'not_analyzed' && analyzed) return false;
+      if (!q) return true;
+      return [p.title, p.description, p.billNumber, p.region, p.category]
+        .some((f) => typeof f === 'string' && f.toLowerCase().includes(q));
+    });
+  }, [policies, impacts, search, category, show]);
 
   return (
     <div className="min-h-screen relative">
       <AmbientBackground />
+      {toast}
       <div className="relative z-10">
         <Navbar />
         <main className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 pt-28 pb-20">
+          <header className="mb-8">
+            <h1 className="font-display text-3xl font-bold text-text-primary mb-2">Your policies</h1>
+            <p className="text-text-muted max-w-2xl">
+              Bills and laws from official records that are most relevant to your profile. Analyze one to see what it could mean for your
+              finances. To get newer policies, refresh your feed on the <Link href="/dashboard" className="text-primary hover:underline underline-offset-2">dashboard</Link>.
+            </p>
+          </header>
 
-          {/* Header */}
-          <motion.div initial={{ opacity: 0, y: 16 }} animate={{ opacity: 1, y: 0 }} className="mb-10">
-            <h1 className="font-display text-3xl font-bold text-text-primary mb-2">Policy Analysis</h1>
-            <p className="text-text-muted">Browse and analyze policies by their financial impact on your situation.</p>
-          </motion.div>
-
-          {/* Search + filters */}
-          <div className="flex flex-col sm:flex-row gap-4 mb-8">
+          <div className="flex flex-col lg:flex-row gap-4 mb-6">
             <div className="relative flex-1">
-              <Search className="absolute left-4 top-1/2 -translate-y-1/2 w-4 h-4 text-text-muted" />
-              <input type="text" placeholder="Search policies by name or tag..." value={search}
-                onChange={e => setSearch(e.target.value)}
-                className="input-glass w-full pl-11 pr-4 py-3.5 text-sm" />
+              <label htmlFor="policy-search" className="sr-only">Search your policies</label>
+              <Search className="absolute left-4 top-1/2 -translate-y-1/2 w-4 h-4 text-text-muted" aria-hidden />
+              <input
+                id="policy-search"
+                type="search"
+                placeholder="Search by title, bill number or topic…"
+                value={search}
+                onChange={(e) => setSearch(e.target.value)}
+                className="input-glass w-full pl-11 pr-10 py-3.5 text-base sm:text-sm"
+              />
               {search && (
-                <button onClick={() => setSearch('')} className="absolute right-3.5 top-1/2 -translate-y-1/2 text-text-muted hover:text-text-primary">
+                <button onClick={() => setSearch('')} aria-label="Clear search" className="absolute right-3.5 top-1/2 -translate-y-1/2 text-text-muted hover:text-text-primary">
                   <X className="w-4 h-4" />
                 </button>
               )}
             </div>
-            <button
-              onClick={() => setCompareMode(!compareMode)}
-              className={`flex items-center gap-2 px-5 py-3.5 rounded-xl border text-sm font-medium transition-all ${
-                compareMode ? 'bg-secondary/15 border-secondary/30 text-secondary' : 'glass border-white/8 text-text-muted'
-              }`}
-            >
-              <GitCompare className="w-4 h-4" /> Compare {compareMode && compareList.length > 0 ? `(${compareList.length}/2)` : ''}
-            </button>
-          </div>
-
-          {/* Category filters */}
-          <div className="flex gap-2 mb-8 overflow-x-auto pb-2 scrollbar-hide">
-            {categories.map(cat => (
-              <button key={cat} onClick={() => setCategory(cat)}
-                className={`flex-shrink-0 px-4 py-2 rounded-full text-xs font-medium border transition-all ${
-                  category === cat ? 'bg-primary/20 border-primary/40 text-primary' : 'glass border-white/8 text-text-muted hover:text-text-primary'
-                }`}>
-                {cat === 'All' ? cat : `${getCategoryIcon(cat)} ${cat}`}
-              </button>
-            ))}
-          </div>
-
-          {/* Compare banner */}
-          <AnimatePresence>
-            {compareMode && compareList.length > 0 && (
-              <motion.div initial={{ opacity: 0, y: -12 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: -12 }}
-                className="glass border border-secondary/20 rounded-2xl p-4 mb-8 flex items-center justify-between">
-                <div className="flex items-center gap-3">
-                  <GitCompare className="w-4 h-4 text-secondary" />
-                  <span className="text-sm text-text-primary">
-                    {compareList.length === 1 ? `"${compareList[0].title}" selected — pick one more` : `Comparing: ${compareList.map(p => p.title.split(' ').slice(0,3).join(' ')).join(' vs ')}`}
-                  </span>
-                </div>
-                {compareList.length === 2 && (
-                  <button className="text-xs bg-secondary/20 border border-secondary/30 text-secondary px-4 py-2 rounded-xl hover:bg-secondary/30 transition-all">
-                    View comparison
-                  </button>
-                )}
-              </motion.div>
-            )}
-          </AnimatePresence>
-
-          <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
-            {/* Policy grid */}
-            <div className={`${selectedPolicy ? 'lg:col-span-2' : 'lg:col-span-3'}`}>
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                {filtered.map((policy, i) => {
-                  const mainImpact = policy.impacts[0];
-                  const isSelected = selectedPolicy?.id === policy.id;
-                  const inCompare = compareList.find(p => p.id === policy.id);
-
-                  return (
-                    <motion.div key={policy.id} initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: i * 0.06 }}
-                      onClick={() => !compareMode && handleAnalyze(policy)}
-                      className={`glass rounded-2xl p-5 cursor-pointer transition-all ${
-                        isSelected ? 'border-primary/40 shadow-lg' : 'hover:border-white/16'
-                      } ${compareMode && inCompare ? 'border-secondary/40' : ''}`}
-                    >
-                      <div className="flex items-start justify-between gap-3 mb-3">
-                        <div className="flex items-center gap-1.5 flex-wrap">
-                          <Badge variant="default">{policy.category}</Badge>
-                          <Badge variant={policy.status === 'enacted' ? 'success' : policy.status === 'proposed' ? 'warning' : 'primary'}>
-                            {policy.status}
-                          </Badge>
-                        </div>
-                        {compareMode && (
-                          <button onClick={e => { e.stopPropagation(); toggleCompare(policy); }}
-                            className={`flex-shrink-0 w-6 h-6 rounded-full border flex items-center justify-center transition-all ${
-                              inCompare ? 'bg-secondary border-secondary' : 'border-white/20 hover:border-secondary'
-                            }`}>
-                            {inCompare && <CheckCircle2 className="w-3.5 h-3.5 text-white" />}
-                          </button>
-                        )}
-                      </div>
-
-                      <h3 className="font-medium text-text-primary text-sm leading-snug mb-2">{policy.title}</h3>
-                      <p className="text-[11px] text-text-muted line-clamp-2 mb-4">{policy.summary}</p>
-
-                      <div className="flex items-center justify-between">
-                        <div>
-                          <p className={`font-mono-data text-base font-bold ${
-                            mainImpact.direction === 'positive' ? 'text-emerald-400' : 'text-red-400'
-                          }`}>
-                            {mainImpact.direction === 'positive' ? '' : ''}{Math.abs(mainImpact.value)}{mainImpact.unit.length <= 4 ? mainImpact.unit : ''}
-                          </p>
-                          <p className="text-[10px] text-text-muted">{mainImpact.label}</p>
-                        </div>
-                        <ChevronRight className="w-4 h-4 text-text-muted" />
-                      </div>
-                    </motion.div>
-                  );
-                })}
-              </div>
-
-              {filtered.length === 0 && (
-                <div className="text-center py-20">
-                  <p className="text-text-muted">No policies match your search.</p>
-                </div>
-              )}
+            <div role="radiogroup" aria-label="Show" className="flex gap-1 glass rounded-2xl p-1 w-fit">
+              {(Object.keys(SHOW_LABELS) as Show[]).map((k) => (
+                <button
+                  key={k}
+                  role="radio"
+                  aria-checked={show === k}
+                  onClick={() => setShow(k)}
+                  className={`px-4 py-2.5 rounded-xl text-sm font-medium whitespace-nowrap transition-all ${show === k ? 'bg-primary/20 text-primary border border-primary/20' : 'text-text-muted hover:text-text-primary'}`}
+                >
+                  {SHOW_LABELS[k]}
+                </button>
+              ))}
             </div>
-
-            {/* Analysis drawer */}
-            <AnimatePresence>
-              {selectedPolicy && (
-                <motion.div initial={{ opacity: 0, x: 24 }} animate={{ opacity: 1, x: 0 }} exit={{ opacity: 0, x: 24 }} transition={{ duration: 0.3 }}
-                  className="glass-strong rounded-3xl p-6 h-fit sticky top-28">
-                  <div className="flex items-start justify-between mb-5">
-                    <div>
-                      <Badge variant="default" className="mb-2">{selectedPolicy.category}</Badge>
-                      <h3 className="font-display text-lg font-semibold text-text-primary leading-snug">{selectedPolicy.title}</h3>
-                    </div>
-                    <button onClick={() => setSelectedPolicy(null)} className="text-text-muted hover:text-text-primary transition-colors flex-shrink-0 ml-2">
-                      <X className="w-4 h-4" />
-                    </button>
-                  </div>
-
-                  {/* Impact summary */}
-                  <div className="space-y-3 mb-6">
-                    {selectedPolicy.impacts.map(impact => (
-                      <div key={impact.label} className="flex items-center justify-between">
-                        <span className="text-xs text-text-muted">{impact.label}</span>
-                        <span className={`font-mono-data text-sm font-semibold ${
-                          impact.direction === 'positive' ? 'text-emerald-400' : 'text-red-400'
-                        }`}>{impact.value}{impact.unit}</span>
-                      </div>
-                    ))}
-                  </div>
-
-                  <div className="border-t border-white/8 pt-5">
-                    <p className="text-xs font-medium text-text-muted uppercase tracking-wider mb-4">AI Analysis</p>
-                    {analyzing ? (
-                      <div className="space-y-2">
-                        {[...Array(4)].map((_, i) => (
-                          <div key={i} className="h-3 rounded-full bg-white/6 animate-pulse" style={{ width: `${70 + Math.random() * 30}%` }} />
-                        ))}
-                        <p className="text-xs text-text-muted mt-3 flex items-center gap-2">
-                          <span className="w-1.5 h-1.5 rounded-full bg-primary animate-pulse" />Analyzing your profile...
-                        </p>
-                      </div>
-                    ) : analysis ? (
-                      <div className="text-xs text-text-muted leading-relaxed whitespace-pre-wrap max-h-80 overflow-y-auto">{analysis}</div>
-                    ) : null}
-                  </div>
-
-                  <div className="flex gap-2 mt-6">
-                    <a href={selectedPolicy.sourceUrl} target="_blank" rel="noopener noreferrer"
-                      className="flex-1 flex items-center justify-center gap-1.5 glass rounded-xl py-2.5 text-xs text-text-muted hover:text-text-primary transition-all">
-                      Source <ExternalLink className="w-3 h-3" />
-                    </a>
-                    <button className="flex-1 bg-primary/20 hover:bg-primary/30 border border-primary/20 text-primary rounded-xl py-2.5 text-xs font-medium transition-all">
-                      Save to Impact
-                    </button>
-                  </div>
-                </motion.div>
-              )}
-            </AnimatePresence>
           </div>
+
+          {categories.length > 2 && (
+            <div role="radiogroup" aria-label="Category" className="flex gap-2 mb-8 overflow-x-auto pb-2 scrollbar-hide">
+              {categories.map((cat) => (
+                <button
+                  key={cat}
+                  role="radio"
+                  aria-checked={category === cat}
+                  onClick={() => setCategory(cat)}
+                  className={`flex-shrink-0 px-4 py-2 rounded-full text-xs font-medium border transition-all ${
+                    category === cat ? 'bg-primary/20 border-primary/40 text-primary' : 'glass border-white/8 text-text-muted hover:text-text-primary'
+                  }`}
+                >
+                  {cat}
+                </button>
+              ))}
+            </div>
+          )}
+
+          {preparing && (
+            <p role="status" className="mb-6 flex items-center gap-2 text-sm text-text-muted">
+              <RefreshCw className="w-4 h-4 animate-spin text-primary" aria-hidden /> Updating your feed from official records…
+            </p>
+          )}
+
+          {loading ? (
+            <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-4">
+              {[0, 1, 2, 3, 4, 5].map((i) => <FeedSkeletonCard key={i} />)}
+            </div>
+          ) : error && policies.length === 0 ? (
+            <GlassCard className="rounded-2xl p-10 text-center">
+              <h2 className="font-medium text-text-primary mb-2">We couldn&apos;t load your policies</h2>
+              <p role="alert" className="text-sm text-text-muted mb-6">{error}</p>
+              <button onClick={() => loadFeed()} className="bg-primary/20 hover:bg-primary/30 border border-primary/20 text-primary px-5 py-2.5 rounded-xl text-sm font-medium">
+                Try again
+              </button>
+            </GlassCard>
+          ) : policies.length === 0 ? (
+            <GlassCard className="rounded-2xl p-10 text-center">
+              <h2 className="font-medium text-text-primary mb-2">No policies in your feed yet</h2>
+              <p className="text-sm text-text-muted mb-6">Build your personalized feed from the dashboard.</p>
+              <Link href="/dashboard" className="inline-block bg-primary/20 hover:bg-primary/30 border border-primary/20 text-primary px-5 py-2.5 rounded-xl text-sm font-medium">
+                Go to the dashboard
+              </Link>
+            </GlassCard>
+          ) : filtered.length === 0 ? (
+            <div className="text-center py-16">
+              <p className="text-text-muted mb-4">No policies match these filters.</p>
+              <button onClick={() => { setSearch(''); setCategory('All'); setShow('all'); }} className="text-sm text-primary hover:underline underline-offset-2">
+                Clear filters
+              </button>
+            </div>
+          ) : (
+            <>
+              <p className="text-xs text-text-muted mb-4" aria-live="polite">
+                Showing {filtered.length} of {policies.length} {policies.length === 1 ? 'policy' : 'policies'}
+              </p>
+              <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-4">
+                {filtered.map((policy) => (
+                  <PolicyFeedCard
+                    key={policy.id}
+                    policy={policy}
+                    analyzed={impacts.has(policy.id)}
+                    impact={impacts.get(policy.id)}
+                    onAnalyze={handleAnalyze}
+                    onAskAdvisor={(p) => router.push(`/advisor?policyId=${encodeURIComponent(p.id)}`)}
+                    onDismiss={handleDismiss}
+                    analyzingIds={analyzingIds}
+                  />
+                ))}
+              </div>
+            </>
+          )}
         </main>
       </div>
     </div>

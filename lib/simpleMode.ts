@@ -68,14 +68,13 @@ export const CHART_DESCRIPTIONS: Record<string, string> = {
 
 /** Built-in fallback definitions for common terms (merged with model-supplied jargon). */
 export const BASE_JARGON: Record<string, string> = {
-  GDP: 'How healthy the overall economy is — the total value of everything a country makes.',
-  CPI: 'How fast everyday prices are rising, like at the grocery store.',
-  PCE: 'Another measure of how fast prices are rising across what people buy.',
-  EPU: 'How unpredictable this policy makes the economy.',
-  'Economic Policy Uncertainty': 'How unpredictable this policy makes the economy.',
+  GDP: 'Gross domestic product: the total value of everything the economy produces. When it grows, the economy is growing.',
+  CPI: 'Consumer Price Index: tracks how the prices of everyday things, like groceries and rent, change over time.',
+  PCE: 'Personal consumption expenditures price index: another measure of how fast prices rise across what people buy.',
+  EPU: 'Economic policy uncertainty: how unsure businesses and households are about future policy, which can delay spending and hiring.',
   'Debt-to-income ratio': 'How much of your paycheck goes to paying off debt.',
   'Disposable income': 'The money you have left after taxes to spend or save.',
-  'Balance of payments': 'Whether the country buys more from abroad than it sells.',
+  'Balance of payments': 'A record of all the money flowing between a country and the rest of the world: trade, investment and transfers.',
   'Capital expenditure': 'Money companies spend to grow — on buildings, equipment, and hiring.',
   Capex: 'Money companies spend to grow — on buildings, equipment, and hiring.',
   ROA: 'How good a company is at making profit from what it owns.',

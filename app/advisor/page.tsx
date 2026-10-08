@@ -18,12 +18,13 @@ import ReadingModeToggle from '@/components/ui/ReadingModeToggle';
 import { useReadingMode } from '@/components/providers/ReadingModeProvider';
 import { apiFetch } from '@/lib/api';
 
+// General questions; specific bills come from the user's own feed (right panel).
 const quickPrompts = [
-  { icon: Home, label: 'Housing', text: 'How does the first-time homebuyer credit affect me?' },
-  { icon: GraduationCap, label: 'Student Loans', text: 'Explain how the student loan rate adjustment impacts my monthly budget.' },
-  { icon: Heart, label: 'Healthcare', text: 'Am I eligible for ACA subsidy extensions and how much would I save?' },
-  { icon: Briefcase, label: 'Career', text: 'What clean energy job training programs could I qualify for?' },
-  { icon: DollarSign, label: 'Taxes', text: 'How does the proposed capital gains tax increase affect my investments?' },
+  { icon: DollarSign, label: 'Taxes', text: 'Which kinds of tax changes would affect someone in my situation the most?' },
+  { icon: Home, label: 'Housing', text: 'What kinds of housing policies could change my monthly housing costs?' },
+  { icon: Heart, label: 'Healthcare', text: 'How do changes to health insurance subsidies usually affect households like mine?' },
+  { icon: GraduationCap, label: 'Student Loans', text: 'How could federal student loan policy changes affect my budget?' },
+  { icon: Briefcase, label: 'Work', text: 'Which labor and wage policies are most relevant to my job situation?' },
 ];
 
 interface PolicyMeta {
@@ -53,6 +54,8 @@ interface ExtendedMessage extends ChatMessage {
   local?: boolean;
   /** Set when the reply is a fixed safety response rather than model output. */
   guardrail?: string;
+  /** On an error bubble: what to resend when the user taps "Try again". */
+  retry?: { text: string; policyMeta?: PolicyMeta };
 }
 
 function TypingIndicator() {
@@ -74,7 +77,9 @@ function TypingIndicator() {
   );
 }
 
-function MessageBubble({ message, sessionId }: { message: ExtendedMessage; sessionId: string | null }) {
+function MessageBubble({ message, sessionId, onRetry }: {
+  message: ExtendedMessage; sessionId: string | null; onRetry?: (_m: ExtendedMessage) => void;
+}) {
   const isUser = message.role === 'user';
   const isModelReply = !isUser && !message.local && !message.guardrail;
   const isPolicyReply = !isUser && (!!message.dollarLine || !!message.policyId);
@@ -121,7 +126,15 @@ function MessageBubble({ message, sessionId }: { message: ExtendedMessage; sessi
             )}
           </>
         ) : (
-          <p className="whitespace-pre-wrap text-sm leading-relaxed">{message.content}</p>
+          <p className="whitespace-pre-wrap text-sm leading-relaxed" role={message.retry ? 'alert' : undefined}>{message.content}</p>
+        )}
+        {message.retry && onRetry && (
+          <button
+            onClick={() => onRetry(message)}
+            className="mt-3 inline-flex items-center gap-1.5 text-xs font-medium text-primary hover:text-primary/80"
+          >
+            Try again
+          </button>
         )}
         <p className={`text-[10px] mt-2 ${isUser ? 'text-primary/60' : 'text-text-muted/50'}`}>
           {new Date(message.timestamp).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
@@ -208,6 +221,17 @@ function AdvisorInner() {
   const userId = useRef<string | null>(null);
   const prefilledRef = useRef(false);
   const [pendingPolicy, setPendingPolicy] = useState<PolicyMeta | null>(null);
+  // The reply being waited for; switching conversations cancels it so it can
+  // never land in (or be saved to) a different conversation.
+  const inflight = useRef<AbortController | null>(null);
+  const conversation = useRef(0); // bumped whenever the user switches conversations
+  const [mobileFeedOpen, setMobileFeedOpen] = useState(false);
+
+  // Small screens start with the history sidebar closed.
+  useEffect(() => {
+    if (window.matchMedia('(max-width: 767px)').matches) setSidebarOpen(false);
+  }, []);
+  useEffect(() => () => inflight.current?.abort(), []);
 
   useEffect(() => {
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
@@ -221,9 +245,9 @@ function AdvisorInner() {
       try {
         const { data } = await supabase
           .from('chat_sessions')
-          .select('*')
+          .select('id, title, messages, created_at, updated_at')
           .eq('user_id', user.id)
-          .order('created_at', { ascending: false })
+          .order('updated_at', { ascending: false })
           .limit(30);
         if (data) {
           setSessions(data.map(s => ({
@@ -272,7 +296,7 @@ function AdvisorInner() {
   const saveSession = async (sessionId: string | null, msgs: ExtendedMessage[], firstUserMsg?: string) => {
     if (!userId.current) return sessionId;
     const supabase = createClient();
-    const title = firstUserMsg?.slice(0, 40) || 'New conversation';
+    const title = firstUserMsg ? (firstUserMsg.length > 60 ? `${firstUserMsg.slice(0, 57)}…` : firstUserMsg) : 'New conversation';
     const serialized = msgs.filter(m => !m.local).map(m => ({ ...m, compiling: false, timestamp: m.timestamp instanceof Date ? m.timestamp.toISOString() : m.timestamp }));
     try {
       if (sessionId) {
@@ -302,7 +326,11 @@ function AdvisorInner() {
     const newMessages = [...messages, userMsg];
     setMessages(newMessages);
     setInput('');
+    if (inputRef.current) inputRef.current.style.height = 'auto';
     setIsTyping(true);
+    const controller = new AbortController();
+    inflight.current = controller;
+    const startedIn = conversation.current;
 
     // Only real conversation turns go to the model — never the UI greeting or
     // error bubbles — and only the recent part of a long conversation.
@@ -315,13 +343,18 @@ function AdvisorInner() {
       policyTitle?: string; category?: string; hasFullAnalysis?: boolean; guardrail?: string;
     }>('/api/advisor', {
       body: { messages: history, ...(policyMeta ? { policyId: policyMeta.policyId } : {}), simpleMode: simple },
+      signal: controller.signal,
     });
+    if (controller.signal.aborted) return; // the user switched conversations
+    inflight.current = null;
 
     if (!res.ok) {
       // Shown once, not saved, and not sent back to the model.
+      const wait = res.retryAfter && res.retryAfter > 0 ? ` You can try again in about ${Math.ceil(res.retryAfter / 60)} min.` : '';
       setMessages(prev => [...prev, {
         id: (Date.now() + 1).toString(), role: 'assistant', local: true,
-        content: res.message, timestamp: new Date(),
+        content: `${res.message}${res.status === 429 ? wait : ''}`, timestamp: new Date(),
+        retry: res.status === 0 || res.status === 429 || res.status >= 500 ? { text: text.trim(), policyMeta } : undefined,
       }]);
       setIsTyping(false);
       return;
@@ -344,10 +377,28 @@ function AdvisorInner() {
     const finalMessages = [...newMessages, aiMsg];
     setMessages(finalMessages);
 
-    const savedId = await saveSession(activeSessionId, finalMessages, isFirst ? text.trim() : undefined);
-    if (!activeSessionId && savedId) setActiveSessionId(savedId);
     setIsTyping(false);
+    const title = isFirst ? (policyMeta?.policyTitle || text.trim()) : undefined;
+    const savedId = await saveSession(activeSessionId, finalMessages, title);
+    if (!activeSessionId && savedId && conversation.current === startedIn) setActiveSessionId(savedId);
   }, [messages, isTyping, activeSessionId, simple]);
+
+  /** Resend a failed message: drop the error bubble and the user turn it answered. */
+  const retryMessage = (errorMsg: ExtendedMessage) => {
+    if (!errorMsg.retry || isTyping) return;
+    const { text, policyMeta } = errorMsg.retry;
+    const idx = messages.findIndex(m => m.id === errorMsg.id);
+    const trimmed = messages.slice(0, idx > 0 && messages[idx - 1].role === 'user' ? idx - 1 : idx);
+    setMessages(trimmed);
+    // sendMessage reads `messages` from its closure, so send on the next render.
+    setPendingRetry({ text, policyMeta });
+  };
+  const [pendingRetry, setPendingRetry] = useState<{ text: string; policyMeta?: PolicyMeta } | null>(null);
+  useEffect(() => {
+    if (!pendingRetry) return;
+    setPendingRetry(null);
+    sendMessage(pendingRetry.text, pendingRetry.policyMeta);
+  }, [pendingRetry, sendMessage]);
 
   // Arriving with ?policyId= (e.g. "Ask advisor" on the dashboard) prefills the
   // question for a policy from the user's own feed. Nothing is sent until the
@@ -375,7 +426,16 @@ function AdvisorInner() {
     sendMessage(input, meta || undefined);
   };
 
+  const cancelInflight = () => {
+    conversation.current += 1;
+    inflight.current?.abort();
+    inflight.current = null;
+    setIsTyping(false);
+  };
+
   const loadSession = (session: ChatSession) => {
+    cancelInflight();
+    if (window.matchMedia('(max-width: 767px)').matches) setSidebarOpen(false);
     setActiveSessionId(session.id);
     setMessages(session.messages.length > 0 ? session.messages : [{ ...INITIAL_MESSAGE, timestamp: new Date() }]);
   };
@@ -389,6 +449,7 @@ function AdvisorInner() {
   };
 
   const newChat = () => {
+    cancelInflight();
     setActiveSessionId(null);
     setMessages([{ ...INITIAL_MESSAGE, timestamp: new Date() }]);
   };
@@ -400,9 +461,9 @@ function AdvisorInner() {
   return (
     <div className="min-h-screen relative flex flex-col">
       <AmbientBackground />
-      <div className="relative z-10 flex flex-col" style={{ height: '100vh' }}>
+      <div className="relative z-10 flex flex-col h-screen h-[100dvh]">
         <Navbar />
-        <div className="flex-1 flex overflow-hidden pt-20">
+        <div className="flex-1 flex overflow-hidden pt-20 relative">
 
           {/* Left: Chat history */}
           <AnimatePresence>
@@ -410,7 +471,7 @@ function AdvisorInner() {
               <motion.div
                 initial={{ width: 0, opacity: 0 }} animate={{ width: 260, opacity: 1 }} exit={{ width: 0, opacity: 0 }}
                 transition={{ duration: 0.2 }}
-                className="h-full glass-strong border-r border-white/8 flex flex-col overflow-hidden flex-shrink-0"
+                className="h-full glass-strong border-r border-white/8 flex flex-col overflow-hidden flex-shrink-0 max-md:absolute max-md:top-20 max-md:bottom-0 max-md:left-0 max-md:h-auto max-md:z-40"
               >
                 <div className="p-4 border-b border-white/8 flex items-center justify-between">
                   <span className="text-sm font-semibold text-text-primary">Chat History</span>
@@ -462,7 +523,7 @@ function AdvisorInner() {
 
               {/* Header */}
               <div className="mb-4 flex items-center gap-3">
-                <button onClick={() => setSidebarOpen(o => !o)} className="p-2 rounded-xl glass hover:border-white/16 transition-all">
+                <button onClick={() => setSidebarOpen(o => !o)} aria-label={sidebarOpen ? 'Hide chat history' : 'Show chat history'} aria-expanded={sidebarOpen} className="p-2 rounded-xl glass hover:border-white/16 transition-all">
                   {sidebarOpen ? <ChevronLeft className="w-4 h-4 text-text-muted" /> : <ChevronRight className="w-4 h-4 text-text-muted" />}
                 </button>
                 <div className="w-10 h-10 rounded-2xl bg-primary/20 border border-primary/20 flex items-center justify-center">
@@ -476,8 +537,11 @@ function AdvisorInner() {
                   </div>
                 </div>
                 <ReadingModeToggle className="hidden sm:inline-flex" />
-                <button onClick={() => setFeedOpen(o => !o)} className="p-2 rounded-xl glass hover:border-white/16 transition-all hidden lg:flex" title="Toggle policy feed">
+                <button onClick={() => setFeedOpen(o => !o)} className="p-2 rounded-xl glass hover:border-white/16 transition-all hidden lg:flex" aria-label="Toggle policy feed" aria-pressed={feedOpen}>
                   <Sparkles className="w-4 h-4 text-primary" />
+                </button>
+                <button onClick={() => setMobileFeedOpen(true)} className="lg:hidden flex items-center gap-1.5 px-3 py-2 rounded-xl glass text-xs text-text-primary">
+                  <Sparkles className="w-3.5 h-3.5 text-primary" aria-hidden /> Policies
                 </button>
               </div>
 
@@ -486,8 +550,8 @@ function AdvisorInner() {
                 {quickPrompts.map(p => {
                   const Icon = p.icon;
                   return (
-                    <button key={p.label} onClick={() => sendMessage(p.text)}
-                      className="flex-shrink-0 flex items-center gap-2 glass border border-white/8 hover:border-primary/30 px-4 py-2.5 rounded-xl text-xs text-text-muted hover:text-text-primary transition-all">
+                    <button key={p.label} onClick={() => sendMessage(p.text)} disabled={isTyping}
+                      className="disabled:opacity-50 disabled:cursor-not-allowed flex-shrink-0 flex items-center gap-2 glass border border-white/8 hover:border-primary/30 px-4 py-2.5 rounded-xl text-xs text-text-muted hover:text-text-primary transition-all">
                       <Icon className="w-3.5 h-3.5" />{p.label}
                     </button>
                   );
@@ -496,7 +560,7 @@ function AdvisorInner() {
 
               {/* Messages */}
               <div className="flex-1 overflow-y-auto pr-1" style={{ scrollbarWidth: 'thin' }}>
-                {messages.map(msg => <MessageBubble key={msg.id} message={msg} sessionId={activeSessionId} />)}
+                {messages.map(msg => <MessageBubble key={msg.id} message={msg} sessionId={activeSessionId} onRetry={retryMessage} />)}
                 {isTyping && <TypingIndicator />}
                 <div ref={messagesEndRef} />
               </div>
@@ -518,7 +582,13 @@ function AdvisorInner() {
                   <textarea
                     ref={inputRef}
                     value={input}
-                    onChange={e => setInput(e.target.value)}
+                    onChange={e => {
+                      setInput(e.target.value);
+                      // Grow with the text, up to the max height.
+                      e.target.style.height = 'auto';
+                      e.target.style.height = `${Math.min(e.target.scrollHeight, 128)}px`;
+                    }}
+                    aria-label="Message the Policy Guide"
                     onKeyDown={handleKeyDown}
                     placeholder={dragOver ? 'Drop a policy here to analyze it…' : 'Ask about any policy and how it affects your finances…'}
                     rows={1}
@@ -526,7 +596,7 @@ function AdvisorInner() {
                     className="flex-1 bg-transparent text-sm text-text-primary placeholder-text-muted resize-none outline-none py-1.5 max-h-32"
                     style={{ minHeight: '28px' }}
                   />
-                  <button onClick={submitInput} disabled={!input.trim() || isTyping}
+                  <button onClick={submitInput} disabled={!input.trim() || isTyping} aria-label="Send message"
                     className="w-9 h-9 rounded-xl bg-primary hover:bg-primary/90 disabled:opacity-40 disabled:cursor-not-allowed flex items-center justify-center transition-colors flex-shrink-0">
                     <Send className="w-4 h-4 text-white" />
                   </button>
@@ -535,6 +605,41 @@ function AdvisorInner() {
               <AiDisclaimer className="mt-2 justify-center text-center" />
             </div>
           </div>
+
+          {/* Small screens: the feed opens as a bottom sheet */}
+          <AnimatePresence>
+            {mobileFeedOpen && (
+              <>
+                <motion.div
+                  initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}
+                  className="lg:hidden fixed inset-0 bg-black/60 z-[110]"
+                  onClick={() => setMobileFeedOpen(false)}
+                />
+                <motion.div
+                  role="dialog" aria-modal="true" aria-label="Your policy feed"
+                  initial={{ y: '100%' }} animate={{ y: 0 }} exit={{ y: '100%' }}
+                  transition={{ type: 'spring', stiffness: 320, damping: 32 }}
+                  className="lg:hidden fixed inset-x-0 bottom-0 z-[120] max-h-[75dvh] glass-strong border-t border-white/10 rounded-t-3xl flex flex-col"
+                >
+                  <div className="p-4 border-b border-white/8 flex items-center justify-between">
+                    <span className="text-sm font-semibold text-text-primary">Your Policy Feed</span>
+                    <button onClick={() => setMobileFeedOpen(false)} aria-label="Close policy feed" className="p-2 rounded-lg hover:bg-white/5">
+                      <X className="w-4 h-4 text-text-muted" />
+                    </button>
+                  </div>
+                  <div className="flex-1 overflow-y-auto p-3">
+                    {feedLoading ? (
+                      <div className="space-y-2">{[...Array(4)].map((_, i) => <div key={i} className="h-16 bg-white/5 rounded-xl animate-pulse" />)}</div>
+                    ) : feed.length === 0 ? (
+                      <p className="p-4 text-center text-xs text-text-muted">No policies in your feed yet. Visit your dashboard to generate one.</p>
+                    ) : (
+                      feed.map(p => <FeedPolicyCard key={p.id} policy={p} onPick={(x) => { setMobileFeedOpen(false); pickPolicy(x); }} />)
+                    )}
+                  </div>
+                </motion.div>
+              </>
+            )}
+          </AnimatePresence>
 
           {/* Right: Policy feed */}
           <AnimatePresence>
@@ -549,7 +654,7 @@ function AdvisorInner() {
                     <Sparkles className="w-4 h-4 text-primary" />
                     <span className="text-sm font-semibold text-text-primary">Your Policy Feed</span>
                   </div>
-                  <button onClick={() => setFeedOpen(false)} className="p-1 rounded-lg hover:bg-white/5 transition-all">
+                  <button onClick={() => setFeedOpen(false)} aria-label="Close policy feed" className="p-1 rounded-lg hover:bg-white/5 transition-all">
                     <X className="w-3.5 h-3.5 text-text-muted" />
                   </button>
                 </div>

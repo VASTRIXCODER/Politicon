@@ -10,6 +10,7 @@ const footerLinks = {
     { label: 'Impact Dashboard', href: '/impact' },
   ],
   Support: [
+    { label: 'Help & FAQ', href: '/help' },
     { label: 'Contact us', href: `mailto:${SUPPORT_EMAIL}` },
   ],
   Legal: [

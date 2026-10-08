@@ -702,6 +702,7 @@ Rules:
 - Never express political opinions or party preferences.
 - When uncertain, say so clearly.
 - Keep responses clear and concise — 2-4 short paragraphs unless more detail is needed.
+- Plain text only: no markdown headings, bold or italic markers, tables or links syntax. Simple lists may use "- " at the start of a line.
 
 ${GUARDRAILS}`;
 
