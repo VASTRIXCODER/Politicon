@@ -1,12 +1,12 @@
 'use client';
 
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback, useRef } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { useRouter } from 'next/navigation';
 import Link from 'next/link';
 import {
-  User, MapPin, Briefcase, DollarSign, Shield, Bell,
-  Eye, Zap, ChevronRight, Check, AlertTriangle, X,
+  User, Briefcase, DollarSign, Shield,
+  Eye, Zap, ChevronRight, Check, AlertTriangle,
   Lock, Trash2, RefreshCw, Save, ArrowLeft, BookOpen
 } from 'lucide-react';
 import {
@@ -14,11 +14,14 @@ import {
   FILING_STATUSES, HOME_VALUE_BANDS, HOUSING_SITUATIONS, INCOME_RANGES, INVESTMENT_TYPES, MAX_CONCERNS,
   MAX_DEPENDENTS, OCCUPATIONS, US_STATES, isHomeowner, validOnly, validOrEmpty,
 } from '@/lib/profileOptions';
+import { isAuthRetryableFetchError } from '@supabase/supabase-js';
 import { FinancialProfileSchema } from '@/lib/profileSchema';
 import { apiFetch } from '@/lib/api';
 import { createClient } from '@/lib/supabase/client';
 import AmbientBackground from '@/components/landing/AmbientBackground';
+import Navbar from '@/components/layout/Navbar';
 import { useReadingMode } from '@/components/providers/ReadingModeProvider';
+import { useToast } from '@/components/ui/Toast';
 
 // ─── constants ───────────────────────────────────────────────────────────────
 
@@ -28,6 +31,12 @@ const TABS = [
   { id: 'preferences', label: 'Preferences', icon: Eye },
   { id: 'security', label: 'Security', icon: Shield },
 ];
+
+// Messages for ?notice=… (set by email links that land here).
+const NOTICES: Record<string, { message: string; type: 'success' | 'error' }> = {
+  email_change_pending: { message: 'Address confirmed. To finish changing your email, also open the link we sent to your other address.', type: 'success' },
+  link_invalid: { message: 'That link is invalid or has expired. You’re still signed in.', type: 'error' },
+};
 
 // ─── tiny helpers ─────────────────────────────────────────────────────────────
 
@@ -88,29 +97,6 @@ function MultiChip({ options, selected, onChange, max }: {
   );
 }
 
-// ─── toast ────────────────────────────────────────────────────────────────────
-
-type ToastType = 'success' | 'error';
-function Toast({ message, type, onDismiss }: { message: string; type: ToastType; onDismiss: () => void }) {
-  useEffect(() => { const t = setTimeout(onDismiss, 4000); return () => clearTimeout(t); }, [onDismiss]);
-  return (
-    <motion.div
-      initial={{ opacity: 0, y: 20, scale: 0.96 }}
-      animate={{ opacity: 1, y: 0, scale: 1 }}
-      exit={{ opacity: 0, y: 20, scale: 0.96 }}
-      className={`fixed bottom-6 right-6 z-50 flex items-center gap-3 px-5 py-3.5 rounded-2xl shadow-xl border text-sm font-medium ${
-        type === 'success'
-          ? 'bg-emerald-500/15 border-emerald-500/30 text-emerald-400'
-          : 'bg-red-500/15 border-red-500/30 text-red-400'
-      }`}
-    >
-      {type === 'success' ? <Check className="w-4 h-4" /> : <AlertTriangle className="w-4 h-4" />}
-      {message}
-      <button onClick={onDismiss} className="ml-1 opacity-60 hover:opacity-100"><X className="w-3.5 h-3.5" /></button>
-    </motion.div>
-  );
-}
-
 // ─── main page ───────────────────────────────────────────────────────────────
 
 export default function SettingsPage() {
@@ -120,8 +106,9 @@ export default function SettingsPage() {
 
   const [activeTab, setActiveTab] = useState('profile');
   const [loading, setLoading] = useState(true);
+  const [loadError, setLoadError] = useState(false);
   const [saving, setSaving] = useState(false);
-  const [toast, setToast] = useState<{ message: string; type: ToastType } | null>(null);
+  const { toast, showToast } = useToast();
 
   // Profile state
   const [email, setEmail] = useState('');
@@ -160,19 +147,39 @@ export default function SettingsPage() {
   const [deleteLoading, setDeleteLoading] = useState(false);
   const [showDeleteZone, setShowDeleteZone] = useState(false);
 
-  const showToast = (message: string, type: ToastType) => setToast({ message, type });
 
   const loadProfile = useCallback(async () => {
     setLoading(true);
-    const { data: { user } } = await supabase.auth.getUser();
-    if (!user) { router.replace('/auth/signin'); return; }
+    setLoadError(false);
+    try {
+      await loadProfileData();
+    } catch {
+      setLoadError(true);
+      setLoading(false);
+    }
+  }, []); // eslint-disable-line react-hooks/exhaustive-deps
+
+  const loadProfileData = async () => {
+    const { data: { user }, error: userError } = await supabase.auth.getUser();
+    if (!user) {
+      // A network or server failure isn't a sign-out: offer the retry card.
+      if (userError && (isAuthRetryableFetchError(userError) || (userError.status ?? 0) >= 500)) {
+        setLoadError(true);
+        setLoading(false);
+        return;
+      }
+      router.replace('/auth/signin');
+      return;
+    }
 
     setEmail(user.email || '');
     const providers = (user.app_metadata?.providers as string[] | undefined) || [user.app_metadata?.provider];
     setHasPassword(providers.includes('email'));
     setFirstName(user.user_metadata?.first_name || '');
 
-    const { data } = await supabase.from('user_profiles').select('*').eq('id', user.id).single();
+    const { data, error: loadErr } = await supabase.from('user_profiles').select('*').eq('id', user.id).maybeSingle();
+    // Without the saved profile, saving would overwrite it with blanks.
+    setLoadError(!!loadErr || !data);
     if (data) {
       setFirstName(data.first_name || firstName);
       // Anything outside the current vocabulary shows as blank so it gets re-picked.
@@ -194,9 +201,20 @@ export default function SettingsPage() {
       setInvestments(validOrEmpty(INVESTMENT_TYPES, data.investments));
     }
     setLoading(false);
-  }, []); // eslint-disable-line react-hooks/exhaustive-deps
+  };
 
   useEffect(() => { loadProfile(); }, [loadProfile]);
+
+  // Show a notice from an email link once the page (and its toast) is up.
+  const noticeShown = useRef(false);
+  useEffect(() => {
+    if (loading || loadError || noticeShown.current) return;
+    noticeShown.current = true;
+    const notice = NOTICES[new URLSearchParams(window.location.search).get('notice') || ''];
+    if (!notice) return;
+    window.history.replaceState(null, '', window.location.pathname);
+    showToast(notice.message, notice.type);
+  }, [loading, loadError, showToast]);
 
   // ── save profile (name) ──────────────────────────────────────────────────
   const saveProfile = async () => {
@@ -205,8 +223,8 @@ export default function SettingsPage() {
       const { data: { user } } = await supabase.auth.getUser();
       if (!user) throw new Error('Not authenticated');
       await supabase.auth.updateUser({ data: { first_name: firstName } });
-      const { error } = await supabase.from('user_profiles').update({ first_name: firstName }).eq('id', user.id);
-      if (error) throw error;
+      const { data: updated, error } = await supabase.from('user_profiles').update({ first_name: firstName }).eq('id', user.id).select('id');
+      if (error || !updated?.length) throw error || new Error('Profile not saved');
       showToast('Profile updated successfully', 'success');
     } catch {
       showToast('Failed to save profile', 'error');
@@ -307,6 +325,21 @@ export default function SettingsPage() {
     router.push('/');
   };
 
+  if (!loading && loadError) {
+    return (
+      <div className="min-h-screen relative flex items-center justify-center px-4">
+        <AmbientBackground />
+        <div role="alert" className="relative z-10 glass rounded-2xl p-8 max-w-md text-center">
+          <h1 className="font-display text-xl font-semibold text-text-primary mb-2">We couldn&apos;t load your settings</h1>
+          <p className="text-sm text-text-muted mb-6">Nothing has been changed. Check your connection and try again.</p>
+          <button onClick={() => loadProfile()} className="bg-primary/20 hover:bg-primary/30 border border-primary/20 text-primary px-5 py-2.5 rounded-xl text-sm font-medium">
+            Try again
+          </button>
+        </div>
+      </div>
+    );
+  }
+
   if (loading) {
     return (
       <div className="min-h-screen relative flex items-center justify-center">
@@ -330,16 +363,18 @@ export default function SettingsPage() {
   return (
     <div className="min-h-screen relative">
       <AmbientBackground />
-      <div className="relative z-10 max-w-6xl mx-auto px-4 sm:px-6 lg:px-8 py-10 pt-24">
+      <Navbar />
+      <div className="relative z-10 max-w-6xl mx-auto px-4 sm:px-6 lg:px-8 py-10 pt-28">
 
         {/* Header */}
         <div className="flex items-center gap-4 mb-8">
-          <button
-            onClick={() => router.back()}
+          <Link
+            href="/dashboard"
+            aria-label="Back to dashboard"
             className="w-9 h-9 rounded-xl glass border border-white/10 flex items-center justify-center text-text-muted hover:text-text-primary transition-colors"
           >
             <ArrowLeft className="w-4 h-4" />
-          </button>
+          </Link>
           <div>
             <h1 className="font-display text-2xl font-bold text-text-primary">Settings</h1>
             <p className="text-sm text-text-muted">Manage your account, profile and preferences</p>
@@ -624,16 +659,6 @@ export default function SettingsPage() {
                       </div>
                     </SectionCard>
 
-                    <SectionCard title="Notifications" subtitle="Control what Politicon sends you">
-                      {[
-                        { label: 'Policy alerts', desc: 'Get notified when a high-impact policy passes that affects your profile', defaultOn: true },
-                        { label: 'Weekly digest', desc: 'A summary of the top 3 policies affecting your finances each week', defaultOn: false },
-                        { label: 'Analysis complete', desc: 'Confirmation when a full AI analysis finishes', defaultOn: true },
-                      ].map(n => (
-                        <NotificationRow key={n.label} label={n.label} desc={n.desc} defaultOn={n.defaultOn} />
-                      ))}
-                    </SectionCard>
-
                     <SectionCard title="Analysis Defaults" subtitle="Control how policy analysis behaves">
                       <div className="flex items-center justify-between py-2">
                         <div>
@@ -798,10 +823,7 @@ export default function SettingsPage() {
         </div>
       </div>
 
-      {/* Toast */}
-      <AnimatePresence>
-        {toast && <Toast message={toast.message} type={toast.type} onDismiss={() => setToast(null)} />}
-      </AnimatePresence>
+      {toast}
     </div>
   );
 }
@@ -855,25 +877,6 @@ function SaveButton({ onClick, loading, label = 'Save Changes', icon, disabled }
       >
         {loading ? <RefreshCw className="w-4 h-4 animate-spin" /> : (icon || <Save className="w-4 h-4" />)}
         {loading ? 'Saving…' : label}
-      </button>
-    </div>
-  );
-}
-
-function NotificationRow({ label, desc, defaultOn }: { label: string; desc: string; defaultOn: boolean }) {
-  const [on, setOn] = useState(defaultOn);
-  return (
-    <div className="flex items-center justify-between py-3 border-b border-white/6 last:border-0">
-      <div className="flex-1 pr-4">
-        <p className="text-sm font-medium text-text-primary">{label}</p>
-        <p className="text-xs text-text-muted mt-0.5">{desc}</p>
-      </div>
-      <button
-        type="button"
-        onClick={() => setOn(v => !v)}
-        className={`relative w-11 h-6 rounded-full transition-colors flex-shrink-0 ${on ? 'bg-primary' : 'bg-white/15'}`}
-      >
-        <div className={`absolute top-1 w-4 h-4 rounded-full bg-white shadow-sm transition-all ${on ? 'left-6' : 'left-1'}`} />
       </button>
     </div>
   );

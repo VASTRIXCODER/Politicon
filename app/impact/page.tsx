@@ -13,6 +13,7 @@ import AmbientBackground from '@/components/landing/AmbientBackground';
 import { apiFetch } from '@/lib/api';
 import ViewFullImpactButton from '@/components/ViewFullImpactButton';
 import AiDisclaimer from '@/components/ui/AiDisclaimer';
+import { formatUSD, impactTone, signPrefix } from '@/lib/format';
 import { CumulativeStackedBar, CumulativeProjectionLines } from '@/components/charts/Charts';
 import Link from 'next/link';
 
@@ -38,7 +39,7 @@ const ROW_COLUMNS =
   'summary:analysis->>plainEnglishSummary, timeline:analysis->timeline, tradeoffs:analysis->tradeoffs, ' +
   'recommendations:analysis->recommendations, legacy:analysis->legacy, analysis_title:analysis->>policyTitle';
 
-const signedUSD = (n: number) => `${n < 0 ? '−' : '+'}$${Math.abs(Math.round(n)).toLocaleString()}`;
+const signedUSD = (n: number) => formatUSD(n, { signed: true });
 
 const methodology = [
   {
@@ -262,8 +263,8 @@ function ImpactContent() {
                       <p className="text-xs text-text-muted mt-1">{new Date(selectedPolicy.created_at).toLocaleDateString()}</p>
                     </div>
                     <div className="flex flex-col items-end gap-3 flex-shrink-0">
-                      <div className={`font-mono-data text-2xl font-bold ${(selectedPolicy.dollar_impact || 0) >= 0 ? 'text-emerald-400' : 'text-red-400'}`}>
-                        {(selectedPolicy.dollar_impact || 0) >= 0 ? '+' : ''}${Math.abs(selectedPolicy.dollar_impact || 0).toLocaleString()}/yr
+                      <div className={`font-mono-data text-2xl font-bold ${impactTone(selectedPolicy.dollar_impact || 0)}`}>
+                        {formatUSD(selectedPolicy.dollar_impact || 0, { signed: true, suffix: '/yr' })}
                       </div>
                       <ViewFullImpactButton policyId={selectedPolicy.policy_id} policyTitle={selectedPolicy.policy_title} category={selectedPolicy.category} variant="chat" />
                     </div>
@@ -308,8 +309,8 @@ function ImpactContent() {
                             </div>
                           </div>
                           <div className="flex items-center gap-3 flex-shrink-0">
-                            <p className={`font-mono-data text-sm font-bold ${(analysis.dollar_impact || 0) >= 0 ? 'text-emerald-400' : 'text-red-400'}`}>
-                              {(analysis.dollar_impact || 0) >= 0 ? '+' : ''}${Math.abs(analysis.dollar_impact || 0).toLocaleString()}/yr
+                            <p className={`font-mono-data text-sm font-bold ${impactTone(analysis.dollar_impact || 0)}`}>
+                              {formatUSD(analysis.dollar_impact || 0, { signed: true, suffix: '/yr' })}
                             </p>
                             <div onClick={e => e.stopPropagation()}>
                               <ViewFullImpactButton policyId={analysis.policy_id} policyTitle={analysis.policy_title} category={analysis.category} variant="compact" />
@@ -369,7 +370,8 @@ function ImpactContent() {
                     <div className="relative z-10">
                       <p className="text-xs font-mono-data text-text-muted uppercase tracking-widest mb-4">Net Annual Impact ({checkedAnalyses.length} selected)</p>
                       <div className={`font-mono-data text-6xl sm:text-7xl font-bold mb-3 ${netImpact >= 0 ? 'gradient-text-gold' : 'text-red-400'}`}>
-                        {netImpact >= 0 ? '+' : '-'}<GsapCounter value={Math.abs(netImpact)} prefix="$" />
+                        <span aria-hidden><GsapCounter value={Math.abs(Math.round(netImpact))} prefix={`${signPrefix(netImpact)}$`} /></span>
+                        <span className="sr-only">{formatUSD(netImpact, { signed: true })}</span>
                       </div>
                       <p className="text-text-muted">per year</p>
                     </div>
@@ -388,8 +390,8 @@ function ImpactContent() {
                               <p className="text-sm text-text-primary truncate">{analysis.policy_title}</p>
                               <p className="text-xs text-text-muted">{analysis.category}</p>
                             </div>
-                            <span className={`font-mono-data text-xs font-bold flex-shrink-0 ${(analysis.dollar_impact || 0) >= 0 ? 'text-emerald-400' : 'text-red-400'}`}>
-                              {(analysis.dollar_impact || 0) >= 0 ? '+' : ''}${Math.abs(analysis.dollar_impact || 0).toLocaleString()}
+                            <span className={`font-mono-data text-xs font-bold flex-shrink-0 ${impactTone(analysis.dollar_impact || 0)}`}>
+                              {formatUSD(analysis.dollar_impact || 0, { signed: true })}
                             </span>
                           </label>
                         ))}
@@ -409,8 +411,9 @@ function ImpactContent() {
                         {[1, 3, 5].map(yr => (
                           <div key={yr} className="text-right">
                             <p className="text-[10px] font-mono-data text-text-muted uppercase">{yr}yr</p>
-                            <p className={`font-mono-data text-sm font-bold ${netImpact >= 0 ? 'text-emerald-400' : 'text-red-400'}`}>
-                              {netImpact >= 0 ? '+' : '-'}<GsapCounter value={Math.abs(netImpact * yr)} prefix="$" duration={1} />
+                            <p className={`font-mono-data text-sm font-bold ${impactTone(netImpact)}`}>
+                              <span aria-hidden><GsapCounter value={Math.abs(Math.round(netImpact * yr))} prefix={`${signPrefix(netImpact)}$`} duration={1} /></span>
+                              <span className="sr-only">{formatUSD(netImpact * yr, { signed: true })}</span>
                             </p>
                           </div>
                         ))}
@@ -435,8 +438,8 @@ function ImpactContent() {
                                   <span className="text-sm text-text-primary truncate flex items-center gap-2">
                                     <span className="text-[10px] font-mono-data text-text-muted">#{i + 1}</span>{a.policy_title}
                                   </span>
-                                  <span className={`font-mono-data text-xs font-bold flex-shrink-0 ${(a.dollar_impact || 0) >= 0 ? 'text-emerald-400' : 'text-red-400'}`}>
-                                    {(a.dollar_impact || 0) >= 0 ? '+' : ''}${Math.abs(a.dollar_impact || 0).toLocaleString()}/yr
+                                  <span className={`font-mono-data text-xs font-bold flex-shrink-0 ${impactTone(a.dollar_impact || 0)}`}>
+                                    {formatUSD(a.dollar_impact || 0, { signed: true, suffix: '/yr' })}
                                   </span>
                                 </div>
                                 <div className="h-2 rounded-full bg-white/6 overflow-hidden">

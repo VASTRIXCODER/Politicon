@@ -10,6 +10,20 @@ import Badge from '@/components/ui/Badge';
 import Navbar from '@/components/layout/Navbar';
 import Footer from '@/components/layout/Footer';
 import AmbientBackground from '@/components/landing/AmbientBackground';
+import { formatUSD, signPrefix } from '@/lib/format';
+import type { PolicyImpact } from '@/types';
+
+/**
+ * An example impact signed from the user's side: the sample data stores some
+ * savings as negative cost changes (−$85 loan payment, marked positive), so
+ * the direction decides the sign and the value only the size.
+ */
+function exampleImpact(impact: PolicyImpact): string {
+  const signed = (impact.direction === 'negative' ? -1 : 1) * Math.abs(impact.value);
+  if (impact.unit.startsWith('$')) return formatUSD(signed, { signed: true, suffix: impact.unit.slice(1) });
+  const unit = impact.unit.length > 5 ? '' : impact.unit.startsWith('%') ? impact.unit : ` ${impact.unit}`;
+  return `${signPrefix(signed)}${Math.abs(impact.value).toLocaleString()}${unit}`;
+}
 
 const brackets = [
   { label: 'Under $25k', data: { taxes: 18, healthcare: 52, housing: 12, employment: 22 } },
@@ -42,12 +56,14 @@ export default function ExplorerClient() {
           <motion.div initial={{ opacity: 0, y: 16 }} animate={{ opacity: 1, y: 0 }} className="mb-12">
             <div className="flex items-center gap-2 mb-4">
               <Badge variant="gold">No login required</Badge>
+              <Badge variant="default">Illustrative examples</Badge>
             </div>
             <h1 className="font-display text-4xl sm:text-5xl font-bold text-text-primary mb-4">
               Public Impact Explorer
             </h1>
             <p className="text-text-muted text-lg max-w-2xl">
-              Average financial impact of the top 10 US policies across income brackets. Sign up to see your personalized numbers.
+              Illustrative examples of how policies can affect households across income brackets. The bills and figures below are samples, not real
+              legislation or estimates for you. Sign up to see your personalized numbers for real bills.
             </p>
           </motion.div>
 
@@ -114,7 +130,7 @@ export default function ExplorerClient() {
 
           {/* Top policies table */}
           <div className="mb-12">
-            <h2 className="font-display text-2xl font-bold text-text-primary mb-6">Top 8 Policies by Average Impact</h2>
+            <h2 className="font-display text-2xl font-bold text-text-primary mb-6">Example policies (sample figures)</h2>
             <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
               {mockPolicies.map((policy, i) => {
                 const impact = policy.impacts[0];
@@ -134,7 +150,7 @@ export default function ExplorerClient() {
                           {impact.direction === 'positive' ? <TrendingUp className="w-3.5 h-3.5 text-emerald-400" /> : <TrendingDown className="w-3.5 h-3.5 text-red-400" />}
                           <p className={`font-mono-data text-sm font-bold ${
                             impact.direction === 'positive' ? 'text-emerald-400' : 'text-red-400'
-                          }`}>{impact.value > 0 ? '+' : ''}{impact.value}{impact.unit.length <= 5 ? impact.unit : ''}</p>
+                          }`}>{exampleImpact(impact)}</p>
                         </div>
                         <p className="text-[10px] text-text-muted">{impact.label}</p>
                       </div>

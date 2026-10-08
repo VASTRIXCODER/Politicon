@@ -4,19 +4,20 @@ import { useState, useEffect, useMemo, useRef } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
-import { ArrowRight, TrendingUp, Search, MessageSquare, Zap, BookOpen, Loader2, RefreshCw, Check, BarChart2, Layers } from 'lucide-react';
+import { ArrowRight, Search, MessageSquare, Zap, BookOpen, RefreshCw, BarChart2, Layers } from 'lucide-react';
 import { createClient } from '@/lib/supabase/client';
 import { timeAgo } from '@/lib/utils';
+import { formatUSD, impactTone, signPrefix } from '@/lib/format';
 import GlassCard from '@/components/ui/GlassCard';
 import Badge from '@/components/ui/Badge';
 import AnimatedCounter from '@/components/ui/AnimatedCounter';
 import { requestAnalysis } from '@/lib/analysisClient';
 import { apiFetch } from '@/lib/api';
-import PolicyProvenance from '@/components/PolicyProvenance';
 import FeedbackControls from '@/components/FeedbackControls';
 import AiDisclaimer from '@/components/ui/AiDisclaimer';
 import type { DiscoveredPolicy } from '@/types';
-import ViewFullImpactButton from '@/components/ViewFullImpactButton';
+import PolicyFeedCard, { FeedSkeletonCard } from '@/components/PolicyFeedCard';
+import { useToast } from '@/components/ui/Toast';
 import Navbar from '@/components/layout/Navbar';
 import AmbientBackground from '@/components/landing/AmbientBackground';
 
@@ -47,123 +48,11 @@ function SkeletonCard() {
   );
 }
 
-function FeedSkeletonCard() {
-  return (
-    <div className="glass rounded-2xl p-5 animate-pulse">
-      <div className="flex items-center gap-2 mb-3">
-        <div className="h-5 w-16 bg-white/10 rounded-full" />
-        <div className="h-5 w-12 bg-white/10 rounded-full" />
-      </div>
-      <div className="h-4 bg-white/10 rounded w-3/4 mb-2" />
-      <div className="h-3 bg-white/10 rounded w-full mb-1" />
-      <div className="h-3 bg-white/10 rounded w-2/3 mb-4" />
-      <div className="flex gap-2">
-        <div className="h-9 bg-white/10 rounded-xl flex-1" />
-        <div className="h-9 bg-white/10 rounded-xl flex-1" />
-      </div>
-    </div>
-  );
-}
-
 function getGreeting() {
   const h = new Date().getHours();
   if (h < 12) return 'morning';
   if (h < 17) return 'afternoon';
   return 'evening';
-}
-
-const RELEVANCE_COLORS: Record<string, string> = {
-  High: 'text-emerald-400 bg-emerald-400/10 border-emerald-400/20',
-  Medium: 'text-yellow-400 bg-yellow-400/10 border-yellow-400/20',
-  Low: 'text-text-muted bg-white/5 border-white/10',
-};
-
-function PolicyFeedCard({ policy, analyzed, onAnalyze, onAskAdvisor, onDismiss, analyzingIds }: {
-  policy: FeedPolicy;
-  analyzed: boolean;
-  onAnalyze: (_policy: FeedPolicy) => void;
-  onAskAdvisor: (_policy: FeedPolicy) => void;
-  onDismiss: (_policy: FeedPolicy) => Promise<string | null>;
-  analyzingIds: Set<string>;
-}) {
-  const isAnalyzing = analyzingIds.has(policy.id);
-  const [dismissing, setDismissing] = useState(false);
-  const [dismissError, setDismissError] = useState<string | null>(null);
-  async function dismiss() {
-    setDismissing(true);
-    setDismissError(null);
-    const error = await onDismiss(policy);
-    if (error) {
-      setDismissError(error);
-      setDismissing(false);
-    }
-  }
-  return (
-    <GlassCard className="rounded-2xl p-5">
-      <div className="flex items-start justify-between gap-3 mb-3">
-        <div className="flex items-center gap-2 flex-wrap">
-          <span className={`text-[10px] font-medium px-2 py-0.5 rounded-full border ${RELEVANCE_COLORS[policy.relevance] || RELEVANCE_COLORS.Low}`}>
-            {policy.relevanceScore ? `${policy.relevanceScore} · ` : ''}{policy.relevance} Relevance
-          </span>
-          <Badge variant="default">{policy.category}</Badge>
-          {analyzed && (
-            <span className="text-[10px] font-medium px-2 py-0.5 rounded-full border text-emerald-400 bg-emerald-400/10 border-emerald-400/20 flex items-center gap-1">
-              <Check className="w-2.5 h-2.5" /> Analyzed
-            </span>
-          )}
-        </div>
-        <span className="text-[10px] text-text-muted flex-shrink-0">{policy.region}</span>
-      </div>
-      <h3 className="font-medium text-text-primary text-sm leading-snug mb-1">
-        {policy.billNumber && <span className="text-text-muted font-mono-data mr-1.5">{policy.billNumber}</span>}
-        {policy.title}
-      </h3>
-      <p className="text-xs text-text-muted mb-2 leading-relaxed">{policy.description}</p>
-      {policy.estimatedImpact && (
-        <p className="text-xs font-mono-data text-primary mb-2">{policy.estimatedImpact} est. impact</p>
-      )}
-      <div className="mb-4">
-        <PolicyProvenance record={policy.record} compact />
-      </div>
-      <div className="flex gap-2">
-        {analyzed ? (
-          <ViewFullImpactButton
-            policyId={policy.id}
-            policyTitle={policy.title}
-            category={policy.category}
-            description={policy.description}
-            region={policy.region}
-            variant="card"
-          />
-        ) : (
-          <button
-            onClick={() => onAnalyze(policy)}
-            disabled={isAnalyzing}
-            className="flex-1 flex items-center justify-center gap-1.5 bg-primary/20 hover:bg-primary/30 border border-primary/20 text-primary px-3 py-2 rounded-xl text-xs font-medium transition-all disabled:opacity-60 disabled:cursor-not-allowed"
-          >
-            {isAnalyzing ? <Loader2 className="w-3 h-3 animate-spin" /> : <TrendingUp className="w-3 h-3" />}
-            {isAnalyzing ? 'Analyzing...' : 'Analyze Impact'}
-          </button>
-        )}
-        <button
-          onClick={() => onAskAdvisor(policy)}
-          className="flex-1 flex items-center justify-center gap-1.5 glass hover:border-white/16 text-text-muted px-3 py-2 rounded-xl text-xs transition-all"
-        >
-          <MessageSquare className="w-3 h-3" /> Ask the Guide
-        </button>
-      </div>
-      <div className="mt-3 flex items-center justify-end gap-2 text-[11px]">
-        {dismissError && <span role="alert" className="text-red-300">{dismissError}</span>}
-        <button
-          onClick={dismiss}
-          disabled={dismissing}
-          className="text-text-muted hover:text-text-primary underline-offset-2 hover:underline disabled:opacity-60"
-        >
-          {dismissing ? 'Hiding…' : 'Not relevant to me'}
-        </button>
-      </div>
-    </GlassCard>
-  );
 }
 
 const FEED_POLL_MS = 5000;
@@ -202,15 +91,10 @@ export default function DashboardPage() {
     // Runs once per mount; loadFeed reads the controller from the ref.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
-  const [toast, setToast] = useState<{ message: string; type: 'success' | 'error' } | null>(null);
+  const { toast, showToast } = useToast();
   const [activeTab, setActiveTab] = useState<'analyzed' | 'cumulative'>('analyzed');
   const [feedError, setFeedError] = useState<string | null>(null);
   const [needsOnboarding, setNeedsOnboarding] = useState(false);
-
-  function showToast(message: string, type: 'success' | 'error' = 'success') {
-    setToast({ message, type });
-    setTimeout(() => setToast(null), 3500);
-  }
 
   // The list shows the latest few; totals always cover every analysis.
   async function loadTotals() {
@@ -401,19 +285,22 @@ export default function DashboardPage() {
   }
 
   const netImpact = totals?.netAnnual ?? analyses.reduce((sum, a) => sum + (a.dollar_impact || 0), 0);
+  const topGain = useMemo(
+    () => analyses.filter(a => a.dollar_impact > 0).reduce<typeof analyses[number] | null>((m, a) => (!m || a.dollar_impact > m.dollar_impact ? a : m), null),
+    [analyses],
+  );
+  const topCost = useMemo(
+    () => analyses.filter(a => a.dollar_impact < 0).reduce<typeof analyses[number] | null>((m, a) => (!m || a.dollar_impact < m.dollar_impact ? a : m), null),
+    [analyses],
+  );
   const analysisCount = totals?.count ?? analyses.length;
   const analyzedIds = useMemo(() => new Set(analyses.map(a => a.policy_id)), [analyses]);
+  const impactById = useMemo(() => new Map(analyses.map(a => [a.policy_id, a.dollar_impact] as const)), [analyses]);
 
   return (
     <div className="min-h-screen relative">
       <AmbientBackground />
-      {toast && (
-        <div className={`fixed top-6 right-6 z-50 px-5 py-3 rounded-2xl text-sm font-medium shadow-lg transition-all ${
-          toast.type === 'success' ? 'bg-emerald-500/20 border border-emerald-500/30 text-emerald-300' : 'bg-red-500/20 border border-red-500/30 text-red-300'
-        }`}>
-          {toast.message}
-        </div>
-      )}
+      {toast}
       <div className="relative z-10">
         <Navbar />
         <main className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 pt-28 pb-20">
@@ -447,7 +334,10 @@ export default function DashboardPage() {
                     <div className="font-mono-data text-4xl font-bold text-text-muted">$0/yr</div>
                   ) : (
                     <div className={`font-mono-data text-5xl sm:text-6xl font-bold ${netImpact >= 0 ? 'gradient-text-gold' : 'text-red-400'}`}>
-                      {netImpact >= 0 ? '+' : ''}$<AnimatedCounter end={Math.abs(netImpact)} duration={2000} />/yr
+                      <span aria-hidden>
+                        <AnimatedCounter end={Math.abs(Math.round(netImpact))} duration={2000} prefix={`${signPrefix(netImpact)}$`} suffix="/yr" />
+                      </span>
+                      <span className="sr-only">{formatUSD(netImpact, { signed: true })} per year</span>
                     </div>
                   )}
                   <p className="text-text-muted text-sm mt-2">
@@ -469,28 +359,35 @@ export default function DashboardPage() {
               </div>
 
               {analyses.length > 0 && (
-                <div className="grid grid-cols-3 gap-4 mt-8 pt-6 border-t border-white/8">
+                <dl className="grid grid-cols-1 sm:grid-cols-3 gap-4 mt-8 pt-6 border-t border-white/8">
                   {[
                     {
-                      label: 'Highest gain',
-                      value: analyses.filter(a => a.dollar_impact > 0).sort((a, b) => b.dollar_impact - a.dollar_impact)[0]
-                        ? `+$${analyses.filter(a => a.dollar_impact > 0).sort((a, b) => b.dollar_impact - a.dollar_impact)[0].dollar_impact.toLocaleString()}` : 'N/A',
-                      sub: analyses.filter(a => a.dollar_impact > 0).sort((a, b) => b.dollar_impact - a.dollar_impact)[0]?.policy_title?.slice(0, 20) || '—',
+                      label: 'Biggest gain',
+                      value: topGain ? formatUSD(topGain.dollar_impact, { signed: true, suffix: '/yr' }) : '—',
+                      tone: topGain ? 'text-emerald-400' : 'text-text-muted',
+                      sub: topGain?.policy_title || 'None among recent analyses',
                     },
                     {
                       label: 'Biggest cost',
-                      value: analyses.filter(a => a.dollar_impact < 0).sort((a, b) => a.dollar_impact - b.dollar_impact)[0]
-                        ? `-$${Math.abs(analyses.filter(a => a.dollar_impact < 0).sort((a, b) => a.dollar_impact - b.dollar_impact)[0].dollar_impact).toLocaleString()}` : 'N/A',
-                      sub: analyses.filter(a => a.dollar_impact < 0).sort((a, b) => a.dollar_impact - b.dollar_impact)[0]?.policy_title?.slice(0, 20) || '—',
+                      value: topCost ? formatUSD(topCost.dollar_impact, { signed: true, suffix: '/yr' }) : '—',
+                      tone: topCost ? 'text-red-400' : 'text-text-muted',
+                      sub: topCost?.policy_title || 'None among recent analyses',
                     },
-                    { label: 'Policies tracked', value: analyses.length.toString(), sub: 'View all' },
                   ].map(s => (
-                    <div key={s.label} className="text-center">
-                      <p className="font-mono-data text-lg font-bold text-text-primary">{s.value}</p>
-                      <p className="text-[10px] text-text-muted mt-0.5">{s.sub}</p>
+                    <div key={s.label} className="text-center min-w-0">
+                      <dt className="text-[10px] font-mono-data uppercase tracking-widest text-text-muted">{s.label}</dt>
+                      <dd className={`font-mono-data text-lg font-bold mt-1 ${s.tone}`}>{s.value}</dd>
+                      <dd className="text-[11px] text-text-muted mt-0.5 truncate" title={s.sub}>{s.sub}</dd>
                     </div>
                   ))}
-                </div>
+                  <div className="text-center">
+                    <dt className="text-[10px] font-mono-data uppercase tracking-widest text-text-muted">Policies analyzed</dt>
+                    <dd className="font-mono-data text-lg font-bold mt-1 text-text-primary">{analysisCount}</dd>
+                    <dd className="text-[11px] mt-0.5">
+                      <Link href="/impact" className="text-primary hover:underline underline-offset-2">View all</Link>
+                    </dd>
+                  </div>
+                </dl>
               )}
             </div>
           </motion.div>
@@ -555,8 +452,8 @@ export default function DashboardPage() {
                                 <p className="text-xs text-text-muted line-clamp-2">{analysis.analysis_text?.slice(0, 120)}...</p>
                               </div>
                               <div className="text-right flex-shrink-0">
-                                <p className={`font-mono-data text-sm font-bold ${(analysis.dollar_impact || 0) >= 0 ? 'text-emerald-400' : 'text-red-400'}`}>
-                                  {(analysis.dollar_impact || 0) >= 0 ? '+' : ''}${Math.abs(analysis.dollar_impact || 0).toLocaleString()}/yr
+                                <p className={`font-mono-data text-sm font-bold ${impactTone(analysis.dollar_impact || 0)}`}>
+                                  {formatUSD(analysis.dollar_impact || 0, { signed: true, suffix: '/yr' })}
                                 </p>
                                 <Link href={`/impact/${encodeURIComponent(analysis.policy_id)}`}>
                                   <button className="mt-2 text-[10px] text-primary hover:text-primary/80">View full →</button>
@@ -616,6 +513,7 @@ export default function DashboardPage() {
                               key={policy.id}
                               policy={policy}
                               analyzed={analyzedIds.has(policy.id)}
+                              impact={impactById.get(policy.id)}
                               onAnalyze={handleAnalyze}
                               onAskAdvisor={handleAskAdvisor}
                               onDismiss={handleDismiss}
@@ -693,8 +591,8 @@ export default function DashboardPage() {
                               <div key={a.id}>
                                 <div className="flex items-center justify-between mb-1">
                                   <span className="text-xs text-text-primary truncate max-w-[200px]">{a.policy_title}</span>
-                                  <span className={`text-xs font-mono-data font-bold ${val >= 0 ? 'text-emerald-400' : 'text-red-400'}`}>
-                                    {val >= 0 ? '+' : ''}${Math.abs(val).toLocaleString()}/yr
+                                  <span className={`text-xs font-mono-data font-bold ${impactTone(val)}`}>
+                                    {formatUSD(val, { signed: true, suffix: '/yr' })}
                                   </span>
                                 </div>
                                 <div className="h-1.5 rounded-full bg-white/5 overflow-hidden">
@@ -727,8 +625,8 @@ export default function DashboardPage() {
                               <div key={cat}>
                                 <div className="flex items-center justify-between mb-1">
                                   <span className="text-xs text-text-primary">{cat}</span>
-                                  <span className={`text-xs font-mono-data font-bold ${val >= 0 ? 'text-emerald-400' : 'text-red-400'}`}>
-                                    {val >= 0 ? '+' : ''}${Math.abs(val).toLocaleString()}/yr
+                                  <span className={`text-xs font-mono-data font-bold ${impactTone(val)}`}>
+                                    {formatUSD(val, { signed: true, suffix: '/yr' })}
                                   </span>
                                 </div>
                                 <div className="h-1.5 rounded-full bg-white/5 overflow-hidden">
@@ -762,13 +660,13 @@ export default function DashboardPage() {
                               const yr1 = a.dollar_impact || 0;
                               const yr3 = yr1 * 3;
                               const yr5 = yr1 * 5;
-                              const fmt = (n: number) => `${n >= 0 ? '+' : '-'}$${Math.abs(Math.round(n)).toLocaleString()}`;
+                              const fmt = (n: number) => formatUSD(n, { signed: true });
                               return (
                                 <tr key={a.id} className="border-b border-white/4 hover:bg-white/2 transition-colors">
                                   <td className="py-3 text-xs text-text-primary max-w-[200px] truncate">{a.policy_title}</td>
-                                  <td className={`py-3 text-right font-mono-data text-xs font-bold ${yr1 >= 0 ? 'text-emerald-400' : 'text-red-400'}`}>{fmt(yr1)}</td>
-                                  <td className={`py-3 text-right font-mono-data text-xs font-bold ${yr3 >= 0 ? 'text-emerald-400' : 'text-red-400'}`}>{fmt(yr3)}</td>
-                                  <td className={`py-3 text-right font-mono-data text-xs font-bold ${yr5 >= 0 ? 'text-emerald-400' : 'text-red-400'}`}>{fmt(yr5)}</td>
+                                  <td className={`py-3 text-right font-mono-data text-xs font-bold ${impactTone(yr1)}`}>{fmt(yr1)}</td>
+                                  <td className={`py-3 text-right font-mono-data text-xs font-bold ${impactTone(yr3)}`}>{fmt(yr3)}</td>
+                                  <td className={`py-3 text-right font-mono-data text-xs font-bold ${impactTone(yr5)}`}>{fmt(yr5)}</td>
                                 </tr>
                               );
                             })}
@@ -779,8 +677,8 @@ export default function DashboardPage() {
                               {[1, 3, 5].map(yrs => {
                                 const total = analyses.reduce((s, a) => s + (a.dollar_impact || 0) * yrs, 0);
                                 return (
-                                  <td key={yrs} className={`pt-4 text-right font-mono-data text-sm font-bold ${total >= 0 ? 'text-emerald-400' : 'text-red-400'}`}>
-                                    {total >= 0 ? '+' : '-'}${Math.abs(Math.round(total)).toLocaleString()}
+                                  <td key={yrs} className={`pt-4 text-right font-mono-data text-sm font-bold ${impactTone(total)}`}>
+                                    {formatUSD(total, { signed: true })}
                                   </td>
                                 );
                               })}
