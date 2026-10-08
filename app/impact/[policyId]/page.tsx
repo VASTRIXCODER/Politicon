@@ -3,7 +3,7 @@
 import { use, useState, useEffect, useMemo, useCallback, useRef } from 'react';
 import { useRouter } from 'next/navigation';
 import Link from 'next/link';
-import { motion } from 'framer-motion';
+import { m } from 'framer-motion';
 import {
   TrendingUp, TrendingDown, Minus, Check, ChevronDown, ExternalLink,
   Home, Briefcase, Heart, PiggyBank, GraduationCap, Landmark, Waves, ShieldAlert,
@@ -12,7 +12,7 @@ import {
 } from 'lucide-react';
 import { EMPLOYMENT_STATUSES, FILING_STATUSES, HOUSING_SITUATIONS, INCOME_RANGES, labelOf } from '@/lib/profileOptions';
 import { requestAnalysis } from '@/lib/analysisClient';
-import { costChange, formatPct, formatPts, formatUSD, impactSign, impactTone, impactWords, signPrefix } from '@/lib/format';
+import { costChange, formatPct, formatPts, formatUSD, impactSign, impactTone, impactWords } from '@/lib/format';
 import { applicability, type Applicability } from '@/lib/applicability';
 import { coerceFullAnalysis } from '@/lib/analysisSchema';
 import PolicyProvenance from '@/components/PolicyProvenance';
@@ -21,16 +21,20 @@ import AiDisclaimer, { confidenceLabel } from '@/components/ui/AiDisclaimer';
 import { apiFetch } from '@/lib/api';
 import { createClient } from '@/lib/supabase/client';
 import { FullAnalysis, ImpactDirection, Policy } from '@/types';
-import { getStatusColor } from '@/lib/utils';
 import GlassCard from '@/components/ui/GlassCard';
 import Badge from '@/components/ui/Badge';
-import GsapCounter from '@/components/ui/GsapCounter';
+import Button from '@/components/ui/Button';
+import CountUp from '@/components/ui/CountUp';
+import StatusBadge from '@/components/ui/StatusBadge';
+import { Tabs, TabList, Tab, TabPanel } from '@/components/ui/Tabs';
 import Navbar from '@/components/layout/Navbar';
 import AmbientBackground from '@/components/landing/AmbientBackground';
+// Recharts charts are code-split and load with the tab that shows them.
 import {
-  CategoryImpactBar, ImpactDonut, MonthlyTimeline, ProjectionBars, BeforeAfterBar, CATEGORY_COLOR,
-  TransmissionWaterfall, VulnerabilityRadar, SpendingHeatmap,
-} from '@/components/charts/Charts';
+  CategoryImpactBar, ImpactDonut, MonthlyTimeline, ProjectionBars, BeforeAfterBar, VulnerabilityRadar,
+} from '@/components/charts/LazyCharts';
+import { TransmissionWaterfall, SpendingHeatmap } from '@/components/charts/StaticCharts';
+import { CATEGORY_COLOR } from '@/components/charts/palette';
 import { useReadingMode } from '@/components/providers/ReadingModeProvider';
 import ReadingModeToggle from '@/components/ui/ReadingModeToggle';
 import { WhatThisMeans, JargonBuster } from '@/components/ui/SimpleMode';
@@ -46,10 +50,15 @@ const costRow = (label: string, n: number, suffix = '') =>
   ({ label, value: costChange(n, suffix), positive: impactSign(n) === 'neutral' ? undefined : n > 0 });
 const pct = (n: number) => formatPct(n, { digits: 2 });
 const titleCase = (s: string) => s.replace(/[-_]+/g, ' ').replace(/\b\w/g, (c) => c.toUpperCase());
+const signedUSD = (n: number) => formatUSD(n, { signed: true });
+// Flat surface for rows inside a glass card (no nested backdrop blur).
+const INNER_ROW = 'bg-white/4 border border-white/8';
+// Violet-tinted action: primary-300 text keeps it at AA contrast on the tint.
+const TINT_BUTTON = 'bg-primary/20 hover:bg-primary/30 border-primary/20 text-primary-300';
 
 const TABS = ['overview', 'breakdown', 'timeline', 'economic', 'deepdive', 'action'] as const;
-type Tab = (typeof TABS)[number];
-const TAB_LABELS: Record<Tab, string> = {
+type DetailTab = (typeof TABS)[number];
+const TAB_LABELS: Record<DetailTab, string> = {
   overview: 'Overview',
   breakdown: 'Financial Breakdown',
   timeline: 'Timeline',
@@ -108,9 +117,9 @@ function snapshotFromRow(row: Record<string, unknown>): ProfileSnapshot {
 }
 
 function DirIcon({ d, className = 'w-5 h-5' }: { d: ImpactDirection; className?: string }) {
-  if (d === 'positive') return <TrendingUp className={`${className} text-emerald-400`} />;
-  if (d === 'negative') return <TrendingDown className={`${className} text-red-400`} />;
-  return <Minus className={`${className} text-text-muted`} />;
+  if (d === 'positive') return <TrendingUp className={`${className} text-emerald-400`} aria-hidden />;
+  if (d === 'negative') return <TrendingDown className={`${className} text-red-400`} aria-hidden />;
+  return <Minus className={`${className} text-text-muted`} aria-hidden />;
 }
 
 /**
@@ -125,7 +134,7 @@ function StatRow({ label, value, positive, cue, kind }: { label: string; value: 
       <span className="text-xs text-text-muted">{label}</span>
       <span className={`font-mono-data text-sm font-semibold text-right ${positive === undefined || neutral ? 'text-text-primary' : positive ? 'text-emerald-400' : 'text-red-400'}`}>
         {value}
-        {cue !== undefined && !neutral && <span className="block text-[10px] font-normal text-text-muted">{impactWords(cue, kind)}</span>}
+        {cue !== undefined && !neutral && <span className="block text-meta font-normal text-text-muted">{impactWords(cue, kind)}</span>}
       </span>
     </div>
   );
@@ -140,7 +149,7 @@ export default function PolicyDetailPage({ params }: { params: Promise<{ policyI
   const [loading, setLoading] = useState(true);
   const [generating, setGenerating] = useState(false);
   const [notFound, setNotFound] = useState(false);
-  const [tab, setTab] = useState<Tab>('overview');
+  const [tab, setTab] = useState<DetailTab>('overview');
   const [analyzedAt, setAnalyzedAt] = useState<string | null>(null);
   const [generateError, setGenerateError] = useState<string | null>(null);
   const [stale, setStale] = useState(false);
@@ -260,14 +269,15 @@ export default function PolicyDetailPage({ params }: { params: Promise<{ policyI
   // ----- loading / generating / not-found states -----
   if (loading) {
     return (
-      <Shell>
-        <div className="max-w-6xl mx-auto px-4 sm:px-6 lg:px-8 pt-28 pb-20">
-          {generating && (
-            <div className="flex items-center gap-3 mb-8 text-sm text-text-muted">
-              <Loader2 className="w-4 h-4 animate-spin text-primary" />
-              Compiling your full financial analysis…
-            </div>
+      <Shell className="max-w-6xl mx-auto px-4 sm:px-6 lg:px-8 pt-28 pb-20">
+        <div role="status" className="flex items-center gap-3 mb-8 text-sm text-text-muted">
+          {generating ? (
+            <><Loader2 className="w-4 h-4 animate-spin text-primary" aria-hidden /> Compiling your full financial analysis…</>
+          ) : (
+            <span className="sr-only">Loading your analysis…</span>
           )}
+        </div>
+        <div aria-hidden>
           <div className="h-10 w-2/3 bg-white/10 rounded-2xl animate-pulse mb-6" />
           <div className="h-40 bg-white/10 rounded-3xl animate-pulse mb-6" />
           <div className="grid sm:grid-cols-2 gap-4">
@@ -280,29 +290,32 @@ export default function PolicyDetailPage({ params }: { params: Promise<{ policyI
 
   if (notFound || !analysis) {
     return (
-      <Shell>
-        <div className="max-w-2xl mx-auto px-4 pt-40 pb-20 text-center">
-          <div className="w-14 h-14 rounded-2xl bg-primary/10 border border-primary/20 flex items-center justify-center mx-auto mb-5">
-            <Target className="w-7 h-7 text-primary" />
-          </div>
-          <h1 className="font-display text-2xl font-bold text-text-primary mb-2">{legacy ? 'Update this analysis' : 'No analysis yet'}</h1>
-          <p className="text-sm text-text-muted mb-6">
-            {generating
-              ? 'Compiling your full financial analysis. This can take up to a minute…'
-              : legacy
-                ? 'This is a short summary from an earlier version of Politicon. Generate the full breakdown to see every chart and section.'
-                : 'Generate a full, personalized analysis of this policy from your feed.'}
-          </p>
-          {generateError && <p role="alert" className="text-sm text-red-300 mb-6">{generateError}</p>}
-          <div className="flex flex-wrap items-center justify-center gap-3">
-            <button onClick={() => generate(legacy)} disabled={generating} className="inline-flex items-center gap-2 bg-primary text-white px-5 py-3 rounded-xl text-sm font-medium transition-all disabled:opacity-60">
-              {generating && <Loader2 className="w-4 h-4 animate-spin" />}
-              {generating ? 'Generating…' : legacy ? 'Generate full analysis' : 'Generate analysis'}
-            </button>
-            <button onClick={() => router.push('/dashboard')} className="bg-primary/20 hover:bg-primary/30 border border-primary/20 text-primary px-5 py-3 rounded-xl text-sm font-medium transition-all">
-              Back to Dashboard
-            </button>
-          </div>
+      <Shell className="max-w-2xl mx-auto px-4 pt-40 pb-20 text-center">
+        <div className="w-14 h-14 rounded-2xl bg-primary/10 border border-primary/20 flex items-center justify-center mx-auto mb-5">
+          <Target className="w-7 h-7 text-primary-300" aria-hidden />
+        </div>
+        <h1 className="font-display text-2xl font-bold text-text-primary mb-2">{legacy ? 'Update this analysis' : 'No analysis yet'}</h1>
+        <p role="status" className="text-sm text-text-muted mb-6">
+          {generating
+            ? 'Compiling your full financial analysis. This can take up to a minute…'
+            : legacy
+              ? 'This is a short summary from an earlier version of Politicon. Generate the full breakdown to see every chart and section.'
+              : 'Generate a full, personalized analysis of this policy from your feed.'}
+        </p>
+        {generateError && <p role="alert" className="text-sm text-red-300 mb-6">{generateError}</p>}
+        <div className="flex flex-wrap items-center justify-center gap-3">
+          <Button
+            onClick={() => generate(legacy)}
+            disabled={generating}
+            aria-busy={generating || undefined}
+            className="px-5"
+            icon={generating ? <Loader2 className="w-4 h-4 animate-spin" /> : undefined}
+          >
+            {generating ? 'Generating…' : legacy ? 'Generate full analysis' : 'Generate analysis'}
+          </Button>
+          <Button href="/dashboard" variant="ghost" className={`px-5 ${TINT_BUTTON}`}>
+            Back to Dashboard
+          </Button>
         </div>
       </Shell>
     );
@@ -317,13 +330,16 @@ export default function PolicyDetailPage({ params }: { params: Promise<{ policyI
   );
 }
 
-function Shell({ children }: { children: React.ReactNode }) {
+/** Page chrome; `className` styles the <main> landmark the skip link targets. */
+function Shell({ children, className }: { children: React.ReactNode; className?: string }) {
   return (
     <div className="min-h-screen relative">
       <AmbientBackground />
       <div className="relative z-10">
         <Navbar />
-        {children}
+        <main id="main" tabIndex={-1} className={className}>
+          {children}
+        </main>
       </div>
     </div>
   );
@@ -336,7 +352,7 @@ function DetailView({
   analysis: a, profile, analyzedAt, tab, setTab, stale, reanalyzing, reanalyzeError, onReanalyze, onDelete, policyId,
 }: {
   analysis: FullAnalysis; profile: ProfileSnapshot | null; analyzedAt: string | null;
-  tab: Tab; setTab: (_t: Tab) => void;
+  tab: DetailTab; setTab: (_t: DetailTab) => void;
   stale: boolean; reanalyzing: boolean; reanalyzeError: string | null; onReanalyze: () => void; onDelete: () => void;
   policyId: string;
 }) {
@@ -367,141 +383,147 @@ function DetailView({
   }, [profile]);
 
   return (
-    <Shell>
-      <main className="max-w-6xl mx-auto px-4 sm:px-6 lg:px-8 pt-28 pb-24">
-        <div className="flex items-center justify-between mb-6 gap-4">
-          <nav aria-label="Breadcrumb" className="min-w-0">
-            <ol className="flex items-center gap-1.5 text-sm text-text-muted min-w-0">
-              <li><Link href="/dashboard" className="hover:text-text-primary transition-colors">Dashboard</Link></li>
-              <li aria-hidden>/</li>
-              <li><Link href="/impact" className="hover:text-text-primary transition-colors">My Impact</Link></li>
-              <li aria-hidden>/</li>
-              <li aria-current="page" className="text-text-primary truncate max-w-[40vw] sm:max-w-xs">{a.billNumber || a.policyTitle}</li>
-            </ol>
-          </nav>
-          <div className="flex items-center gap-2">
-            <button
-              onClick={onDelete}
-              aria-label="Delete this analysis"
-              className="p-2 rounded-xl text-text-muted hover:text-red-300 hover:bg-red-500/10 border border-transparent hover:border-red-500/20 transition-all"
-            >
-              <Trash2 className="w-4 h-4" />
-            </button>
-            <ReadingModeToggle />
-          </div>
+    <Shell className="max-w-6xl mx-auto px-4 sm:px-6 lg:px-8 pt-28 pb-24">
+      <div className="flex items-center justify-between mb-6 gap-4">
+        <nav aria-label="Breadcrumb" className="min-w-0">
+          <ol className="flex items-center gap-1.5 text-sm text-text-muted min-w-0">
+            <li><Link href="/dashboard" className="hover:text-text-primary transition-colors">Dashboard</Link></li>
+            <li aria-hidden>/</li>
+            <li><Link href="/impact" className="hover:text-text-primary transition-colors">My Impact</Link></li>
+            <li aria-hidden>/</li>
+            <li aria-current="page" className="text-text-primary truncate max-w-[40vw] sm:max-w-xs">{a.billNumber || a.policyTitle}</li>
+          </ol>
+        </nav>
+        <div className="flex items-center gap-2">
+          <button
+            type="button"
+            onClick={onDelete}
+            aria-label="Delete this analysis"
+            className="p-2 rounded-xl text-text-muted hover:text-red-300 hover:bg-red-500/10 border border-transparent hover:border-red-500/20 transition-all"
+          >
+            <Trash2 className="w-4 h-4" aria-hidden />
+          </button>
+          <ReadingModeToggle />
         </div>
+      </div>
 
-        {/* Header */}
-        <motion.div initial={{ opacity: 0, y: 16 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.4 }} className="mb-6">
-          <div className="flex flex-wrap items-center gap-2 mb-3">
-            <Badge variant="primary">{titleCase(a.category)}</Badge>
-            <span className={`text-[11px] font-mono-data px-2.5 py-0.5 rounded-full border capitalize ${getStatusColor(a.status)}`}>{a.status}</span>
-            {a.billNumber && <Badge variant="default">{a.billNumber}</Badge>}
-            <span className={`text-[11px] font-mono-data flex items-center gap-1 ml-1 ${confidence.tone}`}>
-              <Sparkles className="w-3 h-3" aria-hidden /> {confidence.label}
-              {a.confidenceScore ? <> · {a.confidenceScore}/100<span className="sr-only"> (model-rated)</span></> : null}
-            </span>
-          </div>
-          <h1 className="font-display text-3xl sm:text-4xl font-bold text-text-primary leading-tight">{a.policyTitle}</h1>
-          {analyzedAt && (
-            <p className="text-xs text-text-muted mt-2">Last analyzed {new Date(analyzedAt).toLocaleString()}</p>
-          )}
-          <div className="mt-3 max-w-3xl">
-            <PolicyProvenance record={a.record} snapshotLabel />
-          </div>
-          <AiDisclaimer className="mt-3 max-w-3xl" />
-        </motion.div>
-
-        {stale && (
-          <div role="status" className="mb-6 flex flex-col sm:flex-row sm:items-center justify-between gap-3 rounded-2xl border border-gold/30 bg-gold/10 px-5 py-4">
-            <p className="text-sm text-text-primary">
-              Your financial profile changed after this analysis was made, so these numbers may be out of date.
-              {reanalyzeError && <span className="block text-red-300 mt-1">{reanalyzeError}</span>}
-            </p>
-            <button onClick={onReanalyze} disabled={reanalyzing}
-              className="inline-flex items-center justify-center gap-2 whitespace-nowrap bg-gold/20 hover:bg-gold/30 border border-gold/30 text-gold px-4 py-2 rounded-xl text-sm font-medium transition-all disabled:opacity-60">
-              {reanalyzing && <Loader2 className="w-4 h-4 animate-spin" />}
-              {reanalyzing ? 'Re-analyzing…' : 'Re-analyze with my current profile'}
-            </button>
-          </div>
+      {/* Header */}
+      <m.div initial={{ opacity: 0, y: 16 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.4 }} className="mb-6">
+        <div className="flex flex-wrap items-center gap-2 mb-3">
+          <Badge variant="primary">{titleCase(a.category)}</Badge>
+          <StatusBadge status={a.status} />
+          {a.billNumber && <Badge variant="default">{a.billNumber}</Badge>}
+          <span className={`text-meta font-mono-data flex items-center gap-1 ml-1 ${confidence.tone}`}>
+            <Sparkles className="w-3 h-3" aria-hidden /> {confidence.label}
+            {a.confidenceScore ? <> · {a.confidenceScore}/100<span className="sr-only"> (model-rated)</span></> : null}
+          </span>
+        </div>
+        <h1 className="font-display text-3xl sm:text-4xl font-bold text-text-primary leading-tight">{a.policyTitle}</h1>
+        {analyzedAt && (
+          <p className="text-xs text-text-muted mt-2">Last analyzed {new Date(analyzedAt).toLocaleString()}</p>
         )}
-
-        {/* Hero impact card */}
-        <motion.div initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.5, delay: 0.05 }}
-          className="glass-strong rounded-3xl p-8 mb-8 relative overflow-hidden">
-          <div className={`absolute inset-0 ${a.direction === 'negative' ? 'bg-gradient-to-br from-red-500/10' : 'bg-gradient-to-br from-gold/10'} via-transparent to-primary/5`} />
-          <div className="relative z-10 grid md:grid-cols-[1.2fr_1fr] gap-8 items-center">
-            <div>
-              <p className="text-xs font-mono-data text-text-muted uppercase tracking-widest mb-3">Net Annual Impact</p>
-              <div className={`font-mono-data text-5xl sm:text-6xl font-bold ${a.netAnnualImpact >= 0 ? 'gradient-text-gold' : 'text-red-400'}`}>
-                <span aria-hidden><GsapCounter value={Math.abs(Math.round(a.netAnnualImpact))} prefix={`${signPrefix(a.netAnnualImpact)}$`} /></span>
-                <span className="sr-only">{formatUSD(a.netAnnualImpact, { signed: true })} per year</span>
-              </div>
-              <div className="flex items-center gap-4 mt-3">
-                <p className="text-sm text-text-muted">
-                  <span className={`font-mono-data font-semibold ${impactTone(a.netMonthlyImpact)}`}>{money(a.netMonthlyImpact)}</span> / month · {impactWords(a.netAnnualImpact)}
-                </p>
-                <span className="flex items-center gap-1.5 text-sm capitalize">
-                  <DirIcon d={a.direction} className="w-4 h-4" />
-                  <span className="text-text-muted">{a.direction}</span>
-                </span>
-              </div>
-            </div>
-            <div>
-              <p className="text-[10px] font-mono-data text-text-muted uppercase tracking-widest mb-2">Driven by your profile</p>
-              <div className="flex flex-wrap gap-2">
-                {profileChips.length > 0 ? profileChips.map((c) => (
-                  <span key={c} className="text-[11px] px-2.5 py-1 rounded-full bg-white/5 border border-white/10 text-text-muted">{c}</span>
-                )) : <span className="text-xs text-text-muted">Complete your profile for a sharper analysis.</span>}
-              </div>
-            </div>
-          </div>
-        </motion.div>
-
-        {/* Tabs */}
-        <div className="flex gap-1 glass rounded-2xl p-1 mb-8 overflow-x-auto scrollbar-hide w-full sm:w-fit">
-          {TABS.map((t) => (
-            <button key={t} onClick={() => setTab(t)}
-              className={`px-4 py-2.5 rounded-xl text-sm font-medium transition-all whitespace-nowrap ${tab === t ? 'bg-primary/20 text-primary border border-primary/20' : 'text-text-muted hover:text-text-primary'}`}>
-              {TAB_LABELS[t]}
-            </button>
-          ))}
+        <div className="mt-3 max-w-3xl">
+          <PolicyProvenance record={a.record} snapshotLabel />
         </div>
+        <AiDisclaimer className="mt-3 max-w-3xl" />
+      </m.div>
 
-        {tab === 'overview' && <OverviewTab a={a} categoryBars={categoryBars} simple={simple} income={income} applies={applies} />}
-        {tab === 'breakdown' && <BreakdownTab a={a} categoryBars={categoryBars} simple={simple} />}
-        {tab === 'timeline' && <TimelineTab a={a} simple={simple} />}
-        {tab === 'economic' && <EconomicContextTab a={a} simple={simple} income={income} applies={applies} />}
-        {tab === 'deepdive' && <DeepDiveTab a={a} />}
-        {tab === 'action' && <ActionTab a={a} />}
+      {stale && (
+        <div role="status" className="mb-6 flex flex-col sm:flex-row sm:items-center justify-between gap-3 rounded-2xl border border-gold/30 bg-gold/10 px-5 py-4">
+          <p className="text-sm text-text-primary">
+            Your financial profile changed after this analysis was made, so these numbers may be out of date.
+            {reanalyzeError && <span className="block text-red-300 mt-1">{reanalyzeError}</span>}
+          </p>
+          <button type="button" onClick={onReanalyze} disabled={reanalyzing} aria-busy={reanalyzing || undefined}
+            className="inline-flex items-center justify-center gap-2 whitespace-nowrap bg-gold/20 hover:bg-gold/30 border border-gold/30 text-gold px-4 py-2 rounded-xl text-sm font-medium transition-all disabled:opacity-60">
+            {reanalyzing && <Loader2 className="w-4 h-4 animate-spin" aria-hidden />}
+            {reanalyzing ? 'Re-analyzing…' : 'Re-analyze with my current profile'}
+          </button>
+        </div>
+      )}
 
-        <div className="mt-10 pt-6 border-t border-white/5">
-          <FeedbackControls
-            key={analyzedAt || 'analysis'}
-            targetType="analysis"
-            targetId={policyId}
-            // Kept mounted while a re-analysis runs (so focus stays put); repeat clicks are ignored.
-            onReanalyze={() => { if (!reanalyzing) onReanalyze(); }}
-          />
-          {/* Progress and errors for a re-analysis started from here or from the banner above. */}
-          <div role="status" className="mt-2 text-xs">
-            {reanalyzing ? (
-              <span className="flex items-center gap-2 text-text-muted">
-                <Loader2 className="w-3.5 h-3.5 animate-spin text-primary" aria-hidden /> Re-analyzing with your current profile…
+      {/* Hero impact card */}
+      <m.div initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.5, delay: 0.05 }}
+        className="glass-strong rounded-3xl p-8 mb-8 relative overflow-hidden">
+        <div className={`absolute inset-0 ${a.direction === 'negative' ? 'bg-gradient-to-br from-red-500/10' : 'bg-gradient-to-br from-gold/10'} via-transparent to-primary/5`} />
+        <div className="relative z-10 grid md:grid-cols-[1.2fr_1fr] gap-8 items-center">
+          <div>
+            <p className="text-xs font-mono-data text-text-muted uppercase tracking-widest mb-3">Net Annual Impact</p>
+            <div className={`font-mono-data text-5xl sm:text-6xl font-bold ${a.netAnnualImpact >= 0 ? 'gradient-text-gold' : 'text-red-400'}`}>
+              <CountUp value={Math.round(a.netAnnualImpact)} format={signedUSD} srLabel={`${signedUSD(a.netAnnualImpact)} per year`} />
+            </div>
+            <div className="flex items-center gap-4 mt-3">
+              <p className="text-sm text-text-muted">
+                <span className={`font-mono-data font-semibold ${impactTone(a.netMonthlyImpact)}`}>{money(a.netMonthlyImpact)}</span> / month · {impactWords(a.netAnnualImpact)}
+              </p>
+              <span className="flex items-center gap-1.5 text-sm capitalize">
+                <DirIcon d={a.direction} className="w-4 h-4" />
+                <span className="text-text-muted">{a.direction}</span>
               </span>
-            ) : reanalyzeError && !stale ? (
-              <span className="text-red-300">{reanalyzeError}</span>
-            ) : null}
+            </div>
+          </div>
+          <div>
+            <p id="profile-drivers" className="text-meta font-mono-data text-text-muted uppercase tracking-widest mb-2">Driven by your profile</p>
+            {profileChips.length > 0 ? (
+              <ul aria-labelledby="profile-drivers" className="flex flex-wrap gap-2">
+                {profileChips.map((c) => (
+                  <li key={c} className="text-meta px-2.5 py-1 rounded-full bg-white/5 border border-white/10 text-text-muted">{c}</li>
+                ))}
+              </ul>
+            ) : <p className="text-xs text-text-muted">Complete your profile for a sharper analysis.</p>}
           </div>
         </div>
+      </m.div>
 
-        {/* Jargon Buster sidebar — only in Simple Mode */}
-        {simple && (
-          <div className="mt-8">
-            <JargonBuster terms={a.simple?.jargon || []} />
-          </div>
-        )}
-      </main>
+      <Tabs value={tab} onValueChange={setTab}>
+        <TabList label="Analysis sections" className="glass rounded-2xl p-1 mb-8 w-full sm:w-fit">
+          {TABS.map((t) => (
+            <Tab key={t} value={t} className="py-2.5 border border-transparent aria-selected:bg-primary/20 aria-selected:border-primary/20">
+              {TAB_LABELS[t]}
+            </Tab>
+          ))}
+        </TabList>
+
+        {TABS.map((t) => (
+          <TabPanel key={t} value={t}>
+            {/* Tab sections start at h3, so each panel gets its own (visually hidden) h2. */}
+            <h2 className="sr-only">{TAB_LABELS[t]}</h2>
+            {t === 'overview' && <OverviewTab a={a} categoryBars={categoryBars} simple={simple} income={income} applies={applies} />}
+            {t === 'breakdown' && <BreakdownTab a={a} categoryBars={categoryBars} simple={simple} />}
+            {t === 'timeline' && <TimelineTab a={a} simple={simple} />}
+            {t === 'economic' && <EconomicContextTab a={a} simple={simple} income={income} applies={applies} />}
+            {t === 'deepdive' && <DeepDiveTab a={a} />}
+            {t === 'action' && <ActionTab a={a} />}
+          </TabPanel>
+        ))}
+      </Tabs>
+
+      <div className="mt-10 pt-6 border-t border-white/5">
+        <FeedbackControls
+          key={analyzedAt || 'analysis'}
+          targetType="analysis"
+          targetId={policyId}
+          // Kept mounted while a re-analysis runs (so focus stays put); repeat clicks are ignored.
+          onReanalyze={() => { if (!reanalyzing) onReanalyze(); }}
+        />
+        {/* Progress and errors for a re-analysis started from here or from the banner above. */}
+        <div role="status" className="mt-2 text-xs">
+          {reanalyzing ? (
+            <span className="flex items-center gap-2 text-text-muted">
+              <Loader2 className="w-3.5 h-3.5 animate-spin text-primary" aria-hidden /> Re-analyzing with your current profile…
+            </span>
+          ) : reanalyzeError && !stale ? (
+            <span className="text-red-300">{reanalyzeError}</span>
+          ) : null}
+        </div>
+      </div>
+
+      {/* Jargon Buster sidebar — only in Simple Mode */}
+      {simple && (
+        <div className="mt-8">
+          <JargonBuster terms={a.simple?.jargon || []} />
+        </div>
+      )}
     </Shell>
   );
 }
@@ -546,7 +568,7 @@ function OverviewTab({ a, categoryBars, simple, income, applies }: {
 
         <GlassCard className="rounded-3xl p-7" animate={false}>
           <h3 className="font-display text-base font-semibold text-text-primary mb-4">Impact by Category</h3>
-          <CategoryImpactBar data={categoryBars} height={280} />
+          <CategoryImpactBar data={categoryBars} height={280} title="Impact by category" />
         </GlassCard>
       </div>
 
@@ -558,7 +580,7 @@ function OverviewTab({ a, categoryBars, simple, income, applies }: {
             <p className="text-xs font-mono-data uppercase tracking-widest text-emerald-400 mb-3">You gain</p>
             <div className="space-y-2">
               {a.tradeoffs.gains.length ? a.tradeoffs.gains.map((g, i) => (
-                <div key={i} className="flex items-center justify-between gap-3 glass rounded-xl px-4 py-2.5">
+                <div key={i} className={`flex items-center justify-between gap-3 rounded-xl px-4 py-2.5 ${INNER_ROW}`}>
                   <span className="text-sm text-text-primary">{g.label}</span>
                   <span className="font-mono-data text-sm font-semibold text-emerald-400">{money(Math.abs(g.value))}</span>
                 </div>
@@ -569,7 +591,7 @@ function OverviewTab({ a, categoryBars, simple, income, applies }: {
             <p className="text-xs font-mono-data uppercase tracking-widest text-red-400 mb-3">You lose</p>
             <div className="space-y-2">
               {a.tradeoffs.losses.length ? a.tradeoffs.losses.map((l, i) => (
-                <div key={i} className="flex items-center justify-between gap-3 glass rounded-xl px-4 py-2.5">
+                <div key={i} className={`flex items-center justify-between gap-3 rounded-xl px-4 py-2.5 ${INNER_ROW}`}>
                   <span className="text-sm text-text-primary">{l.label}</span>
                   <span className="font-mono-data text-sm font-semibold text-red-400">{money(-Math.abs(l.value))}</span>
                 </div>
@@ -585,16 +607,16 @@ function OverviewTab({ a, categoryBars, simple, income, applies }: {
       {/* Top recommendations */}
       <GlassCard className="rounded-3xl p-7" animate={false}>
         <h3 className="font-display text-base font-semibold text-text-primary mb-4">Things to consider</h3>
-        <div className="space-y-3">
+        <ol className="space-y-3">
           {a.recommendations.slice(0, 3).map((r, i) => (
-            <div key={i} className="flex items-start gap-3">
-              <div className="w-6 h-6 rounded-full bg-primary/20 border border-primary/20 flex items-center justify-center flex-shrink-0 mt-0.5">
-                <span className="text-[11px] font-mono-data text-primary">{i + 1}</span>
-              </div>
+            <li key={i} className="flex items-start gap-3">
+              <span className="w-6 h-6 rounded-full bg-primary/20 border border-primary/20 flex items-center justify-center flex-shrink-0 mt-0.5" aria-hidden>
+                <span className="text-meta font-mono-data text-primary-300">{i + 1}</span>
+              </span>
               <p className="text-sm text-text-muted leading-relaxed">{r.step}</p>
-            </div>
+            </li>
           ))}
-        </div>
+        </ol>
       </GlassCard>
     </div>
   );
@@ -610,18 +632,18 @@ function BreakdownTab({ a, categoryBars, simple }: { a: FullAnalysis; categoryBa
       <GlassCard className="rounded-3xl p-7" animate={false}>
         <h3 className="font-display text-base font-semibold text-text-primary mb-1">Annual Impact by Category</h3>
         {simple && <p className="text-xs text-text-muted mb-4">{CHART_DESCRIPTIONS.category}</p>}
-        <CategoryImpactBar data={categoryBars} height={320} />
+        <CategoryImpactBar data={categoryBars} height={320} title="Annual impact by category" />
       </GlassCard>
 
       <div className="grid lg:grid-cols-2 gap-6">
         <GlassCard className="rounded-3xl p-7" animate={false}>
           <h3 className="font-display text-base font-semibold text-text-primary mb-4">Proportion of Impact</h3>
-          <ImpactDonut data={donutData} height={320} />
+          <ImpactDonut data={donutData} height={320} title="Proportion of impact by category" />
         </GlassCard>
 
         <GlassCard className="rounded-3xl p-7" animate={false}>
           <h3 className="font-display text-base font-semibold text-text-primary mb-4">Before vs After — Effective Tax Rate</h3>
-          <BeforeAfterBar items={beforeAfter} unit="%" height={240} />
+          <BeforeAfterBar items={beforeAfter} unit="%" height={240} title="Effective tax rate before and after" />
           <div className="mt-4 space-y-1">
             <StatRow label="Take-home per paycheck" value={money(a.immediate.takeHomePerPaycheck)} positive={a.immediate.takeHomePerPaycheck >= 0} cue={a.immediate.takeHomePerPaycheck} kind="income" />
             <StatRow label="Monthly budget" value={money(a.immediate.monthlyBudgetImpact, '/mo')} positive={a.immediate.monthlyBudgetImpact >= 0} cue={a.immediate.monthlyBudgetImpact} />
@@ -650,28 +672,30 @@ function TimelineTab({ a, simple }: { a: FullAnalysis; simple: boolean }) {
       <GlassCard className="rounded-3xl p-7" animate={false}>
         <h3 className="font-display text-base font-semibold text-text-primary mb-1">{simple ? 'How it adds up over your first year' : 'Year One — Month by Month'}</h3>
         <p className="text-xs text-text-muted mb-4">{simple ? CHART_DESCRIPTIONS.timeline : 'Cumulative dollar impact as the policy takes effect.'}</p>
-        <MonthlyTimeline data={a.timeline.monthly} height={320} />
+        <MonthlyTimeline data={a.timeline.monthly} height={320} title={simple ? 'How it adds up over your first year' : 'Year one, month by month'} />
       </GlassCard>
 
       <div className="grid lg:grid-cols-2 gap-6">
         <GlassCard className="rounded-3xl p-7" animate={false}>
           <h3 className="font-display text-base font-semibold text-text-primary mb-4">{simple ? 'Where you stand in 1, 3, and 5 years' : '1 / 3 / 5-Year Cumulative'}</h3>
-          <ProjectionBars year1={a.timeline.year1} year3={a.timeline.year3} year5={a.timeline.year5} height={280} />
+          <ProjectionBars year1={a.timeline.year1} year3={a.timeline.year3} year5={a.timeline.year5} height={280} title="Cumulative impact after 1, 3 and 5 years" />
         </GlassCard>
 
         <GlassCard className="rounded-3xl p-7" animate={false}>
           <h3 className="font-display text-base font-semibold text-text-primary mb-5">Milestones</h3>
           <div className="relative pl-6">
-            <div className="absolute left-[7px] top-1 bottom-1 w-px bg-white/10" />
-            {milestones.map((m, i) => (
-              <div key={i} className="relative mb-5 last:mb-0">
-                <div className={`absolute -left-[22px] top-0.5 w-3.5 h-3.5 rounded-full border-2 ${m.value >= 0 ? 'border-emerald-400 bg-emerald-400/20' : 'border-red-400 bg-red-400/20'}`} />
-                <div className="flex items-center justify-between">
-                  <span className="text-sm text-text-primary font-medium">{m.label}</span>
-                  <span className={`font-mono-data text-sm font-semibold ${impactTone(m.value)}`}>{money(m.value)}</span>
-                </div>
-              </div>
-            ))}
+            <div className="absolute left-[7px] top-1 bottom-1 w-px bg-white/10" aria-hidden />
+            <ol>
+              {milestones.map((ms, i) => (
+                <li key={i} className="relative mb-5 last:mb-0">
+                  <div className={`absolute -left-[22px] top-0.5 w-3.5 h-3.5 rounded-full border-2 ${ms.value >= 0 ? 'border-emerald-400 bg-emerald-400/20' : 'border-red-400 bg-red-400/20'}`} aria-hidden />
+                  <div className="flex items-center justify-between gap-3">
+                    <span className="text-sm text-text-primary font-medium">{ms.label}</span>
+                    <span className={`font-mono-data text-sm font-semibold ${impactTone(ms.value)}`}>{money(ms.value)}</span>
+                  </div>
+                </li>
+              ))}
+            </ol>
           </div>
         </GlassCard>
       </div>
@@ -699,7 +723,7 @@ const PROFIT_LABEL: Record<string, { text: string; dir: ImpactDirection }> = {
 function SectorIndicator({ label, value, dir }: { label: string; value: string; dir: ImpactDirection }) {
   const color = dir === 'positive' ? 'text-emerald-400' : dir === 'negative' ? 'text-red-400' : 'text-text-muted';
   return (
-    <div className="flex items-center justify-between glass rounded-xl px-4 py-3">
+    <div className={`flex items-center justify-between gap-3 rounded-xl px-4 py-3 ${INNER_ROW}`}>
       <span className="text-xs text-text-muted">{label}</span>
       <span className={`flex items-center gap-1.5 text-sm font-medium ${color}`}>
         <DirIcon d={dir} className="w-3.5 h-3.5" /> {value}
@@ -793,7 +817,7 @@ function EconomicContextTab({ a, simple, income, applies }: { a: FullAnalysis; s
       <GlassCard className="rounded-3xl p-7" animate={false}>
         <h3 className="font-display text-base font-semibold text-text-primary mb-1">{simple ? 'Where this hits you hardest' : 'Your Vulnerability Profile'}</h3>
         <p className="text-xs text-text-muted mb-4">{simple ? CHART_DESCRIPTIONS.radar : 'How exposed you are to this policy across six dimensions (higher = more pressure).'}</p>
-        <VulnerabilityRadar data={radarData} height={340} />
+        <VulnerabilityRadar data={radarData} height={340} title={simple ? 'Where this hits you hardest' : 'Vulnerability profile'} />
       </GlassCard>
 
       {/* Spending heatmap */}
@@ -832,7 +856,7 @@ function EconomicContextTab({ a, simple, income, applies }: { a: FullAnalysis; s
             <span className="text-sm text-text-primary font-medium">{simple ? 'Should you build up emergency savings?' : 'Precautionary behavior index'}</span>
             <span className="font-mono-data text-sm font-bold text-gold">{personal.precautionaryIndex}/100</span>
           </div>
-          <div className="h-2 rounded-full bg-white/5 overflow-hidden">
+          <div className="h-2 rounded-full bg-white/5 overflow-hidden" aria-hidden>
             <div className="h-full rounded-full bg-gradient-to-r from-emerald-500 via-gold to-red-500 transition-all duration-700" style={{ width: `${personal.precautionaryIndex}%` }} />
           </div>
           {personal.precautionaryExplanation && <p className="text-xs text-text-muted leading-relaxed mt-3">{personal.precautionaryExplanation}</p>}
@@ -908,21 +932,30 @@ function DeepDiveTab({ a }: { a: FullAnalysis }) {
     <div className="space-y-4">
       {SECTION_DEFS.map(({ key, title, icon: Icon }) => {
         const isOpen = !!open[key];
+        const panelId = `deepdive-${key}`;
         return (
           <GlassCard key={key} className="rounded-2xl overflow-hidden" animate={false}>
-            <button onClick={() => setOpen((o) => ({ ...o, [key]: !o[key] }))} className="w-full flex items-center gap-3 p-5 text-left">
-              <div className="w-9 h-9 rounded-xl bg-primary/15 border border-primary/20 flex items-center justify-center flex-shrink-0">
-                <Icon className="w-4 h-4 text-primary" />
-              </div>
-              <span className="font-display font-semibold text-text-primary flex-1">{title}</span>
-              <ChevronDown className={`w-4 h-4 text-text-muted transition-transform ${isOpen ? 'rotate-180' : ''}`} />
-            </button>
+            <h3>
+              <button
+                type="button"
+                onClick={() => setOpen((o) => ({ ...o, [key]: !o[key] }))}
+                aria-expanded={isOpen}
+                aria-controls={isOpen ? panelId : undefined}
+                className="w-full flex items-center gap-3 p-5 text-left rounded-2xl"
+              >
+                <span className="w-9 h-9 rounded-xl bg-primary/15 border border-primary/20 flex items-center justify-center flex-shrink-0" aria-hidden>
+                  <Icon className="w-4 h-4 text-primary-300" />
+                </span>
+                <span className="font-display font-semibold text-text-primary flex-1">{title}</span>
+                <ChevronDown className={`w-4 h-4 text-text-muted transition-transform ${isOpen ? 'rotate-180' : ''}`} aria-hidden />
+              </button>
+            </h3>
             {isOpen && (
-              <motion.div initial={{ opacity: 0, height: 0 }} animate={{ opacity: 1, height: 'auto' }} className="px-5 pb-5">
+              <m.div id={panelId} initial={{ opacity: 0, height: 0 }} animate={{ opacity: 1, height: 'auto' }} className="px-5 pb-5">
                 <div className="border-t border-white/8 pt-2">
                   {rows(key).map((r, i) => <StatRow key={i} {...r} />)}
                 </div>
-              </motion.div>
+              </m.div>
             )}
           </GlassCard>
         );
@@ -986,15 +1019,17 @@ function ActionTab({ a }: { a: FullAnalysis }) {
         </div>
         <div className="space-y-3">
           {a.recommendations.map((r, i) => (
-            <button key={i} onClick={() => toggle(r.step)} role="checkbox" aria-checked={checked[i]}
-              className={`w-full flex items-start gap-3 p-4 rounded-2xl text-left transition-all ${checked[i] ? 'glass opacity-60' : 'glass hover:border-white/16'}`}>
-              <span className={`mt-0.5 w-5 h-5 rounded-md border flex items-center justify-center flex-shrink-0 transition-all ${checked[i] ? 'bg-primary border-primary' : 'border-white/20'}`}>
+            <button key={i} type="button" onClick={() => toggle(r.step)} role="checkbox" aria-checked={checked[i]}
+              className={`w-full flex items-start gap-3 p-4 rounded-2xl text-left transition-all ${INNER_ROW} hover:border-white/16`}>
+              <span className={`mt-0.5 w-5 h-5 rounded-md border flex items-center justify-center flex-shrink-0 transition-all ${checked[i] ? 'bg-primary-fill border-primary-fill' : 'border-white/20'}`} aria-hidden>
                 {checked[i] && <Check className="w-3.5 h-3.5 text-white" />}
               </span>
               <span className="flex-1">
                 <span className={`text-sm ${checked[i] ? 'line-through text-text-muted' : 'text-text-primary'}`}>{r.step}</span>
               </span>
-              <span className={`text-[10px] font-mono-data uppercase px-2 py-0.5 rounded-full border flex-shrink-0 ${PRIORITY_STYLES[r.priority]}`}>{r.priority}</span>
+              <span className={`text-meta font-mono-data uppercase px-2 py-0.5 rounded-full border flex-shrink-0 ${PRIORITY_STYLES[r.priority]}`}>
+                <span className="sr-only">, priority: </span>{r.priority}
+              </span>
             </button>
           ))}
         </div>
@@ -1002,12 +1037,12 @@ function ActionTab({ a }: { a: FullAnalysis }) {
 
       <GlassCard className="rounded-3xl p-7" animate={false}>
         <h3 className="font-display text-base font-semibold text-text-primary mb-2 flex items-center gap-2">
-          <ShieldAlert className="w-4 h-4 text-primary" /> Things that could change this projection
+          <ShieldAlert className="w-4 h-4 text-primary-300" aria-hidden /> Things that could change this projection
         </h3>
         <ul className="space-y-2 mb-6">
           {a.riskFactors.uncertainties.map((u, i) => (
             <li key={i} className="text-sm text-text-muted flex items-start gap-2">
-              <span className="text-primary mt-1">•</span><span>{u}</span>
+              <span className="text-primary-300 mt-1" aria-hidden>•</span><span>{u}</span>
             </li>
           ))}
         </ul>
@@ -1015,8 +1050,8 @@ function ActionTab({ a }: { a: FullAnalysis }) {
         <div className="flex flex-wrap gap-2">
           {links.map((l) => (
             <a key={l.url} href={l.url} target="_blank" rel="noopener noreferrer"
-              className="flex items-center gap-1.5 glass hover:border-white/16 text-text-muted hover:text-text-primary px-3 py-2 rounded-xl text-xs transition-all">
-              <ExternalLink className="w-3 h-3" /> {l.label}
+              className={`flex items-center gap-1.5 ${INNER_ROW} hover:border-white/16 text-text-muted hover:text-text-primary px-3 py-2 rounded-xl text-xs transition-all`}>
+              <ExternalLink className="w-3 h-3" aria-hidden /> {l.label}<span className="sr-only"> (opens in a new tab)</span>
             </a>
           ))}
         </div>

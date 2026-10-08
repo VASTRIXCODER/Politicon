@@ -23,7 +23,7 @@ export default function PolicyProvenance({ record, compact = false, snapshotLabe
 }) {
   if (!record || !record.verified) {
     return (
-      <p className="flex items-start gap-1.5 text-[11px] text-amber-300/90">
+      <p className="flex items-start gap-1.5 text-meta text-amber-300/90">
         <ShieldAlert className="w-3.5 h-3.5 flex-shrink-0 mt-px" aria-hidden />
         <span>Not verified against an official source{compact ? '' : ' — details may be incomplete or out of date. Check the official record before relying on it.'}</span>
       </p>
@@ -35,7 +35,7 @@ export default function PolicyProvenance({ record, compact = false, snapshotLabe
   // Only link to https pages; anything else is shown as plain text.
   const href = record.sourceUrl?.startsWith('https://') ? record.sourceUrl : null;
   return (
-    <div className="text-[11px] text-text-muted space-y-1">
+    <div className="text-meta text-text-muted space-y-1">
       {record.latestAction && (
         <p className={compact ? 'line-clamp-1' : ''}>
           {snapshotLabel ? (
@@ -49,7 +49,7 @@ export default function PolicyProvenance({ record, compact = false, snapshotLabe
         <ShieldCheck className="w-3.5 h-3.5 text-emerald-400 flex-shrink-0" aria-hidden />
         <span>Official record:</span>
         {href ? (
-          <a href={href} target="_blank" rel="noreferrer" className="inline-flex items-center gap-1 text-primary hover:underline underline-offset-2">
+          <a href={href} target="_blank" rel="noreferrer" className="inline-flex items-center gap-1 text-primary-300 hover:underline underline-offset-2">
             {source} <ExternalLink className="w-3 h-3" aria-hidden /><span className="sr-only">(opens in a new tab)</span>
           </a>
         ) : (

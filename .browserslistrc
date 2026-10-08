@@ -1,0 +1,10 @@
+# Next.js's default build targets, written out so Autoprefixer uses them too.
+# Without this file Autoprefixer falls back to browserslist's defaults and
+# skips -webkit-backdrop-filter, so Safari/iOS 17 and older ignore Tailwind's
+# backdrop-blur-* and backdrop-filter-none utilities. Next compiles JS for the
+# same list, so this changes no JavaScript output.
+chrome 64
+edge 79
+firefox 67
+opera 51
+safari 12

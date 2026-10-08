@@ -1,6 +1,7 @@
 'use client';
 
 import { useEffect, useRef, useState } from 'react';
+import Link from 'next/link';
 import { ThumbsUp, ThumbsDown, Flag } from 'lucide-react';
 import { apiFetch } from '@/lib/api';
 
@@ -55,19 +56,19 @@ export default function FeedbackControls({
   }, [sent]);
 
   return (
-    <div className={`text-[11px] text-text-muted ${className}`}>
+    <div className={`text-meta text-text-muted ${className}`}>
       {!sent && (
         <>
           <div className="flex items-center gap-1">
             <span className="mr-1">Was this helpful?</span>
-            <button onClick={() => send('up')} disabled={pending} aria-label="Helpful" className="p-1.5 rounded-lg hover:bg-white/5 hover:text-emerald-400 transition-colors disabled:opacity-50">
-              <ThumbsUp className="w-3.5 h-3.5" />
+            <button type="button" onClick={() => send('up')} disabled={pending} aria-label="Helpful" className="p-1.5 rounded-lg hover:bg-white/5 hover:text-emerald-400 transition-colors disabled:opacity-50">
+              <ThumbsUp className="w-3.5 h-3.5" aria-hidden />
             </button>
-            <button onClick={() => send('down')} disabled={pending} aria-label="Not helpful" className="p-1.5 rounded-lg hover:bg-white/5 hover:text-red-300 transition-colors disabled:opacity-50">
-              <ThumbsDown className="w-3.5 h-3.5" />
+            <button type="button" onClick={() => send('down')} disabled={pending} aria-label="Not helpful" className="p-1.5 rounded-lg hover:bg-white/5 hover:text-red-300 transition-colors disabled:opacity-50">
+              <ThumbsDown className="w-3.5 h-3.5" aria-hidden />
             </button>
-            <button onClick={() => setReporting(v => !v)} disabled={pending} aria-expanded={reporting} aria-label="Report a problem" className="p-1.5 rounded-lg hover:bg-white/5 hover:text-amber-300 transition-colors disabled:opacity-50">
-              <Flag className="w-3.5 h-3.5" />
+            <button type="button" onClick={() => setReporting(v => !v)} disabled={pending} aria-expanded={reporting} aria-label="Report a problem" className="p-1.5 rounded-lg hover:bg-white/5 hover:text-amber-300 transition-colors disabled:opacity-50">
+              <Flag className="w-3.5 h-3.5" aria-hidden />
             </button>
           </div>
           {reporting && (
@@ -99,8 +100,8 @@ export default function FeedbackControls({
             {sent === 'down' && targetType === 'analysis' && (
               <span>
                 {' '}If something looks off, you can{' '}
-                <a href="/settings" className="text-primary hover:underline underline-offset-2">check your profile</a>
-                {onReanalyze && <> or <button onClick={onReanalyze} className="text-primary hover:underline underline-offset-2">re-analyze</button></>}.
+                <Link href="/settings" className="text-primary-300 hover:underline underline-offset-2">check your profile</Link>
+                {onReanalyze && <> or <button type="button" onClick={onReanalyze} className="text-primary-300 hover:underline underline-offset-2">re-analyze</button></>}.
               </span>
             )}
           </>

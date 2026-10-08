@@ -1,8 +1,6 @@
-'use client';
-
-import { motion } from 'framer-motion';
-import Link from 'next/link';
 import { ArrowRight } from 'lucide-react';
+import Button from '@/components/ui/Button';
+import Reveal from './Reveal';
 
 const brackets = [
   { label: 'Under $25k', taxes: -12, healthcare: 48, housing: 22, employment: 8 },
@@ -17,93 +15,82 @@ const categories = [
   { key: 'healthcare', label: 'Healthcare', color: '#00D4FF' },
   { key: 'housing', label: 'Housing', color: '#F5C842' },
   { key: 'employment', label: 'Employment', color: '#10B981' },
-];
+] as const;
+
+const signed = (n: number) => `${n > 0 ? '+' : ''}${n}%`;
 
 export default function PublicExplorer() {
   return (
-    <section className="py-24 relative">
+    <section aria-labelledby="explorer-teaser-heading" className="py-24 relative">
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
-        <motion.div
-          initial={{ opacity: 0, y: 24 }}
-          whileInView={{ opacity: 1, y: 0 }}
-          viewport={{ once: true }}
-          className="text-center mb-12"
-        >
+        <Reveal className="text-center mb-12">
           <p className="text-xs font-mono-data text-gold uppercase tracking-widest mb-4">No Login Required</p>
-          <h2 className="font-display text-4xl sm:text-5xl font-bold text-text-primary mb-4">
+          <h2 id="explorer-teaser-heading" className="font-display text-4xl sm:text-5xl font-bold text-text-primary mb-4">
             Policy impact by
             <span className="gradient-text-gold"> income bracket</span>
           </h2>
           <p className="text-text-muted text-lg max-w-xl mx-auto">
             Average impact score for top policies across income brackets. Sign up to see your personalized numbers.
           </p>
-        </motion.div>
+        </Reveal>
 
-        <motion.div
-          initial={{ opacity: 0, y: 24 }}
-          whileInView={{ opacity: 1, y: 0 }}
-          viewport={{ once: true }}
-          transition={{ delay: 0.2 }}
-          className="glass-strong rounded-3xl p-8"
-        >
+        <Reveal delay={200} className="glass-strong rounded-3xl p-8">
           {/* Legend */}
-          <div className="flex flex-wrap gap-6 mb-8 justify-center">
+          <ul className="flex flex-wrap gap-6 mb-8 justify-center" aria-label="Categories">
             {categories.map(cat => (
-              <div key={cat.key} className="flex items-center gap-2">
-                <div className="w-3 h-3 rounded-sm" style={{ backgroundColor: cat.color }} />
+              <li key={cat.key} className="flex items-center gap-2">
+                <div className="w-3 h-3 rounded-sm" style={{ backgroundColor: cat.color }} aria-hidden="true" />
                 <span className="text-xs text-text-muted">{cat.label}</span>
-              </div>
+              </li>
             ))}
-          </div>
+          </ul>
 
           {/* Chart */}
           <div className="space-y-6">
             {brackets.map((bracket, i) => (
-              <motion.div
-                key={bracket.label}
-                initial={{ opacity: 0, x: -20 }}
-                whileInView={{ opacity: 1, x: 0 }}
-                viewport={{ once: true }}
-                transition={{ delay: i * 0.08 }}
-              >
-                <p className="text-xs font-mono-data text-text-muted mb-2">{bracket.label}</p>
-                <div className="flex gap-1.5">
+              <Reveal key={bracket.label} from="left" delay={i * 80}>
+                <p className="text-xs font-mono-data text-text-muted mb-2" id={`bracket-${i}`}>{bracket.label}</p>
+                <ul className="flex gap-1.5" aria-labelledby={`bracket-${i}`}>
                   {categories.map(cat => {
-                    const raw = bracket[cat.key as keyof typeof bracket] as number;
+                    const raw = bracket[cat.key];
                     const pct = Math.max(5, Math.abs(raw));
                     return (
-                      <div key={cat.key} className="flex-1">
-                        <div className="h-6 rounded-md bg-white/4 overflow-hidden">
-                          <motion.div
-                            className="h-full rounded-md"
-                            style={{ backgroundColor: cat.color + (raw < 0 ? '60' : '99') }}
-                            initial={{ width: 0 }}
-                            whileInView={{ width: `${pct}%` }}
-                            viewport={{ once: true }}
-                            transition={{ duration: 0.8, delay: i * 0.06 + 0.3, ease: 'easeOut' }}
+                      <li key={cat.key} className="flex-1">
+                        <div className="h-6 rounded-md bg-white/4 overflow-hidden" aria-hidden="true">
+                          {/* Grows in with its row (see Reveal's group). */}
+                          <div
+                            className="h-full rounded-md origin-left group-data-[reveal=hidden]/reveal:scale-x-0 group-data-[reveal=shown]/reveal:transition-transform group-data-[reveal=shown]/reveal:duration-700 group-data-[reveal=shown]/reveal:ease-out"
+                            style={{
+                              width: `${pct}%`,
+                              backgroundColor: cat.color + (raw < 0 ? '60' : '99'),
+                              transitionDelay: `${i * 60 + 300}ms`,
+                            }}
                           />
                         </div>
-                        <p className="text-[9px] text-text-muted text-center mt-1">
-                          {raw > 0 ? '+' : ''}{raw}%
+                        <p className="text-meta text-text-muted text-center mt-1">
+                          <span className="sr-only">{cat.label}: </span>{signed(raw)}
                         </p>
-                      </div>
+                      </li>
                     );
                   })}
-                </div>
-              </motion.div>
+                </ul>
+              </Reveal>
             ))}
           </div>
 
-          <div className="border-t border-white/6 mt-8 pt-6 flex items-center justify-between">
+          <div className="border-t border-white/6 mt-8 pt-6 flex flex-wrap items-center justify-between gap-3">
             <p className="text-xs text-text-muted">Based on top 10 policies by impact magnitude. Average across all states.</p>
-            <Link
+            <Button
               href="/explorer"
-              className="flex items-center gap-1.5 text-xs text-primary hover:text-primary/80 transition-colors font-medium"
+              variant="link"
+              icon={<ArrowRight className="w-3 h-3" />}
+              iconPosition="end"
+              className="text-xs gap-1.5"
             >
-              Full explorer <ArrowRight className="w-3 h-3" />
-            </Link>
+              Full explorer
+            </Button>
           </div>
-        </motion.div>
+        </Reveal>
       </div>
     </section>
   );

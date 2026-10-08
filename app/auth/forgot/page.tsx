@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useState } from 'react';
+import { useEffect, useId, useState } from 'react';
 import Link from 'next/link';
 import { MailCheck } from 'lucide-react';
 import { createClient } from '@/lib/supabase/client';
@@ -15,6 +15,12 @@ export default function ForgotPasswordPage() {
   const [sentTo, setSentTo] = useState('');
   const [error, setError] = useState('');
   const [cooldown, setCooldown] = useState(0);
+  // Read out by an always-mounted status region, so the confirmation is heard
+  // when the form is swapped out and the resend countdown stays silent.
+  const [announcement, setAnnouncement] = useState('');
+  const id = useId();
+  const emailId = `${id}-email`;
+  const errorId = `${id}-error`;
 
   useEffect(() => {
     if (cooldown <= 0) return;
@@ -42,14 +48,23 @@ export default function ForgotPasswordPage() {
       );
       return;
     }
+    setAnnouncement(
+      sentTo
+        ? `Sent another reset link to ${address}.`
+        : `Check your email. If an account exists for ${address}, we've sent a link to reset your password.`,
+    );
     setSentTo(address);
     setCooldown(COOLDOWN_S);
   }
 
-  if (sentTo) {
-    return (
-      <AuthCard title="Check your email">
-        <div className="glass rounded-2xl p-6 space-y-4" role="status">
+  return (
+    <AuthCard
+      title={sentTo ? 'Check your email' : 'Reset your password'}
+      subtitle={sentTo ? undefined : "Enter the email you signed up with and we'll send you a reset link."}
+    >
+      <p role="status" className="sr-only">{announcement}</p>
+      {sentTo ? (
+        <div className="glass rounded-2xl p-6 space-y-4">
           <MailCheck className="w-8 h-8 text-primary" aria-hidden />
           <p className="text-sm text-text-primary leading-relaxed">
             If an account exists for <span className="font-medium">{sentTo}</span>, we&apos;ve sent a link to reset your
@@ -58,45 +73,47 @@ export default function ForgotPasswordPage() {
           <p className="text-xs text-text-muted">Don&apos;t see it? Check your spam folder.</p>
           {error && <p role="alert" className="text-sm text-red-400">{error}</p>}
           <button
+            type="button"
             onClick={() => send()}
             disabled={cooldown > 0 || sending}
-            className="text-sm text-primary hover:text-primary/80 disabled:text-text-muted disabled:cursor-not-allowed"
+            className="text-sm text-primary-300 hover:text-text-primary disabled:text-text-muted disabled:cursor-not-allowed rounded-lg"
           >
             {sending ? 'Sending…' : cooldown > 0 ? `Resend in ${cooldown}s` : 'Resend the link'}
           </button>
         </div>
-      </AuthCard>
-    );
-  }
-
-  return (
-    <AuthCard title="Reset your password" subtitle="Enter the email you signed up with and we'll send you a reset link.">
-      <form onSubmit={send} className="space-y-4">
-        <div>
-          <label htmlFor="email" className="text-xs font-medium text-text-muted uppercase tracking-wider mb-2 block">Email</label>
-          <input
-            id="email"
-            type="email"
-            required
-            value={email}
-            onChange={(e) => setEmail(e.target.value)}
-            placeholder="you@example.com"
-            autoComplete="email"
-            className="input-glass w-full px-4 py-3.5 text-base sm:text-sm"
-          />
-        </div>
-        {error && (
-          <div role="alert" className="bg-red-500/10 border border-red-500/20 rounded-xl px-4 py-3">
-            <p className="text-sm text-red-400">{error}</p>
-          </div>
-        )}
-        <Button type="submit" variant="primary" fullWidth size="lg" disabled={sending}>
-          {sending ? 'Sending…' : 'Send reset link'}
-        </Button>
-      </form>
-      <p className="text-center text-sm text-text-muted mt-6">
-        Remembered it? <Link href="/auth/signin" className="text-primary hover:text-primary/80 font-medium">Sign in</Link>
-      </p>
+      ) : (
+        <>
+          <form onSubmit={send} className="space-y-4">
+            <div>
+              <label htmlFor={emailId} className="text-xs font-medium text-text-muted uppercase tracking-wider mb-2 block">Email</label>
+              <input
+                id={emailId}
+                type="email"
+                required
+                value={email}
+                onChange={(e) => setEmail(e.target.value)}
+                placeholder="you@example.com"
+                autoComplete="email"
+                inputMode="email"
+                aria-invalid={error ? true : undefined}
+                aria-describedby={error ? errorId : undefined}
+                className="input-glass w-full px-4 py-3.5 text-sm"
+              />
+            </div>
+            {error && (
+              <div id={errorId} role="alert" className="bg-red-500/10 border border-red-500/20 rounded-xl px-4 py-3">
+                <p className="text-sm text-red-400">{error}</p>
+              </div>
+            )}
+            <Button type="submit" variant="primary" fullWidth size="lg" disabled={sending}>
+              {sending ? 'Sending…' : 'Send reset link'}
+            </Button>
+          </form>
+          <p className="text-center text-sm text-text-muted mt-6">
+            Remembered it? <Link href="/auth/signin" className="text-primary-300 hover:text-text-primary font-medium rounded">Sign in</Link>
+          </p>
+        </>
+      )}
     </AuthCard>
   );
 }

@@ -1,14 +1,17 @@
 'use client';
 
-import { useState, useEffect } from 'react';
-import { motion, AnimatePresence } from 'framer-motion';
+import { useState, useEffect, useId, useRef } from 'react';
+import { m, AnimatePresence } from 'framer-motion';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
-import { Eye, EyeOff, Zap, ArrowLeft, Mail } from 'lucide-react';
+import { Eye, EyeOff, ArrowLeft, Mail } from 'lucide-react';
 import { createClient } from '@/lib/supabase/client';
 import ImpactCardDemo from '@/components/landing/ImpactCardDemo';
 import Button from '@/components/ui/Button';
+import Logo from '@/components/ui/Logo';
 import AmbientBackground from '@/components/landing/AmbientBackground';
+import FullPageLoader from '@/components/auth/FullPageLoader';
+import { friendlyAuthError } from '@/components/auth/authErrors';
 import { MIN_AGE, TERMS_VERSION } from '@/lib/legal';
 
 const THIS_YEAR = new Date().getFullYear();
@@ -30,11 +33,30 @@ export default function SignUpPage() {
   // When Supabase requires email confirmation, show a waiting screen instead of
   // silently pushing the user somewhere they can't do anything.
   const [awaitingConfirmation, setAwaitingConfirmation] = useState(false);
+  const confirmHeadingRef = useRef<HTMLHeadingElement>(null);
   const [confirmedEmail, setConfirmedEmail] = useState('');
   const [birthYear, setBirthYear] = useState('');
   const [consent, setConsent] = useState(false);
   const [resendIn, setResendIn] = useState(0);
   const [resendNote, setResendNote] = useState('');
+  const id = useId();
+  const ids = {
+    firstName: `${id}-first-name`,
+    email: `${id}-email`,
+    password: `${id}-password`,
+    passwordHint: `${id}-password-hint`,
+    birthYear: `${id}-birth-year`,
+    ageError: `${id}-age-error`,
+    error: `${id}-error`,
+  };
+  /** aria-describedby from whichever hint/error ids currently apply. */
+  const describe = (...parts: (string | false)[]) => parts.filter(Boolean).join(' ') || undefined;
+
+  // The form (and its focused submit button) is swapped out for the
+  // confirmation view: move focus to its heading so it's announced.
+  useEffect(() => {
+    if (awaitingConfirmation) confirmHeadingRef.current?.focus();
+  }, [awaitingConfirmation]);
 
   useEffect(() => {
     if (resendIn <= 0) return;
@@ -100,7 +122,7 @@ export default function SignUpPage() {
     });
 
     if (err) {
-      setError(err.message);
+      setError(friendlyAuthError(err, 'We couldn’t create your account. Please try again.'));
       setLoading(false);
       return;
     }
@@ -134,69 +156,60 @@ export default function SignUpPage() {
       email: confirmedEmail,
       options: { emailRedirectTo: `${window.location.origin}/auth/callback` },
     });
-    setResendNote(resendError ? resendError.message : 'Sent. Check your inbox and spam folder.');
+    setResendNote(resendError
+      ? friendlyAuthError(resendError, 'We couldn’t resend the email. Please try again in a minute.')
+      : 'Sent. Check your inbox and spam folder.');
     setResendIn(RESEND_COOLDOWN_S);
   };
 
   // ── Loading / session-check spinner ──────────────────────────────────────
-  if (checkingSession) {
-    return (
-      <div className="min-h-screen relative flex items-center justify-center">
-        <AmbientBackground />
-        <div className="relative z-10 flex flex-col items-center gap-4">
-          <div className="w-10 h-10 rounded-2xl bg-primary/20 border border-primary/20 flex items-center justify-center">
-            <Zap className="w-5 h-5 text-primary" />
-          </div>
-          <div className="flex gap-1">
-            {[0, 1, 2].map(i => (
-              <div key={i} className="w-2 h-2 rounded-full bg-primary animate-pulse" style={{ animationDelay: `${i * 0.15}s` }} />
-            ))}
-          </div>
-        </div>
-      </div>
-    );
-  }
+  if (checkingSession) return <FullPageLoader label="Checking your session…" />;
 
   // ── Awaiting email confirmation ───────────────────────────────────────────
   if (awaitingConfirmation) {
     return (
-      <div className="min-h-screen relative flex items-center justify-center p-8">
+      <div className="min-h-screen relative flex items-center justify-center p-4 sm:p-8">
         <AmbientBackground />
-        <motion.div
+        <m.main
+          id="main"
+          tabIndex={-1}
           initial={{ opacity: 0, y: 24 }}
           animate={{ opacity: 1, y: 0 }}
           className="relative z-10 w-full max-w-md text-center"
         >
-          <div className="glass border border-white/10 rounded-3xl p-10">
-            <div className="w-16 h-16 rounded-2xl bg-primary/20 border border-primary/30 flex items-center justify-center mx-auto mb-6">
+          <div className="glass border-white/10 rounded-3xl p-6 sm:p-10">
+            <div aria-hidden="true" className="w-16 h-16 rounded-2xl bg-primary/20 border border-primary/30 flex items-center justify-center mx-auto mb-6">
               <Mail className="w-8 h-8 text-primary" />
             </div>
-            <h1 className="font-display text-2xl font-bold text-text-primary mb-3">Check your inbox</h1>
+            <h1 ref={confirmHeadingRef} tabIndex={-1} className="font-display text-2xl font-bold text-text-primary mb-3 outline-none">Check your inbox</h1>
             <p className="text-text-muted text-sm leading-relaxed mb-2">
               We sent a confirmation link to
             </p>
-            <p className="text-primary font-medium text-sm mb-6">{confirmedEmail}</p>
+            <p className="text-primary-300 font-medium text-sm mb-6 break-all">{confirmedEmail}</p>
             <p className="text-text-muted text-xs leading-relaxed mb-8">
               Click the link in the email to confirm your account and we&apos;ll take you straight into your profile setup. The link expires in 24 hours.
             </p>
             <div className="flex flex-col gap-3">
               <button
+                type="button"
                 onClick={() => { setAwaitingConfirmation(false); setLoading(false); }}
-                className="text-sm text-text-muted hover:text-text-primary transition-colors"
+                className="text-sm text-text-muted hover:text-text-primary transition-colors rounded-lg"
               >
-                ← Use a different email
+                <span aria-hidden="true">← </span>Use a different email
               </button>
               <button
+                type="button"
                 onClick={resend}
                 disabled={resendIn > 0}
-                className="text-xs text-primary/80 hover:text-primary transition-colors disabled:opacity-50"
+                className="text-sm text-primary-300 hover:text-text-primary transition-colors disabled:opacity-50 disabled:cursor-not-allowed rounded-lg"
               >
                 {resendIn > 0 ? `Resend available in ${resendIn}s` : 'Resend confirmation email'}
               </button>
-              {resendNote && <p role="status" className="text-xs text-text-muted">{resendNote}</p>}
+              {/* Always mounted so the note is announced when it appears. */}
+              <p role="status" className="text-xs text-text-muted empty:hidden">{resendNote}</p>
             </div>
           </div>
-        </motion.div>
+        </m.main>
       </div>
     );
   }
@@ -207,58 +220,59 @@ export default function SignUpPage() {
       <AmbientBackground />
 
       {/* Left: Form */}
-      <div className="relative z-10 flex-1 flex items-center justify-center p-8">
-        <motion.div
+      <main id="main" tabIndex={-1} className="relative z-10 flex-1 flex items-center justify-center p-4 sm:p-8">
+        <m.div
           initial={{ opacity: 0, x: -24 }}
           animate={{ opacity: 1, x: 0 }}
           transition={{ duration: 0.5 }}
           className="w-full max-w-md"
         >
-          <Link href="/" className="inline-flex items-center gap-2 text-text-muted hover:text-text-primary transition-colors mb-8 group">
-            <ArrowLeft className="w-4 h-4 group-hover:-translate-x-1 transition-transform" />
+          <Link href="/" className="inline-flex items-center gap-2 text-text-muted hover:text-text-primary transition-colors mb-8 group rounded-lg">
+            <ArrowLeft className="w-4 h-4 group-hover:-translate-x-1 transition-transform" aria-hidden="true" />
             <span className="text-sm">Back to home</span>
           </Link>
 
-          <div className="flex items-center gap-2 mb-8">
-            <div className="w-9 h-9 rounded-xl bg-primary/20 border border-primary/30 flex items-center justify-center">
-              <Zap className="w-5 h-5 text-primary" />
-            </div>
-            <span className="font-display font-semibold text-xl">Politi<span className="text-primary">con</span></span>
-          </div>
+          <Logo size="lg" href={null} className="mb-8 flex" />
 
           <h1 className="font-display text-3xl font-bold text-text-primary mb-2">Get your impact report</h1>
           <p className="text-text-muted text-sm mb-8">Free. No credit card. Setup takes about two minutes.</p>
 
           <form onSubmit={handleSignUp} className="space-y-4">
             <div>
-              <label className="text-xs font-medium text-text-muted uppercase tracking-wider mb-2 block">First name</label>
+              <label htmlFor={ids.firstName} className="text-xs font-medium text-text-muted uppercase tracking-wider mb-2 block">First name</label>
               <input
+                id={ids.firstName}
                 type="text"
                 value={firstName}
                 onChange={e => setFirstName(e.target.value)}
                 placeholder="Alex"
                 autoComplete="given-name"
+                maxLength={80}
                 className="input-glass w-full px-4 py-3.5 text-sm"
               />
             </div>
 
             <div>
-              <label className="text-xs font-medium text-text-muted uppercase tracking-wider mb-2 block">Email</label>
+              <label htmlFor={ids.email} className="text-xs font-medium text-text-muted uppercase tracking-wider mb-2 block">Email</label>
               <input
+                id={ids.email}
                 type="email"
                 required
                 value={email}
                 onChange={e => setEmail(e.target.value)}
                 placeholder="you@example.com"
                 autoComplete="email"
+                inputMode="email"
+                aria-describedby={describe(!!error && ids.error)}
                 className="input-glass w-full px-4 py-3.5 text-sm"
               />
             </div>
 
             <div>
-              <label className="text-xs font-medium text-text-muted uppercase tracking-wider mb-2 block">Password</label>
+              <label htmlFor={ids.password} className="text-xs font-medium text-text-muted uppercase tracking-wider mb-2 block">Password</label>
               <div className="relative">
                 <input
+                  id={ids.password}
                   type={showPassword ? 'text' : 'password'}
                   required
                   minLength={8}
@@ -266,32 +280,40 @@ export default function SignUpPage() {
                   onChange={e => setPassword(e.target.value)}
                   placeholder="At least 8 characters"
                   autoComplete="new-password"
+                  aria-describedby={describe(ids.passwordHint, !!error && ids.error)}
                   className="input-glass w-full px-4 py-3.5 text-sm pr-12"
                 />
                 <button
                   type="button"
                   onClick={() => setShowPassword(!showPassword)}
-                  className="absolute right-3.5 top-1/2 -translate-y-1/2 text-text-muted hover:text-text-primary transition-colors"
+                  aria-label="Show password"
+                  aria-pressed={showPassword}
+                  aria-controls={ids.password}
+                  className="absolute right-2 top-1/2 -translate-y-1/2 p-1.5 rounded-lg text-text-muted hover:text-text-primary transition-colors"
                 >
-                  {showPassword ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
+                  {showPassword ? <EyeOff className="w-4 h-4" aria-hidden="true" /> : <Eye className="w-4 h-4" aria-hidden="true" />}
                 </button>
               </div>
+              {/* The placeholder disappears once typing starts; this keeps the rule announced. */}
+              <p id={ids.passwordHint} className="sr-only">At least 8 characters.</p>
             </div>
 
             <div>
-              <label htmlFor="birth-year" className="text-xs font-medium text-text-muted uppercase tracking-wider mb-2 block">Year of birth</label>
+              <label htmlFor={ids.birthYear} className="text-xs font-medium text-text-muted uppercase tracking-wider mb-2 block">Year of birth</label>
               <select
-                id="birth-year"
+                id={ids.birthYear}
                 required
                 value={birthYear}
                 onChange={e => setBirthYear(e.target.value)}
-                className="input-glass w-full px-4 py-3.5 text-base sm:text-sm"
+                aria-invalid={tooYoung || undefined}
+                aria-describedby={describe(tooYoung && ids.ageError)}
+                className="input-glass w-full px-4 py-3.5 text-sm"
               >
                 <option value="">Select year…</option>
                 {BIRTH_YEARS.map(y => <option key={y} value={y}>{y}</option>)}
               </select>
               {tooYoung && (
-                <p role="alert" className="text-xs text-red-300 mt-2">Politicon is for adults {MIN_AGE} and older. If you turn {MIN_AGE} this year, please come back after your birthday next year.</p>
+                <p id={ids.ageError} role="alert" className="text-xs text-red-300 mt-2">Politicon is for adults {MIN_AGE} and older. If you turn {MIN_AGE} this year, please come back after your birthday next year.</p>
               )}
             </div>
 
@@ -305,22 +327,24 @@ export default function SignUpPage() {
               />
               <span>
                 I&apos;m {MIN_AGE} or older and agree to the{' '}
-                <Link href="/terms" className="text-primary underline-offset-2 hover:underline" target="_blank">Terms</Link> and{' '}
-                <Link href="/privacy" className="text-primary underline-offset-2 hover:underline" target="_blank">Privacy Policy</Link>,
+                <Link href="/terms" className="text-primary-300 underline-offset-2 hover:underline rounded" target="_blank">Terms<span className="sr-only"> (opens in a new tab)</span></Link> and{' '}
+                <Link href="/privacy" className="text-primary-300 underline-offset-2 hover:underline rounded" target="_blank">Privacy Policy<span className="sr-only"> (opens in a new tab)</span></Link>,
                 including my answers being processed by an AI service to generate my analyses.
               </span>
             </label>
 
             <AnimatePresence>
               {error && (
-                <motion.div
+                <m.div
+                  id={ids.error}
+                  role="alert"
                   initial={{ opacity: 0, y: -8 }}
                   animate={{ opacity: 1, y: 0 }}
                   exit={{ opacity: 0 }}
                   className="bg-red-500/10 border border-red-500/20 rounded-xl px-4 py-3"
                 >
                   <p className="text-sm text-red-400">{error}</p>
-                </motion.div>
+                </m.div>
               )}
             </AnimatePresence>
 
@@ -331,19 +355,19 @@ export default function SignUpPage() {
 
           <p className="text-center text-sm text-text-muted mt-6">
             Already have an account?{' '}
-            <Link href="/auth/signin" className="text-primary hover:text-primary/80 font-medium">Sign in</Link>
+            <Link href="/auth/signin" className="text-primary-300 hover:text-text-primary font-medium rounded">Sign in</Link>
           </p>
-        </motion.div>
-      </div>
+        </m.div>
+      </main>
 
       {/* Right */}
-      <div className="hidden lg:flex flex-1 items-center justify-center p-16 relative z-10">
+      <aside aria-label="Example analyses" className="hidden lg:flex flex-1 items-center justify-center p-16 relative z-10">
         <div className="text-center">
           <p className="text-text-muted text-sm mb-2">What you&apos;ll see after setup</p>
           <p className="text-text-muted text-xs mb-10 max-w-xs mx-auto">Example analyses. Yours are built from your own profile.</p>
           <ImpactCardDemo />
         </div>
-      </div>
+      </aside>
     </div>
   );
 }

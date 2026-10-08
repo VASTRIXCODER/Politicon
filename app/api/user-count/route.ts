@@ -1,25 +1,22 @@
-import { NextRequest, NextResponse } from 'next/server';
-import { createAdminClient } from '@/lib/supabase/admin';
-import { rateLimit } from '@/lib/rateLimit';
+import { NextResponse } from 'next/server';
+import { getMemberCount, MEMBER_COUNT_REVALIDATE } from '@/components/landing/memberCount';
 
-export const dynamic = 'force-dynamic';
-
-export async function GET(req: NextRequest) {
-  const limited = await rateLimit(req, 'userCount');
-  if (!limited.ok) return limited.response;
-
-  try {
-    // Service role so the public count works for signed-out visitors (bypasses RLS).
-    const { count, error } = await createAdminClient()
-      .from('user_profiles')
-      .select('*', { count: 'exact', head: true });
-    if (error) throw error;
-    return NextResponse.json({ count: count ?? 0 }, {
-      headers: { 'Cache-Control': 'public, s-maxage=60, stale-while-revalidate=300' },
-    });
-  } catch (error) {
-    console.error('User count error:', error);
+// The landing page renders this figure on the server; the endpoint stays for
+// other consumers. The count is cached server-side (getMemberCount) and at the
+// CDN, and after a failure getMemberCount backs off for 30s per instance, so it
+// needs no per-request rate limit: it costs at most one query per cache period,
+// or per backoff window during an outage.
+export async function GET() {
+  const count = await getMemberCount();
+  if (count === null) {
     // null tells the UI to hide the figure rather than show a misleading 0.
-    return NextResponse.json({ count: null }, { status: 503 });
+    // Cached briefly so an outage isn't hammered by every visit.
+    return NextResponse.json({ count: null }, {
+      status: 503,
+      headers: { 'Cache-Control': 'public, s-maxage=30' },
+    });
   }
+  return NextResponse.json({ count }, {
+    headers: { 'Cache-Control': `public, s-maxage=${MEMBER_COUNT_REVALIDATE}, stale-while-revalidate=3600` },
+  });
 }

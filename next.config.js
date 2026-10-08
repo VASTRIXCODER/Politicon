@@ -15,8 +15,9 @@ const csp = [
   "default-src 'self'",
   // Next.js injects small inline bootstrap scripts; eval is only needed by the dev server.
   `script-src 'self' 'unsafe-inline' https://vercel.live${isDev ? " 'unsafe-eval'" : ''}`,
-  "style-src 'self' 'unsafe-inline' https://api.fontshare.com https://fonts.googleapis.com",
-  "font-src 'self' data: https://api.fontshare.com https://cdn.fontshare.com https://fonts.gstatic.com",
+  // Fontshare serves Clash Display and Satoshi; JetBrains Mono is self-hosted by next/font.
+  "style-src 'self' 'unsafe-inline' https://api.fontshare.com",
+  "font-src 'self' data: https://api.fontshare.com https://cdn.fontshare.com",
   "img-src 'self' data: blob:",
   `connect-src 'self' ${supabaseOrigin} ${supabaseWs} https://vercel.live`,
   'frame-src https://vercel.live',

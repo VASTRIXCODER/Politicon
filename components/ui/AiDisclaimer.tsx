@@ -4,7 +4,7 @@ import { Info } from 'lucide-react';
 /** Shown next to every AI-generated output. */
 export default function AiDisclaimer({ className = '' }: { className?: string }) {
   return (
-    <p className={`flex items-start gap-1.5 text-[11px] leading-relaxed text-text-muted ${className}`}>
+    <p className={`flex items-start gap-1.5 text-meta leading-relaxed text-text-muted ${className}`}>
       <Info className="w-3.5 h-3.5 flex-shrink-0 mt-px" aria-hidden />
       <span>
         AI-generated estimate for education — not financial, tax or legal advice. Check the official record and

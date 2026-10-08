@@ -1,13 +1,24 @@
 import { type ClassValue, clsx } from 'clsx';
+import { extendTailwindMerge } from 'tailwind-merge';
+import type { Policy } from '@/types';
 
+// Teach tailwind-merge the custom theme tokens so `text-meta` is treated as a
+// font size (and not dropped as a conflicting text colour).
+const twMerge = extendTailwindMerge({
+  extend: {
+    classGroups: {
+      'font-size': [{ text: ['meta'] }],
+    },
+  },
+});
+
+/**
+ * Joins class names (strings, arrays, `{ class: condition }` objects) and
+ * resolves Tailwind conflicts so the caller's override wins:
+ * cn('px-8 rounded-xl', 'px-3') → 'rounded-xl px-3'.
+ */
 export function cn(...inputs: ClassValue[]) {
-  // simple class merge without requiring clsx package
-  return inputs
-    .flat()
-    .filter(Boolean)
-    .join(' ')
-    .replace(/\s+/g, ' ')
-    .trim();
+  return twMerge(clsx(inputs));
 }
 
 export function formatCurrency(amount: number, showSign = true): string {
@@ -29,35 +40,29 @@ export function formatNumber(n: number): string {
   return new Intl.NumberFormat('en-US').format(n);
 }
 
+export type PolicyStatus = Policy['status'];
+
+/**
+ * The one colour map for policy status, shared by StatusBadge and
+ * getStatusColor: gold proposed, cyan passed, emerald enacted, red for
+ * repealed and rejected. Each entry is text + tint + border classes.
+ */
+export const STATUS_STYLES: Record<PolicyStatus, string> = {
+  proposed: 'text-gold bg-gold/10 border-gold/20',
+  passed: 'text-secondary bg-secondary/10 border-secondary/20',
+  enacted: 'text-emerald-400 bg-emerald-400/10 border-emerald-400/20',
+  repealed: 'text-red-400 bg-red-400/10 border-red-400/20',
+  rejected: 'text-red-400 bg-red-400/10 border-red-400/20',
+};
+
+const STATUS_FALLBACK = 'text-text-muted bg-white/5 border-white/10';
+
+export function isPolicyStatus(status: unknown): status is PolicyStatus {
+  return typeof status === 'string' && Object.prototype.hasOwnProperty.call(STATUS_STYLES, status);
+}
+
 export function getStatusColor(status: string): string {
-  switch (status) {
-    case 'enacted': return 'text-emerald-400 bg-emerald-400/10 border-emerald-400/20';
-    case 'passed': return 'text-blue-400 bg-blue-400/10 border-blue-400/20';
-    case 'proposed': return 'text-gold bg-gold/10 border-gold/20';
-    case 'rejected': return 'text-red-400 bg-red-400/10 border-red-400/20';
-    default: return 'text-text-muted bg-white/5 border-white/10';
-  }
-}
-
-export function getCategoryIcon(category: string): string {
-  switch (category.toLowerCase()) {
-    case 'taxes': return '💰';
-    case 'healthcare': return '🏥';
-    case 'housing': return '🏠';
-    case 'employment': return '💼';
-    case 'education': return '🎓';
-    case 'energy': return '⚡';
-    case 'social security': return '🛡️';
-    default: return '📋';
-  }
-}
-
-export function getImpactColor(direction: 'positive' | 'negative' | 'neutral'): string {
-  switch (direction) {
-    case 'positive': return 'text-emerald-400';
-    case 'negative': return 'text-red-400';
-    default: return 'text-text-muted';
-  }
+  return isPolicyStatus(status) ? STATUS_STYLES[status] : STATUS_FALLBACK;
 }
 
 export function timeAgo(dateStr: string): string {

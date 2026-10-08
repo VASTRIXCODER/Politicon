@@ -1,10 +1,12 @@
 'use client';
 
-import { useState } from 'react';
+import { useState, type MouseEvent } from 'react';
 import { useRouter } from 'next/navigation';
 import { ExternalLink, Loader2 } from 'lucide-react';
+import Button from '@/components/ui/Button';
 import { createClient } from '@/lib/supabase/client';
 import { apiFetch } from '@/lib/api';
+import { cn } from '@/lib/utils';
 
 interface ViewFullImpactButtonProps {
   policyId: string;
@@ -16,31 +18,49 @@ interface ViewFullImpactButtonProps {
   // Visual variant so the shared component can match each surface it's used on.
   variant?: 'chat' | 'compact' | 'card';
   label?: string;
+  /** The caller knows an analysis already exists: render a plain link, no lookup. */
+  analyzed?: boolean;
+  className?: string;
 }
 
-// Shared "View Full Impact" pipeline used in advisor chat bubbles, dashboard
-// feed cards, and impact page cards.
+// Violet tint with primary-300 text (about 6.8:1, AA) instead of primary on primary.
+const TINT = 'bg-primary/20 hover:bg-primary/30 border-primary/20 text-primary-300';
+const VARIANT_STYLES: Record<NonNullable<ViewFullImpactButtonProps['variant']>, string> = {
+  chat: 'mt-3 w-fit px-4 py-2.5 text-xs font-semibold border-primary/25',
+  compact: 'gap-1.5 px-3 py-1.5 text-meta bg-primary/15 hover:bg-primary/25',
+  card: 'w-full gap-1.5 px-3 py-2 text-xs',
+};
+
+// Shared "View Full Impact" link used in advisor chat bubbles, dashboard
+// feed cards, and impact page cards. It is a real link to /impact/<id>, so it
+// can be opened in a new tab; the detail page handles every state itself.
 //
-// On click:
+// On a plain click (unless `analyzed` is set):
 //   1. Look up an existing analysis for (user, policy_id) in analyzed_policies.
 //   2. If found -> navigate to /impact/<id> (no re-analysis).
 //   3. If missing -> start a background analysis, then navigate.
-//   4. If generation fails, show the reason under the button.
+//   4. If generation fails, show the reason under the link.
 export default function ViewFullImpactButton({
   policyId,
+  policyTitle,
   variant = 'compact',
   label = 'View Full Impact',
+  analyzed = false,
+  className,
 }: ViewFullImpactButtonProps) {
   const router = useRouter();
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const target = `/impact/${encodeURIComponent(policyId)}`;
 
-  async function handleClick() {
+  async function handleClick(e: MouseEvent<HTMLAnchorElement>) {
+    // New tab/window and other modified clicks keep the browser's default.
+    if (e.button !== 0 || e.metaKey || e.ctrlKey || e.shiftKey || e.altKey) return;
+    e.preventDefault();
     if (loading) return;
     setLoading(true);
     setError(null);
     try {
-      const target = `/impact/${encodeURIComponent(policyId)}`;
       const supabase = createClient();
       const { data: { user } } = await supabase.auth.getUser();
       if (!user) {
@@ -66,8 +86,8 @@ export default function ViewFullImpactButton({
           router.push(target);
           return;
         }
-      } catch (e) {
-        console.error('View full impact lookup error:', e);
+      } catch (err) {
+        console.error('View full impact lookup error:', err);
       }
 
       // No existing analysis -> start one (it runs in the background) and open
@@ -75,28 +95,31 @@ export default function ViewFullImpactButton({
       const res = await apiFetch('/api/analyze', { body: { policyId } });
       if (res.ok) router.push(target);
       else setError(res.message);
-    } catch (e) {
-      console.error('View full impact error:', e);
+    } catch (err) {
+      console.error('View full impact error:', err);
       setError('Something went wrong. Please try again.');
     } finally {
       setLoading(false);
     }
   }
 
-  const styles: Record<string, string> = {
-    chat: 'mt-3 flex items-center gap-2 bg-primary/20 hover:bg-primary/30 border border-primary/25 text-primary px-4 py-2.5 rounded-xl text-xs font-semibold transition-all w-fit disabled:opacity-60 disabled:cursor-not-allowed',
-    compact: 'flex items-center gap-1.5 bg-primary/15 hover:bg-primary/25 border border-primary/20 text-primary px-3 py-1.5 rounded-xl text-[10px] font-medium transition-all disabled:opacity-60 disabled:cursor-not-allowed',
-    card: 'flex-1 flex items-center justify-center gap-1.5 bg-primary/20 hover:bg-primary/30 border border-primary/20 text-primary px-3 py-2 rounded-xl text-xs font-medium transition-all disabled:opacity-60 disabled:cursor-not-allowed',
-  };
   const iconSize = variant === 'chat' ? 'w-3.5 h-3.5' : 'w-3 h-3';
 
   return (
-    <span className="inline-flex flex-col gap-1">
-      <button onClick={handleClick} disabled={loading} className={styles[variant]}>
-        {loading ? <Loader2 className={`${iconSize} animate-spin`} /> : <ExternalLink className={iconSize} />}
+    <span className={cn('inline-flex flex-col gap-1', variant === 'card' && 'flex-1', className)}>
+      <Button
+        href={target}
+        onClick={analyzed ? undefined : handleClick}
+        aria-busy={loading || undefined}
+        variant="ghost"
+        size="sm"
+        className={cn(TINT, VARIANT_STYLES[variant])}
+        icon={loading ? <Loader2 className={`${iconSize} animate-spin`} /> : <ExternalLink className={iconSize} />}
+      >
         {loading ? (variant === 'chat' ? 'Preparing analysis...' : 'Loading...') : label}
-      </button>
-      {error && <span role="alert" className="text-[11px] text-red-300">{error}</span>}
+        <span className="sr-only">: {policyTitle}</span>
+      </Button>
+      {error && <span role="alert" className="text-meta text-red-300">{error}</span>}
     </span>
   );
 }

@@ -7,11 +7,13 @@ import { Search, X, RefreshCw } from 'lucide-react';
 import Navbar from '@/components/layout/Navbar';
 import AmbientBackground from '@/components/landing/AmbientBackground';
 import GlassCard from '@/components/ui/GlassCard';
+import Button from '@/components/ui/Button';
 import PolicyFeedCard, { FeedSkeletonCard } from '@/components/PolicyFeedCard';
 import { useToast } from '@/components/ui/Toast';
 import { apiFetch } from '@/lib/api';
 import { requestAnalysis } from '@/lib/analysisClient';
 import { createClient } from '@/lib/supabase/client';
+import { getCategoryIcon } from '@/lib/categoryIcons';
 import type { DiscoveredPolicy } from '@/types';
 
 const POLL_MS = 5000;
@@ -39,6 +41,8 @@ export default function PoliciesPage() {
   const abort = useRef<AbortController | null>(null);
   const timer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const policyCount = useRef(0);
+  const searchRef = useRef<HTMLInputElement>(null);
+  const headingRef = useRef<HTMLHeadingElement>(null);
   useEffect(() => { policyCount.current = policies.length; }, [policies]);
 
   async function loadImpacts() {
@@ -121,6 +125,7 @@ export default function PoliciesPage() {
     const res = await apiFetch('/api/feedback', { body: { targetType: 'feed_item', targetId: policy.id, rating: 'not_relevant' } });
     if (!res.ok) return res.message;
     setPolicies((prev) => prev.filter((p) => p.id !== policy.id));
+    showToast(`Hidden “${policy.title}” from your feed.`);
     return null;
   }
 
@@ -146,18 +151,27 @@ export default function PoliciesPage() {
     });
   }, [policies, impacts, search, category, show]);
 
+  // Read out by one status region that stays mounted, so a search that matches
+  // nothing (and the results coming back) is announced as it changes.
+  const noMatches = !loading && policies.length > 0 && filtered.length === 0;
+  const resultsStatus = loading || policies.length === 0
+    ? ''
+    : noMatches
+      ? 'No policies match these filters.'
+      : `Showing ${filtered.length} of ${policies.length} ${policies.length === 1 ? 'policy' : 'policies'}`;
+
   return (
     <div className="min-h-screen relative">
       <AmbientBackground />
       {toast}
       <div className="relative z-10">
         <Navbar />
-        <main className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 pt-28 pb-20">
+        <main id="main" tabIndex={-1} className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 pt-28 pb-20">
           <header className="mb-8">
-            <h1 className="font-display text-3xl font-bold text-text-primary mb-2">Your policies</h1>
+            <h1 ref={headingRef} tabIndex={-1} className="font-display text-3xl font-bold text-text-primary mb-2 outline-none">Your policies</h1>
             <p className="text-text-muted max-w-2xl">
               Bills and laws from official records that are most relevant to your profile. Analyze one to see what it could mean for your
-              finances. To get newer policies, refresh your feed on the <Link href="/dashboard" className="text-primary hover:underline underline-offset-2">dashboard</Link>.
+              finances. To get newer policies, refresh your feed on the <Link href="/dashboard" className="text-primary-300 hover:underline underline-offset-2">dashboard</Link>.
             </p>
           </header>
 
@@ -166,6 +180,7 @@ export default function PoliciesPage() {
               <label htmlFor="policy-search" className="sr-only">Search your policies</label>
               <Search className="absolute left-4 top-1/2 -translate-y-1/2 w-4 h-4 text-text-muted" aria-hidden />
               <input
+                ref={searchRef}
                 id="policy-search"
                 type="search"
                 placeholder="Search by title, bill number or topic…"
@@ -174,8 +189,8 @@ export default function PoliciesPage() {
                 className="input-glass w-full pl-11 pr-10 py-3.5 text-base sm:text-sm"
               />
               {search && (
-                <button onClick={() => setSearch('')} aria-label="Clear search" className="absolute right-3.5 top-1/2 -translate-y-1/2 text-text-muted hover:text-text-primary">
-                  <X className="w-4 h-4" />
+                <button type="button" onClick={() => { setSearch(''); searchRef.current?.focus(); }} aria-label="Clear search" className="absolute right-2.5 top-1/2 -translate-y-1/2 p-1 rounded-lg text-text-muted hover:text-text-primary">
+                  <X className="w-4 h-4" aria-hidden />
                 </button>
               )}
             </div>
@@ -183,9 +198,10 @@ export default function PoliciesPage() {
               {(Object.keys(SHOW_LABELS) as Show[]).map((k) => (
                 <button
                   key={k}
+                  type="button"
                   aria-pressed={show === k}
                   onClick={() => setShow(k)}
-                  className={`px-4 py-2.5 rounded-xl text-sm font-medium whitespace-nowrap transition-all ${show === k ? 'bg-primary/20 text-primary border border-primary/20' : 'text-text-muted hover:text-text-primary'}`}
+                  className={`px-4 py-2.5 rounded-xl border text-sm font-medium whitespace-nowrap transition-all ${show === k ? 'bg-primary/20 text-primary-300 border-primary/20' : 'border-transparent text-text-muted hover:text-text-primary'}`}
                 >
                   {SHOW_LABELS[k]}
                 </button>
@@ -195,18 +211,23 @@ export default function PoliciesPage() {
 
           {categories.length > 2 && (
             <div role="group" aria-label="Category" className="flex gap-2 mb-8 overflow-x-auto pb-2 scrollbar-hide">
-              {categories.map((cat) => (
-                <button
-                  key={cat}
-                  aria-pressed={category === cat}
-                  onClick={() => setCategory(cat)}
-                  className={`flex-shrink-0 px-4 py-2 rounded-full text-xs font-medium border transition-all ${
-                    category === cat ? 'bg-primary/20 border-primary/40 text-primary' : 'glass border-white/8 text-text-muted hover:text-text-primary'
-                  }`}
-                >
-                  {cat}
-                </button>
-              ))}
+              {categories.map((cat) => {
+                const Icon = cat === 'All' ? null : getCategoryIcon(cat);
+                return (
+                  <button
+                    key={cat}
+                    type="button"
+                    aria-pressed={category === cat}
+                    onClick={() => setCategory(cat)}
+                    className={`flex-shrink-0 inline-flex items-center gap-1.5 px-4 py-2 rounded-full text-xs font-medium border transition-all ${
+                      category === cat ? 'bg-primary/20 border-primary/40 text-primary-300' : 'bg-white/4 border-white/8 text-text-muted hover:text-text-primary hover:border-white/16'
+                    }`}
+                  >
+                    {Icon && <Icon className="w-3.5 h-3.5" aria-hidden />}
+                    {cat}
+                  </button>
+                );
+              })}
             </div>
           )}
 
@@ -216,53 +237,58 @@ export default function PoliciesPage() {
             </p>
           )}
 
+          <p role="status" className={noMatches ? 'text-text-muted text-center pt-16 mb-4' : 'text-xs text-text-muted mb-4 empty:mb-0'}>
+            {resultsStatus}
+          </p>
+
           {loading ? (
-            <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-4">
+            <div role="status" className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-4">
+              <span className="sr-only">Loading your policies…</span>
               {[0, 1, 2, 3, 4, 5].map((i) => <FeedSkeletonCard key={i} />)}
             </div>
           ) : error && policies.length === 0 ? (
             <GlassCard className="rounded-2xl p-10 text-center">
               <h2 className="font-medium text-text-primary mb-2">We couldn&apos;t load your policies</h2>
               <p role="alert" className="text-sm text-text-muted mb-6">{error}</p>
-              <button onClick={() => loadFeed()} className="bg-primary/20 hover:bg-primary/30 border border-primary/20 text-primary px-5 py-2.5 rounded-xl text-sm font-medium">
+              <Button onClick={() => loadFeed()} variant="ghost" size="sm" className="px-5 py-2.5 bg-primary/20 hover:bg-primary/30 border-primary/20 text-primary-300">
                 Try again
-              </button>
+              </Button>
             </GlassCard>
           ) : policies.length === 0 ? (
             <GlassCard className="rounded-2xl p-10 text-center">
               <h2 className="font-medium text-text-primary mb-2">No policies in your feed yet</h2>
               <p className="text-sm text-text-muted mb-6">Build your personalized feed from the dashboard.</p>
-              <Link href="/dashboard" className="inline-block bg-primary/20 hover:bg-primary/30 border border-primary/20 text-primary px-5 py-2.5 rounded-xl text-sm font-medium">
+              <Button href="/dashboard" variant="ghost" size="sm" className="px-5 py-2.5 bg-primary/20 hover:bg-primary/30 border-primary/20 text-primary-300">
                 Go to the dashboard
-              </Link>
+              </Button>
             </GlassCard>
-          ) : filtered.length === 0 ? (
-            <div className="text-center py-16">
-              <p className="text-text-muted mb-4">No policies match these filters.</p>
-              <button onClick={() => { setSearch(''); setCategory('All'); setShow('all'); }} className="text-sm text-primary hover:underline underline-offset-2">
+          ) : noMatches ? (
+            <div className="text-center pb-16">
+              <button
+                type="button"
+                // This button leaves with the empty state; the page heading keeps focus in place.
+                onClick={() => { setSearch(''); setCategory('All'); setShow('all'); headingRef.current?.focus(); }}
+                className="text-sm text-primary-300 hover:underline underline-offset-2"
+              >
                 Clear filters
               </button>
             </div>
           ) : (
-            <>
-              <p className="text-xs text-text-muted mb-4" aria-live="polite">
-                Showing {filtered.length} of {policies.length} {policies.length === 1 ? 'policy' : 'policies'}
-              </p>
-              <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-4">
-                {filtered.map((policy) => (
-                  <PolicyFeedCard
-                    key={policy.id}
-                    policy={policy}
-                    analyzed={impacts.has(policy.id)}
-                    impact={impacts.get(policy.id)}
-                    onAnalyze={handleAnalyze}
-                    onAskAdvisor={(p) => router.push(`/advisor?policyId=${encodeURIComponent(p.id)}`)}
-                    onDismiss={handleDismiss}
-                    analyzingIds={analyzingIds}
-                  />
-                ))}
-              </div>
-            </>
+            <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-4">
+              {filtered.map((policy) => (
+                <PolicyFeedCard
+                  key={policy.id}
+                  policy={policy}
+                  analyzed={impacts.has(policy.id)}
+                  impact={impacts.get(policy.id)}
+                  onAnalyze={handleAnalyze}
+                  onAskAdvisor={(p) => router.push(`/advisor?policyId=${encodeURIComponent(p.id)}`)}
+                  onDismiss={handleDismiss}
+                  analyzingIds={analyzingIds}
+                  focusWhenEmptyRef={headingRef}
+                />
+              ))}
+            </div>
           )}
         </main>
       </div>
