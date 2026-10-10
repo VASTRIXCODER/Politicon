@@ -38,7 +38,7 @@ Open [http://localhost:3000](http://localhost:3000).
 | `NEXT_PUBLIC_SUPABASE_ANON_KEY` | Supabase anonymous key |
 | `SUPABASE_SERVICE_ROLE_KEY` | Service role key (server-side only) |
 | `GEMINI_API_KEY` | Google AI Studio API key |
-| `NEXT_PUBLIC_APP_URL` | App URL (for OAuth redirects) |
+| `NEXT_PUBLIC_APP_URL` | Public base URL for link previews, robots.txt and sitemap.xml (set before building) |
 
 ## Project Structure
 
@@ -52,7 +52,7 @@ politicon/
 │   ├── policies/           # Policy search + analysis
 │   ├── advisor/            # AI chat interface
 │   ├── impact/             # Cumulative impact dashboard
-│   ├── explorer/           # Public impact explorer (no auth)
+│   ├── explorer/           # Public explorer of illustrative examples (no auth)
 │   └── api/                # AI API routes
 ├── components/
 │   ├── landing/            # Landing page sections
@@ -63,8 +63,6 @@ politicon/
 │   ├── supabase/           # Supabase client + server
 │   ├── gemini.ts           # Gemini AI wrapper
 │   └── utils.ts            # Helper functions
-├── mocks/
-│   └── policies.ts         # Mock policy data
 ├── types/
 │   └── index.ts            # TypeScript types
 └── supabase/
@@ -84,7 +82,7 @@ All cards use glassmorphism: `backdrop-filter: blur(24px) saturate(180%)`
 | Route | Description | Auth |
 |---|---|---|
 | `/` | Landing page | Public |
-| `/explorer` | Public impact data | Public |
+| `/explorer` | Illustrative example data | Public |
 | `/auth/signin` | Sign in | Public |
 | `/auth/signup` | Register | Public |
 | `/onboarding` | Profile builder | Public |

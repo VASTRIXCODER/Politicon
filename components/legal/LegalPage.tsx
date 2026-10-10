@@ -2,11 +2,13 @@ import Link from 'next/link';
 import { ArrowLeft } from 'lucide-react';
 import Navbar from '@/components/layout/Navbar';
 import Footer from '@/components/layout/Footer';
-import { LEGAL_UPDATED } from '@/lib/legal';
+import { formatLegalDate } from '@/lib/legal';
 
 /** Shared layout for the Privacy, Terms, Disclaimer and Help pages. */
-export default function LegalPage({ title, intro, children, showUpdated = true }: {
-  title: string; intro: string; children: React.ReactNode; showUpdated?: boolean;
+export default function LegalPage({ title, intro, children, updated }: {
+  title: string; intro: string; children: React.ReactNode;
+  /** ISO date the page's text last changed (from lib/legal), shown as "Last updated". */
+  updated?: string;
 }) {
   return (
     <div className="min-h-screen relative bg-base">
@@ -16,7 +18,7 @@ export default function LegalPage({ title, intro, children, showUpdated = true }
           <ArrowLeft className="w-4 h-4" aria-hidden="true" /> Back to home
         </Link>
         <h1 className="font-display text-3xl sm:text-4xl font-bold text-text-primary mb-3">{title}</h1>
-        {showUpdated ? <p className="text-sm text-text-muted mb-10">Last updated {LEGAL_UPDATED}</p> : <div className="mb-6" />}
+        {updated ? <p className="text-sm text-text-muted mb-10">Last updated {formatLegalDate(updated)}</p> : <div className="mb-6" />}
         <p className="text-base text-text-primary/90 leading-relaxed mb-10">{intro}</p>
         <div className="legal-prose space-y-8 text-sm sm:text-base leading-relaxed text-text-primary/85">{children}</div>
       </main>

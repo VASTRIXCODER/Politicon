@@ -9,4 +9,6 @@ export default defineConfig({
   resolve: {
     alias: { '@': path.resolve(__dirname, '.') },
   },
+  // Components use the automatic JSX runtime (no React import), as in Next.
+  esbuild: { jsx: 'automatic' },
 });

@@ -1,8 +1,9 @@
 import type { Metadata } from 'next';
 import LegalPage, { Section } from '@/components/legal/LegalPage';
+import { DISCLAIMER_UPDATED } from '@/lib/legal';
 
 export const metadata: Metadata = {
-  title: 'Disclaimer — Politicon',
+  title: 'Disclaimer',
   description: 'Politicon provides educational estimates, not financial, tax, legal or voting advice.',
 };
 
@@ -11,6 +12,7 @@ export default function DisclaimerPage() {
     <LegalPage
       title="Disclaimer"
       intro="Politicon helps you understand how policies might affect your finances. It does not tell you what to do with your money or how to vote."
+      updated={DISCLAIMER_UPDATED}
     >
       <Section title="Educational estimates, not advice">
         <p>Everything Politicon shows (dollar figures, charts, summaries and chat replies) is an AI-generated estimate for educational purposes. It is not financial, tax, legal, investment or benefits advice, and it is not a recommendation to take any action. For decisions that matter, check official sources and talk to a qualified professional, such as a CPA, a free IRS VITA tax clinic, or a HUD-approved housing counselor.</p>

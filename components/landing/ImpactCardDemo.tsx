@@ -2,7 +2,10 @@
 
 import { useEffect, useRef, useState, useSyncExternalStore } from 'react';
 import { m } from 'framer-motion';
-import { TrendingDown, TrendingUp, BarChart2, Zap, Pause, Play } from 'lucide-react';
+import { TrendingDown, TrendingUp, Zap, Pause, Play } from 'lucide-react';
+import Badge from '@/components/ui/Badge';
+import { formatUSD } from '@/lib/format';
+import { exampleImpact, formatAnnual } from '@/lib/explorerData';
 
 // Semantic positive/negative tokens (tailwind `positive` / `negative`).
 const POSITIVE = '#34D399';
@@ -21,77 +24,33 @@ const prefersReducedMotion = () => window.matchMedia(REDUCED_MOTION_QUERY).match
 // hydration render matches it; the real value takes over right after.
 const prefersReducedMotionOnServer = () => true;
 
+// Examples from the explorer's illustrative dataset (lib/explorerData), so the
+// card and the chart quote the same figures. Balanced on purpose: policy types
+// from different sides, and a gain and a cost for both a lower-income and a
+// higher-income household. The projection rows are cumulative, like the
+// 1/3/5-year view in a real analysis.
 const impacts = [
-  {
-    policy: 'Capital Gains Tax Increase',
-    bracket: 'Mid-level investor • $120k income',
-    monthly: '-$340/month',
-    direction: 'negative' as const,
-    bars: [
-      { label: 'Tax on gains', pct: 72 },
-      { label: 'Portfolio growth', pct: 54 },
-      { label: 'Net take-home', pct: 38 },
-    ],
-    sparkline: [40, 42, 38, 44, 36, 38, 34, 30],
-    color: NEGATIVE,
-  },
-  {
-    policy: 'First-Time Homebuyer Credit',
-    bracket: 'First-time buyer • $75k income',
-    monthly: '+$1,250/month equiv.',
-    direction: 'positive' as const,
-    bars: [
-      { label: 'Tax credit', pct: 85 },
-      { label: 'Affordability', pct: 68 },
-      { label: 'Net savings', pct: 79 },
-    ],
-    sparkline: [30, 35, 38, 44, 50, 55, 62, 70],
-    color: POSITIVE,
-  },
-  {
-    policy: 'Student Loan Rate Cut',
-    bracket: 'Recent grad • $48k income',
-    monthly: '-$85/month saved',
-    direction: 'positive' as const,
-    bars: [
-      { label: 'Interest savings', pct: 65 },
-      { label: 'Monthly relief', pct: 55 },
-      { label: 'Lifetime impact', pct: 90 },
-    ],
-    sparkline: [60, 55, 58, 52, 48, 44, 40, 35],
-    color: POSITIVE,
-  },
-];
+  exampleImpact('premium-subsidy-extension', '25to50k'),
+  exampleImpact('income-tax-rate-cut', '100kPlus'),
+  exampleImpact('import-tariff', '25to50k'),
+  exampleImpact('employer-plan-cap', '100kPlus'),
+].map(({ policy, bracket, annual }) => ({
+  policy: policy.title,
+  bracket: `Sample household • ${bracket.label} income`,
+  headline: formatAnnual(annual),
+  note: 'estimated for a typical household in this bracket',
+  direction: annual < 0 ? ('negative' as const) : ('positive' as const),
+  projection: [annual, annual * 3, annual * 5],
+  color: annual < 0 ? NEGATIVE : POSITIVE,
+}));
 
-function MiniSparkline({ data, color }: { data: number[]; color: string }) {
-  const max = Math.max(...data);
-  const min = Math.min(...data);
-  const normalize = (v: number) => ((v - min) / (max - min)) * 36;
-
-  const points = data.map((v, i) => `${(i / (data.length - 1)) * 120},${40 - normalize(v)}`).join(' ');
-
-  return (
-    <svg viewBox="0 0 120 44" className="w-full h-10" preserveAspectRatio="none" aria-hidden="true">
-      <polyline
-        points={points}
-        fill="none"
-        stroke={color}
-        strokeWidth="1.5"
-        strokeLinejoin="round"
-        strokeLinecap="round"
-        opacity="0.8"
-      />
-      <polyline
-        points={`0,44 ${points} 120,44`}
-        fill={color}
-        opacity="0.08"
-      />
-    </svg>
-  );
-}
+const PROJECTION_YEARS = ['Year 1', 'Year 3', 'Year 5'];
+/** Bar length as a share of the largest amount in the same example. */
+const barWidth = (amount: number, all: number[]) =>
+  Math.round((Math.abs(amount) / (Math.max(...all.map(Math.abs)) || 1)) * 100);
 
 /**
- * Rotating example analysis card. Rotation runs only while the card is on
+ * Rotating example analysis card, visibly labelled as an example. Rotation runs only while the card is on
  * screen, pauses while hovered or focused, has a visible pause/play button,
  * and doesn't start on its own when the OS asks for reduced motion.
  */
@@ -174,7 +133,7 @@ export default function ImpactCardDemo() {
               <p className="text-xs text-text-primary font-medium">Politicon</p>
             </div>
           </div>
-          <div className="w-2 h-2 rounded-full bg-positive animate-pulse" aria-hidden="true" />
+          <Badge variant="gold">Example</Badge>
         </div>
 
         {/* Current example. Announced politely only while rotation is stopped. */}
@@ -196,30 +155,32 @@ export default function ImpactCardDemo() {
             </p>
 
             {/* Big impact number */}
-            <div className="flex items-baseline gap-2 mb-5">
+            <div className="flex items-baseline gap-2">
               <span
                 className="font-mono-data text-3xl font-bold"
                 style={{ color: current.color }}
               >
-                {current.monthly}
+                {current.headline}
               </span>
               {current.direction === 'negative'
                 ? <TrendingDown className="w-5 h-5" style={{ color: current.color }} aria-hidden="true" />
                 : <TrendingUp className="w-5 h-5" style={{ color: current.color }} aria-hidden="true" />}
             </div>
+            <p className="text-meta text-text-muted mb-5">{current.note}</p>
 
-            {/* Bar chart */}
+            {/* Cumulative projection, bars scaled to the largest year */}
+            <p className="text-meta text-text-muted font-mono-data uppercase tracking-widest mb-2">Cumulative estimate</p>
             <ul className="space-y-3 mb-5">
-              {current.bars.map((bar, i) => (
-                <li key={bar.label}>
+              {current.projection.map((amount, i) => (
+                <li key={PROJECTION_YEARS[i]}>
                   <div className="flex items-center justify-between mb-1">
-                    <span className="text-meta text-text-muted font-mono-data">{bar.label}</span>
-                    <span className="text-meta font-mono-data" style={{ color: current.color }}>{bar.pct}%</span>
+                    <span className="text-meta text-text-muted font-mono-data">{PROJECTION_YEARS[i]}</span>
+                    <span className="text-meta font-mono-data" style={{ color: current.color }}>{formatUSD(amount, { signed: true })}</span>
                   </div>
                   <div className="h-1.5 rounded-full bg-white/5 overflow-hidden" aria-hidden="true">
                     <m.div
                       className="h-full rounded-full"
-                      style={{ width: `${bar.pct}%`, backgroundColor: current.color + '99', originX: 0 }}
+                      style={{ width: `${barWidth(amount, current.projection)}%`, backgroundColor: current.color + '99', originX: 0 }}
                       initial={changed ? { scaleX: 0 } : false}
                       animate={{ scaleX: 1 }}
                       transition={{ duration: 0.8, delay: i * 0.12, ease: 'easeOut' }}
@@ -229,14 +190,9 @@ export default function ImpactCardDemo() {
               ))}
             </ul>
 
-            {/* Sparkline */}
-            <div className="border-t border-white/6 pt-4">
-              <div className="flex items-center gap-2 mb-2">
-                <BarChart2 className="w-3 h-3 text-text-muted" aria-hidden="true" />
-                <span className="text-meta text-text-muted font-mono-data">12-month trend</span>
-              </div>
-              <MiniSparkline data={current.sparkline} color={current.color} />
-            </div>
+            <p className="border-t border-white/6 pt-4 text-meta text-text-muted">
+              Hypothetical policy and illustrative figures from the Public Impact Explorer. Your analyses use your own profile and real bills.
+            </p>
           </m.div>
         </div>
 

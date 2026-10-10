@@ -326,3 +326,65 @@ begin
     raise exception 'removing the last policy should leave an empty list';
   end if;
 end $$;
+
+-- Public landing-page aggregates are server-only and count only real data:
+-- confirmed accounts, finished analyses, and the median size of an estimate.
+do $$
+declare
+  a constant uuid := '11111111-1111-1111-1111-111111111111';
+  b constant uuid := '22222222-2222-2222-2222-222222222222';
+  s record;
+begin
+  perform pg_temp.denied('anon', null, 'select * from public.public_stats()');
+  perform pg_temp.denied('authenticated', a::text, 'select * from public.public_stats()');
+  perform pg_temp.allowed('service_role', null, 'select * from public.public_stats()');
+  if (select prosecdef from pg_proc where oid = 'public.public_stats()'::regprocedure) is not true then
+    raise exception 'public_stats must be security definer';
+  end if;
+
+  -- Known state: a confirmed, b unconfirmed; a has three finished analyses
+  -- (one a re-analysis in progress) and one placeholder with no result yet.
+  update auth.users set email_confirmed_at = now() where id = a;
+  update auth.users set email_confirmed_at = null where id = b;
+  delete from public.analyzed_policies where user_id in (a, b);
+  insert into public.analyzed_policies (user_id, policy_id, analysis, net_annual_impact, generation_status) values
+    (a, 'stats-1', '{"plainEnglishSummary":"x"}', -300, 'ready'),
+    (a, 'stats-2', '{"plainEnglishSummary":"x"}', 100, 'ready'),
+    (a, 'stats-3', '{"plainEnglishSummary":"x"}', 1000, 'pending'),
+    (a, 'stats-4', '{}', 99999, 'pending');
+
+  select * into s from public.public_stats();
+  if s.members <> (select count(*) from auth.users where email_confirmed_at is not null) then
+    raise exception 'public_stats members = %, expected confirmed users only', s.members;
+  end if;
+  if s.analyses <> 3 then raise exception 'public_stats analyses = %, expected 3', s.analyses; end if;
+  if s.contributors <> 1 then raise exception 'public_stats contributors = %, expected 1', s.contributors; end if;
+  if s.median_abs_annual_impact <> 300 then
+    raise exception 'public_stats median = %, expected 300', s.median_abs_annual_impact;
+  end if;
+
+  -- One busy account: a owns 60 finished analyses, b owns one. The row count
+  -- clears the app's analysis threshold, but they come from 2 members (the app
+  -- withholds both figures below MIN_CONTRIBUTORS), and the median gives each
+  -- member one vote: the middle of a's 1000 and b's 100, not a's 1000.
+  delete from public.analyzed_policies where user_id in (a, b);
+  insert into public.analyzed_policies (user_id, policy_id, analysis, net_annual_impact, generation_status)
+    select a, 'busy-' || i, '{"plainEnglishSummary":"x"}', case when i % 2 = 0 then 1000 else -1000 end, 'ready'
+      from generate_series(1, 60) i;
+  insert into public.analyzed_policies (user_id, policy_id, analysis, net_annual_impact, generation_status) values
+    (b, 'busy-1', '{"plainEnglishSummary":"x"}', 100, 'ready');
+  select * into s from public.public_stats();
+  if s.analyses <> 61 or s.contributors <> 2 then
+    raise exception 'one busy account: analyses = %, contributors = %, expected 61 and 2', s.analyses, s.contributors;
+  end if;
+  if s.median_abs_annual_impact <> 550 then
+    raise exception 'median must weigh each member once: got %, expected 550', s.median_abs_annual_impact;
+  end if;
+
+  -- No analyses: no contributors and a null median, never an error.
+  delete from public.analyzed_policies where user_id in (a, b);
+  select * into s from public.public_stats();
+  if s.analyses <> 0 or s.contributors <> 0 or s.median_abs_annual_impact is not null then
+    raise exception 'empty public_stats returned % / % / %', s.analyses, s.contributors, s.median_abs_annual_impact;
+  end if;
+end $$;

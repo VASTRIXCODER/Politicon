@@ -1,12 +1,16 @@
 'use client';
 
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useLayoutEffect, useRef, useState } from 'react';
 import { cn } from '@/lib/utils';
 
 interface CountUpProps {
   /** The number to show. When it changes, the display tweens from where it is now. */
   value: number;
-  /** Where the very first tween starts (default 0). Pass `from={value}` to skip it. */
+  /**
+   * Where the very first tween starts (default 0). Pass `from={value}` to skip it.
+   * The server HTML always shows `value` itself; the browser rewinds to `from`
+   * just before it first paints, so the count only plays where JS runs.
+   */
   from?: number;
   /** Tween length in ms (default 1600). */
   duration?: number;
@@ -43,7 +47,9 @@ function prefersReducedMotion(): boolean {
  * Animated number. Frames are written straight to the DOM (no React re-render
  * per frame), later changes tween from the number on screen instead of
  * restarting at 0, and reduced-motion users get the final value at once.
- * The animated text is aria-hidden; screen readers get the final value only.
+ * Server-rendered HTML shows the real value (no-JS visitors and crawlers never
+ * see a placeholder 0). The animated text is aria-hidden; screen readers get
+ * the final value only.
  */
 export default function CountUp({
   value,
@@ -65,10 +71,24 @@ export default function CountUp({
   renderRef.current = render;
 
   const textRef = useRef<HTMLSpanElement>(null);
-  const shown = useRef(Number.isFinite(from) ? from : 0);
+  const startAt = Number.isFinite(from) ? from : 0;
+  // The number on screen. It starts as the real value, which is what the
+  // server renders; the layout effect below rewinds it to `from` in the browser.
+  const shown = useRef(target);
   // Fixed initial text: React never rewrites it, so it can't clobber the tween.
-  const [initialText] = useState(() => render(shown.current));
+  const [initialText] = useState(() => render(target));
   const [inView, setInView] = useState(!startOnView);
+
+  // Client only, before the first paint: show `from` so the first tween can
+  // count up from it. Skipped when there is nothing to animate.
+  useLayoutEffect(() => {
+    const el = textRef.current;
+    if (!el || startAt === shown.current || duration <= 0 || prefersReducedMotion()) return;
+    shown.current = startAt;
+    el.textContent = renderRef.current(startAt);
+    // Mount only: later changes tween from whatever is on screen.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   useEffect(() => {
     if (inView) return;

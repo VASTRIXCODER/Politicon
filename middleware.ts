@@ -1,6 +1,6 @@
 import { createServerClient } from '@supabase/ssr';
 import { NextResponse, type NextRequest } from 'next/server';
-import { safeNextPath } from '@/lib/safeNext';
+import { onboardingPath, safeNextPath } from '@/lib/safeNext';
 
 const PROTECTED_ROUTES = ['/dashboard', '/policies', '/advisor', '/impact', '/settings', '/onboarding'];
 const AUTH_ROUTES = ['/auth/signin', '/auth/signup'];
@@ -76,7 +76,8 @@ export async function middleware(request: NextRequest) {
         supabase.from('user_profiles').select('has_completed_onboarding').eq('id', user.id).maybeSingle(),
       );
       if (!error && !profile?.has_completed_onboarding) {
-        return redirectTo(new URL('/onboarding', request.url));
+        // Keep where they were heading (e.g. a question for the AI Policy Guide).
+        return redirectTo(new URL(onboardingPath(`${pathname}${request.nextUrl.search}`), request.url));
       }
       if (!error && profile?.has_completed_onboarding) {
         response.cookies.set(ONBOARDED_COOKIE, user.id, {
@@ -103,5 +104,6 @@ export async function middleware(request: NextRequest) {
 
 export const config = {
   // Skip static assets and API routes (which authenticate themselves).
-  matcher: ['/((?!_next/static|_next/image|favicon.ico|api/|.*\\.(?:svg|png|jpg|jpeg|gif|webp|ico)$).*)'],
+  // Generated metadata files (robots.txt, sitemap.xml, icons, the share image) skip it too.
+  matcher: ['/((?!_next/static|_next/image|favicon.ico|api/|opengraph-image|twitter-image|apple-icon|.*\\.(?:svg|png|jpg|jpeg|gif|webp|ico|txt|xml)$).*)'],
 };

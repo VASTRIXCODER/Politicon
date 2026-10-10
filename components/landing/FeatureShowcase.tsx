@@ -1,121 +1,155 @@
 import { BarChart2, Compass, MessageSquare, PieChart, ArrowRight } from 'lucide-react';
 import Link from 'next/link';
 import Reveal from './Reveal';
+import { formatUSD, impactSign } from '@/lib/format';
+import { BRACKET_ROWS, CATEGORIES, EXAMPLE_POLICIES, bracketByKey, exampleImpact, formatAnnual } from '@/lib/explorerData';
 
-const features = [
-  {
-    icon: BarChart2,
-    tag: 'Core Feature',
-    title: 'Personalized Impact Analysis',
-    description: 'Every policy runs through our AI reasoning engine, calibrated to your exact income bracket, location, housing situation, and life stage. No generic estimates.',
-    bullets: [
-      'Immediate dollar effects in your pocket',
-      '1, 3, and 5-year projections',
-      'Transparent methodology — no black boxes',
-      'Confidence scoring on every estimate',
-    ],
-    color: '#7B61FF',
-    href: '/policies',
-    mockup: 'analysis',
-    preview: 'Example preview: a student loan rate change shown as before-and-after monthly payments and lifetime savings.',
-  },
-  {
-    icon: Compass,
-    tag: 'Discovery',
-    title: 'AI Policy Discovery',
-    description: 'Stop missing policies that could save or cost you thousands. Our AI continuously scans legislation and ranks them by relevance to your financial profile.',
-    bullets: [
-      'Relevance score for your situation',
-      'Alerts when high-impact bills move',
-      'Coverage across all 50 states',
-      'Updated within 24 hours of news',
-    ],
-    color: '#00D4FF',
-    href: '/policies',
-    mockup: 'discovery',
-    preview: 'Example preview: three policies ranked by how relevant they are to a profile, each with its dollar impact.',
-  },
-  {
-    icon: MessageSquare,
-    tag: 'AI Policy Guide',
-    title: 'Your AI Policy Guide',
-    description: "Ask anything about how policies affect your life. The AI knows your profile and answers with dollar specifics, not political talking points.",
-    bullets: [
-      'Full profile context in every answer',
-      'Compare two policies side-by-side',
-      'Actionable recommendations',
-      'Scenario modeling (what if?)',
-    ],
-    color: '#F5C842',
-    href: '/advisor',
-    mockup: 'advisor',
-    preview: 'Example preview: a question about capital gains tax and the guide’s answer in dollars for a sample profile.',
-  },
-  {
-    icon: PieChart,
-    tag: 'Dashboard',
-    title: 'Cumulative Impact Dashboard',
-    description: 'Track every policy you\'ve analyzed. See your total net annual impact, broken down by category, with an exportable summary card.',
-    bullets: [
-      'Net annual impact in big gold numbers',
-      'Breakdown by category (taxes, housing...)',
-      'Sortable policy tracker',
-      'Shareable PNG summary card',
-    ],
-    color: '#7B61FF',
-    href: '/impact',
-    mockup: 'dashboard',
-    preview: 'Example preview: a net annual impact total with a breakdown by category.',
-  },
+interface Feature {
+  icon: typeof BarChart2;
+  tag: string;
+  title: string;
+  description: string;
+  bullets: string[];
+  color: string;
+  href: string;
+  mockup: string;
+  preview: string;
+}
+
+// Only what ships today. The mockups' example figures come from the explorer's
+// illustrative dataset (lib/explorerData), picked so that, taken together,
+// they show gains and costs for both lower and higher incomes from policy
+// types across the spectrum.
+const ANALYSIS = exampleImpact('income-tax-rate-cut', '75to100k');
+const DISCOVERY_BRACKET = bracketByKey('25to50k');
+const DISCOVERY = [
+  { impact: exampleImpact('premium-subsidy-extension', DISCOVERY_BRACKET.key), score: 94 },
+  { impact: exampleImpact('import-tariff', DISCOVERY_BRACKET.key), score: 88 },
+  { impact: exampleImpact('income-tax-rate-cut', DISCOVERY_BRACKET.key), score: 81 },
 ];
+const ADVISOR_LOW = exampleImpact('minimum-wage-increase', 'under25k');
+const ADVISOR_MID = exampleImpact('minimum-wage-increase', '50to75k');
+const DASHBOARD = BRACKET_ROWS.find(r => r.key === '50to75k') ?? BRACKET_ROWS[0];
+
+const TONE = { gain: 'text-positive', loss: 'text-negative', neutral: 'text-text-muted' } as const;
+const BAR = { gain: 'bg-positive/50', loss: 'bg-negative/50', neutral: 'bg-white/20' } as const;
+
+function buildFeatures(stateBills: boolean): Feature[] {
+  return [
+    {
+      icon: BarChart2,
+      tag: 'Core Feature',
+      title: 'Personalized Impact Analysis',
+      description: 'Each policy is analyzed by AI for your income range, location, housing situation, and life stage, with the assumptions behind every number written out. Educational estimates, not financial advice.',
+      bullets: [
+        'Immediate effects on your monthly budget',
+        '1, 3, and 5-year projections',
+        'The assumptions behind every estimate',
+        'A confidence level on every analysis',
+      ],
+      color: '#7B61FF',
+      href: '/policies',
+      mockup: 'analysis',
+      preview: `Example with illustrative figures: the “${ANALYSIS.policy.title}” example for a sample ${ANALYSIS.bracket.label} household, shown per month, for one year and over five years, with a confidence level.`,
+    },
+    {
+      icon: Compass,
+      tag: 'Discovery',
+      title: 'AI Policy Discovery',
+      description: stateBills
+        ? 'Your feed starts from recent bills in Congress and your state legislature, taken from official records, and the AI ranks them by how likely they are to affect your finances.'
+        : 'Your feed starts from recent bills in Congress, taken from official records, and the AI ranks them by how likely they are to affect your finances.',
+      bullets: [
+        'Relevance score for your situation',
+        stateBills ? 'Federal bills plus your state’s' : 'Federal bills from Congress.gov',
+        'Official status and a link to each bill',
+        'Hide what isn’t relevant to you',
+      ],
+      color: '#00D4FF',
+      href: '/policies',
+      mockup: 'discovery',
+      preview: `Example with illustrative figures: three example policies ranked by how relevant they are to a sample ${DISCOVERY_BRACKET.label} household, two gains and one cost, each with an estimated yearly impact.`,
+    },
+    {
+      icon: MessageSquare,
+      tag: 'AI Policy Guide',
+      title: 'Your AI Policy Guide',
+      description: 'Ask how a policy could affect you. The guide uses the ranges in your profile and answers with educational dollar estimates, not political talking points.',
+      bullets: [
+        'Your profile ranges in every answer',
+        'Ask about any policy in your feed',
+        'Simple or Expert reading mode',
+        'Educational estimates, not advice',
+      ],
+      color: '#F5C842',
+      href: '/advisor',
+      mockup: 'advisor',
+      preview: 'Example with illustrative figures: a what-if question about a minimum wage increase, answered in dollars for two sample households, one that gains and one that pays a little more.',
+    },
+    {
+      icon: PieChart,
+      tag: 'Dashboard',
+      title: 'Cumulative Impact Dashboard',
+      description: 'Track every policy you\'ve analyzed. See your combined estimated net annual impact, broken down by category.',
+      bullets: [
+        'Combined net annual impact',
+        'Breakdown by category (taxes, housing...)',
+        'Sort by impact or date',
+        'Export or delete your data anytime',
+      ],
+      color: '#7B61FF',
+      href: '/impact',
+      mockup: 'dashboard',
+      preview: 'Example with illustrative figures: a combined net annual impact with a breakdown by category, some categories gains and some costs.',
+    },
+  ];
+}
 
 // The mockups below are illustrations; FeatureShowcase hides them from screen
 // readers and gives each a one-line summary instead. Inner glass panels skip
 // backdrop-filter: they already sit on a blurred glass-strong panel.
 const nestedGlass = 'glass backdrop-filter-none';
 
-const MockupAnalysis = () => (
-  <div className={`${nestedGlass} rounded-2xl p-5 text-left`}>
-    <p className="text-meta font-mono-data text-text-muted uppercase tracking-widest mb-3">Student Loan Rate Adjustment</p>
-    <div className="space-y-3">
-      {[
-        { label: 'Monthly payment', before: '$487', after: '$402', delta: '-$85/mo' },
-        { label: 'Interest (10yr)', before: '$12,580', after: '$7,400', delta: '-$5,180' },
-        { label: 'Take-home impact', before: '$0', after: '+$85', delta: '+$85/mo' },
-      ].map(row => (
-        <div key={row.label} className="flex items-center justify-between">
-          <span className="text-meta text-text-muted">{row.label}</span>
-          <div className="flex items-center gap-2">
-            <span className="text-meta text-text-muted line-through">{row.before}</span>
-            <span className="text-meta font-mono-data font-semibold text-positive">{row.delta}</span>
+const MockupAnalysis = () => {
+  const { policy, bracket, annual } = ANALYSIS;
+  const tone = TONE[impactSign(annual)];
+  return (
+    <div className={`${nestedGlass} rounded-2xl p-5 text-left`}>
+      <p className="text-meta font-mono-data text-text-muted uppercase tracking-widest mb-3">{policy.title}</p>
+      <div className="space-y-3">
+        {[
+          { label: 'Monthly budget', value: formatUSD(annual / 12, { signed: true, suffix: '/mo' }) },
+          { label: 'Year 1', value: formatUSD(annual, { signed: true }) },
+          { label: '5 years, cumulative', value: formatUSD(annual * 5, { signed: true }) },
+        ].map(row => (
+          <div key={row.label} className="flex items-center justify-between">
+            <span className="text-meta text-text-muted">{row.label}</span>
+            <span className={`text-meta font-mono-data font-semibold ${tone}`}>{row.value}</span>
           </div>
-        </div>
-      ))}
+        ))}
+      </div>
+      <div className="mt-4 p-3 rounded-xl bg-white/4 border border-white/8">
+        <p className="text-meta text-text-muted font-mono-data">Sample: {bracket.label} household · Confidence: medium</p>
+      </div>
     </div>
-    <div className="mt-4 p-3 rounded-xl bg-emerald-500/8 border border-emerald-500/15">
-      <p className="text-meta text-positive font-mono-data">+$12,500 lifetime savings at current balance</p>
-    </div>
-  </div>
-);
+  );
+};
 
 const MockupDiscovery = () => (
   <div className="space-y-2">
-    {[
-      { title: 'Healthcare Subsidy Extension', score: 96, impact: '+$2,160/yr', positive: true },
-      { title: 'First-Time Homebuyer Credit', score: 91, impact: '+$15,000', positive: true },
-      { title: 'Capital Gains Tax Increase', score: 44, impact: '-$340/mo', positive: false },
-    ].map(item => (
-      <div key={item.title} className={`${nestedGlass} rounded-xl p-3 flex items-center justify-between`}>
+    <p className="text-meta text-text-muted font-mono-data mb-1">Sample: {DISCOVERY_BRACKET.label} household</p>
+    {DISCOVERY.map(({ impact: { policy, annual }, score }) => (
+      <div key={policy.id} className={`${nestedGlass} rounded-xl p-3 flex items-center justify-between`}>
         <div>
-          <p className="text-meta font-medium text-text-primary">{item.title}</p>
+          <p className="text-meta font-medium text-text-primary">{policy.title}</p>
           <div className="flex items-center gap-2 mt-1">
             <div className="h-1 w-16 rounded-full bg-white/8 overflow-hidden">
-              <div className="h-full rounded-full bg-primary" style={{ width: `${item.score}%` }} />
+              <div className="h-full rounded-full bg-primary" style={{ width: `${score}%` }} />
             </div>
-            <span className="text-meta text-text-muted">{item.score}% relevant</span>
+            <span className="text-meta text-text-muted">{score}% relevant</span>
           </div>
         </div>
-        <span className={`text-xs font-mono-data font-bold ${item.positive ? 'text-positive' : 'text-negative'}`}>{item.impact}</span>
+        <span className={`text-xs font-mono-data font-bold ${TONE[impactSign(annual)]}`}>{formatAnnual(annual)}</span>
       </div>
     ))}
   </div>
@@ -125,13 +159,16 @@ const MockupAdvisor = () => (
   <div className="space-y-3">
     <div className="flex justify-end">
       <div className="bg-primary/20 border border-primary/20 rounded-2xl rounded-tr-sm px-4 py-2.5 max-w-[80%]">
-        <p className="text-meta text-primary-300">How does the new capital gains tax affect my investments?</p>
+        <p className="text-meta text-primary-300">What if my state raised its minimum wage?</p>
       </div>
     </div>
     <div className="flex justify-start">
       <div className={`${nestedGlass} rounded-2xl rounded-tl-sm px-4 py-3 max-w-[90%]`}>
         <p className="text-meta text-text-muted leading-relaxed">
-          Based on your <span className="text-text-primary">$120k income</span> and investment profile, the proposed 28% capital gains rate would increase your annual tax burden by approximately <span className="text-negative font-mono-data font-semibold">$4,080/year</span> on a typical $50k gain...
+          It depends on the household. For a sample household earning <span className="text-text-primary">{ADVISOR_MID.bracket.label}</span>, slightly
+          higher prices could cost about <span className="text-negative font-mono-data font-semibold">{formatUSD(Math.abs(ADVISOR_MID.annual))}</span> a year.
+          One earning <span className="text-text-primary">{ADVISOR_LOW.bracket.label.toLowerCase()}</span> with a minimum-wage worker could gain
+          about <span className="text-positive font-mono-data font-semibold">{formatUSD(ADVISOR_LOW.annual)}</span>...
         </p>
       </div>
     </div>
@@ -142,32 +179,36 @@ const MockupAdvisor = () => (
   </div>
 );
 
-const MockupDashboard = () => (
-  <div className={`${nestedGlass} rounded-2xl p-5`}>
-    <div className="text-center mb-4">
-      <p className="text-meta text-text-muted font-mono-data mb-1">Net Annual Impact</p>
-      <p className="font-mono-data text-3xl font-bold gradient-text-gold">+$6,420</p>
-      <p className="text-meta text-text-muted mt-1">across 4 tracked policies</p>
+const MockupDashboard = () => {
+  const totals = CATEGORIES.map(c => ({ key: c.key, cat: c.label, amount: DASHBOARD.totals[c.key] }));
+  const net = totals.reduce((sum, t) => sum + t.amount, 0);
+  const scale = Math.max(1, ...totals.map(t => Math.abs(t.amount)));
+  return (
+    <div className={`${nestedGlass} rounded-2xl p-5`}>
+      <div className="text-center mb-4">
+        <p className="text-meta text-text-muted font-mono-data mb-1">Net Annual Impact</p>
+        <p className="font-mono-data text-3xl font-bold gradient-text-gold">{formatUSD(net, { signed: true })}</p>
+        <p className="text-meta text-text-muted mt-1">across {EXAMPLE_POLICIES.length} tracked policies · {DASHBOARD.label} sample</p>
+      </div>
+      <div className="space-y-2">
+        {totals.map(item => {
+          const sign = impactSign(item.amount);
+          return (
+            <div key={item.key}>
+              <div className="flex justify-between mb-1">
+                <span className="text-meta text-text-muted">{item.cat}</span>
+                <span className={`text-meta font-mono-data ${TONE[sign]}`}>{formatUSD(item.amount, { signed: true })}</span>
+              </div>
+              <div className="h-1.5 rounded-full bg-white/6 overflow-hidden">
+                <div className={`h-full rounded-full ${BAR[sign]}`} style={{ width: `${Math.round((Math.abs(item.amount) / scale) * 100)}%` }} />
+              </div>
+            </div>
+          );
+        })}
+      </div>
     </div>
-    <div className="space-y-2">
-      {[
-        { cat: 'Healthcare', pct: 78, val: '+$2,160' },
-        { cat: 'Housing', pct: 94, val: '+$3,750' },
-        { cat: 'Taxes', pct: 22, val: '+$510' },
-      ].map(item => (
-        <div key={item.cat}>
-          <div className="flex justify-between mb-1">
-            <span className="text-meta text-text-muted">{item.cat}</span>
-            <span className="text-meta font-mono-data text-positive">{item.val}</span>
-          </div>
-          <div className="h-1.5 rounded-full bg-white/6 overflow-hidden">
-            <div className="h-full rounded-full bg-positive/50" style={{ width: `${item.pct}%` }} />
-          </div>
-        </div>
-      ))}
-    </div>
-  </div>
-);
+  );
+};
 
 const mockups: Record<string, React.ComponentType> = {
   analysis: MockupAnalysis,
@@ -176,7 +217,13 @@ const mockups: Record<string, React.ComponentType> = {
   dashboard: MockupDashboard,
 };
 
-export default function FeatureShowcase() {
+interface FeatureShowcaseProps {
+  /** True when state bills are loaded (Open States is configured). */
+  stateBills: boolean;
+}
+
+export default function FeatureShowcase({ stateBills }: FeatureShowcaseProps) {
+  const features = buildFeatures(stateBills);
   return (
     <section aria-labelledby="features-heading" className="py-32 relative">
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
@@ -255,7 +302,9 @@ export default function FeatureShowcase() {
                   />
                   <p className="sr-only">{feature.preview}</p>
                   <div aria-hidden="true" className="glass-strong rounded-3xl p-8 relative z-10">
-                    <p className="text-meta font-mono-data text-text-muted uppercase tracking-widest mb-5">Preview</p>
+                    <p className="text-meta font-mono-data text-text-muted uppercase tracking-widest mb-5">
+                      Example · illustrative figures
+                    </p>
                     <Mockup />
                   </div>
                 </div>

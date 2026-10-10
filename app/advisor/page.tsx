@@ -206,6 +206,8 @@ function FeedPolicyCard({ policy, onPick }: { policy: DiscoveredPolicy; onPick: 
 const POLICY_DRAG_TYPE = 'application/x-politicon-policy';
 const MAX_HISTORY_TURNS = 20;
 const MAX_TURN_CHARS = 4000;
+/** Longest question accepted from ?q= (the landing page's search box). */
+const MAX_PREFILL_CHARS = 500;
 
 const INITIAL_MESSAGE: ExtendedMessage = {
   id: '0',
@@ -218,6 +220,7 @@ const INITIAL_MESSAGE: ExtendedMessage = {
 function AdvisorInner() {
   const searchParams = useSearchParams();
   const policyIdParam = searchParams.get('policyId');
+  const questionParam = searchParams.get('q');
   const { simple } = useReadingMode();
 
   const [sessions, setSessions] = useState<ChatSession[]>([]);
@@ -470,6 +473,17 @@ function AdvisorInner() {
     setInput(`Tell me about the financial impact of ${match.title}`);
     inputRef.current?.focus();
   }, [policyIdParam, feed, feedLoading]);
+
+  // Arriving with ?q= (the landing page's search box) puts that question in
+  // the composer. It is never sent automatically. ?policyId= takes precedence.
+  useEffect(() => {
+    if (policyIdParam || prefilledRef.current) return;
+    const question = questionParam?.trim().slice(0, MAX_PREFILL_CHARS).trim();
+    if (!question) return;
+    prefilledRef.current = true;
+    setInput(question);
+    inputRef.current?.focus();
+  }, [policyIdParam, questionParam]);
 
   // Size the composer to its text however it was set (typing, prefill, clearing).
   useLayoutEffect(() => {

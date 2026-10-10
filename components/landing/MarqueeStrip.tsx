@@ -1,28 +1,37 @@
 import { Pause, Play } from 'lucide-react';
-import { hotPolicyTags } from '@/mocks/policies';
+import { impactSign } from '@/lib/format';
+import { CATEGORIES, EXAMPLE_POLICIES, formatAnnual, largestEffect } from '@/lib/explorerData';
+
+const TONE = { gain: 'text-positive', loss: 'text-negative', neutral: 'text-text-muted' } as const;
+const categoryLabel = (key: string) => CATEGORIES.find(c => c.key === key)?.label ?? key;
+
+// The same illustrative examples as the explorer chart, each with the bracket it affects most.
+const tags = EXAMPLE_POLICIES.map(policy => {
+  const { bracket, amount } = largestEffect(policy);
+  return { id: policy.id, label: policy.title, category: categoryLabel(policy.category), amount, bracket: bracket.label };
+});
 
 function TagList({ hidden = false }: { hidden?: boolean }) {
   return (
     // pr-4 (not a gap between the two lists) keeps the -50% loop seamless.
     <ul
       className="flex gap-4 pr-4 flex-shrink-0"
-      aria-label={hidden ? undefined : 'Example policy impacts'}
+      aria-label={hidden ? undefined : 'Illustrative example policies (not real analyses)'}
       aria-hidden={hidden || undefined}
     >
-      {hotPolicyTags.map(tag => (
+      {tags.map(tag => (
         // Solid tint, no backdrop-filter: 20 moving chips would re-blur every frame.
         <li
-          key={tag.label}
+          key={tag.id}
           className="flex items-center gap-2.5 rounded-full border border-white/8 bg-white/4 px-4 py-2 flex-shrink-0 cursor-default"
         >
           <span className="text-xs text-text-muted font-mono-data">{tag.category}</span>
           <span className="w-px h-3 bg-white/10" aria-hidden="true" />
           <span className="text-xs text-text-primary font-medium">{tag.label}</span>
-          <span className={`text-xs font-mono-data font-semibold ${
-            tag.direction === 'positive' ? 'text-positive' : 'text-negative'
-          }`}>
-            {tag.impact}
+          <span className={`text-xs font-mono-data font-semibold ${TONE[impactSign(tag.amount)]}`}>
+            {formatAnnual(tag.amount)}
           </span>
+          <span className="text-xs text-text-muted">{tag.bracket} households</span>
         </li>
       ))}
     </ul>
@@ -30,9 +39,10 @@ function TagList({ hidden = false }: { hidden?: boolean }) {
 }
 
 /**
- * Scrolling ticker of example policies. The list is rendered twice for the
- * loop; the copy is hidden from screen readers. Pausing is pure CSS (a
- * checkbox), so it works before and without hydration.
+ * Scrolling ticker of the illustrative example policies (lib/explorerData),
+ * labelled as examples. The list is rendered twice for the loop; the copy is
+ * hidden from screen readers. Pausing is pure CSS (a checkbox), so it works
+ * before and without hydration.
  */
 export default function MarqueeStrip() {
   return (
@@ -40,6 +50,14 @@ export default function MarqueeStrip() {
       {/* Fade edges */}
       <div className="absolute left-0 top-0 bottom-0 w-24 bg-gradient-to-r from-base to-transparent z-10" aria-hidden="true" />
       <div className="absolute right-0 top-0 bottom-0 w-24 bg-gradient-to-l from-base to-transparent z-10" aria-hidden="true" />
+
+      {/* Always visible, so no chip reads as a real estimate. */}
+      <p
+        className="absolute left-2 top-1/2 -translate-y-1/2 z-20 rounded-full border border-gold/20 bg-base/90 px-3 py-1.5 text-meta font-mono-data uppercase tracking-wide text-gold"
+        aria-hidden="true"
+      >
+        Illustrative
+      </p>
 
       <div
         className="flex w-max animate-marquee hover:[animation-play-state:paused] group-has-[:checked]/marquee:[animation-play-state:paused]"
