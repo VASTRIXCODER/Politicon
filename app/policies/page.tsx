@@ -12,6 +12,7 @@ import PolicyFeedCard, { FeedSkeletonCard } from '@/components/PolicyFeedCard';
 import { useToast } from '@/components/ui/Toast';
 import { apiFetch } from '@/lib/api';
 import { requestAnalysis } from '@/lib/analysisClient';
+import { policyCategory, track } from '@/lib/track';
 import { createClient } from '@/lib/supabase/client';
 import { getCategoryIcon } from '@/lib/categoryIcons';
 import type { DiscoveredPolicy } from '@/types';
@@ -72,7 +73,7 @@ export default function PoliciesPage() {
         setPreparing(true);
         if (attempt < POLL_ATTEMPTS) {
           if (res.data.policies?.length) setLoading(false);
-          timer.current = setTimeout(() => loadFeed(attempt + 1), POLL_MS);
+          timer.current = setTimeout(() => { void loadFeed(attempt + 1); }, POLL_MS);
           return;
         }
         fail('Your feed is taking longer than usual. Please check back in a few minutes.');
@@ -82,7 +83,7 @@ export default function PoliciesPage() {
       return;
     } else if (attempt > 0 && attempt < POLL_ATTEMPTS && (res.status === 0 || res.status === 429 || (res.status >= 500 && res.code !== 'feed_failed'))) {
       // A blip while waiting for a refresh: keep checking.
-      timer.current = setTimeout(() => loadFeed(attempt + 1), POLL_MS);
+      timer.current = setTimeout(() => { void loadFeed(attempt + 1); }, POLL_MS);
       return;
     } else {
       fail(res.message);
@@ -93,8 +94,8 @@ export default function PoliciesPage() {
 
   useEffect(() => {
     abort.current = new AbortController();
-    loadFeed();
-    loadImpacts();
+    void loadFeed();
+    void loadImpacts();
     return () => {
       abort.current?.abort();
       if (timer.current) clearTimeout(timer.current);
@@ -106,9 +107,12 @@ export default function PoliciesPage() {
   async function handleAnalyze(policy: DiscoveredPolicy) {
     if (analyzingIds.has(policy.id)) return;
     setAnalyzingIds((prev) => new Set(prev).add(policy.id));
+    const category = policyCategory(policy.category);
+    track('analysis_requested', { source: 'policies', category });
     const res = await requestAnalysis(policy.id, { signal: abort.current?.signal });
     if (abort.current?.signal.aborted) return;
     if (res.ok) {
+      track('analysis_ready', { source: 'policies', category, status: res.fresh ? 'fresh' : 'cached' });
       setImpacts((prev) => new Map(prev).set(policy.id, res.analysis.netAnnualImpact));
       showToast(`Analysis ready for “${policy.title}”.`);
     } else if (!res.cancelled) {
@@ -124,6 +128,7 @@ export default function PoliciesPage() {
   async function handleDismiss(policy: DiscoveredPolicy): Promise<string | null> {
     const res = await apiFetch('/api/feedback', { body: { targetType: 'feed_item', targetId: policy.id, rating: 'not_relevant' } });
     if (!res.ok) return res.message;
+    track('policy_dismissed', { source: 'policies', category: policyCategory(policy.category) });
     setPolicies((prev) => prev.filter((p) => p.id !== policy.id));
     showToast(`Hidden “${policy.title}” from your feed.`);
     return null;

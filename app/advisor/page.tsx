@@ -17,6 +17,7 @@ import AiDisclaimer from '@/components/ui/AiDisclaimer';
 import ReadingModeToggle from '@/components/ui/ReadingModeToggle';
 import { useReadingMode } from '@/components/providers/ReadingModeProvider';
 import { apiFetch } from '@/lib/api';
+import { policyCategory, track } from '@/lib/track';
 import { useModalDialog } from '@/components/layout/useModalDialog';
 
 // General questions; specific bills come from the user's own feed (right panel).
@@ -286,7 +287,7 @@ function AdvisorInner() {
 
   useEffect(() => {
     const supabase = createClient();
-    supabase.auth.getUser().then(async ({ data: { user } }) => {
+    void supabase.auth.getUser().then(async ({ data: { user } }) => {
       if (!user) { setSessionsLoading(false); return; }
       userId.current = user.id;
       try {
@@ -336,7 +337,7 @@ function AdvisorInner() {
       }
       if (!signal.aborted) setFeedLoading(false);
     }
-    loadFeed();
+    void loadFeed();
     return () => controller.abort();
   }, []);
 
@@ -402,6 +403,13 @@ function AdvisorInner() {
     });
     if (controller.signal.aborted) return; // the user switched conversations
     inflight.current = null;
+    // Never the message itself: only whether it was about a feed policy, and how it went.
+    track('guide_message_sent', {
+      source: policyMeta ? 'policy' : 'chat',
+      category: policyCategory(policyMeta?.category),
+      reading_mode: simple ? 'simple' : 'expert',
+      status: !res.ok ? 'error' : res.data.guardrail ? 'guardrail' : 'ok',
+    });
 
     if (!res.ok) {
       // Shown once, not saved, and not sent back to the model. A used-up daily
@@ -458,7 +466,7 @@ function AdvisorInner() {
   useEffect(() => {
     if (!pendingRetry) return;
     setPendingRetry(null);
-    sendMessage(pendingRetry.text, pendingRetry.policyMeta);
+    void sendMessage(pendingRetry.text, pendingRetry.policyMeta);
   }, [pendingRetry, sendMessage]);
 
   // Arriving with ?policyId= (e.g. "Ask advisor" on the dashboard) prefills the
@@ -495,7 +503,7 @@ function AdvisorInner() {
 
   const pickPolicy = (p: DiscoveredPolicy) => {
     setPendingPolicy(null);
-    sendMessage(`Tell me about the financial impact of ${p.title}`, {
+    void sendMessage(`Tell me about the financial impact of ${p.title}`, {
       policyId: p.id, policyTitle: p.title, category: p.category,
     });
   };
@@ -503,7 +511,7 @@ function AdvisorInner() {
   const submitInput = () => {
     const meta = pendingPolicy;
     setPendingPolicy(null);
-    sendMessage(input, meta || undefined, true);
+    void sendMessage(input, meta || undefined, true);
   };
 
   const cancelInflight = () => {

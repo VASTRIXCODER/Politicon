@@ -4,7 +4,7 @@
  * its sitemap lastModified.
  */
 export const TERMS_UPDATED = '2026-10-07';
-export const PRIVACY_UPDATED = '2026-10-08';
+export const PRIVACY_UPDATED = '2026-10-12';
 export const DISCLAIMER_UPDATED = '2026-10-07';
 
 /**

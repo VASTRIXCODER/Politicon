@@ -90,6 +90,13 @@
 }
 
 @layer components {
+  /* Links inside running text are underlined, not told apart by colour alone
+     (WCAG 1.4.1). */
+  .legal-prose a {
+    text-decoration-line: underline;
+    text-underline-offset: 3px;
+  }
+
   /* Glass surfaces. No radius and no border shorthand: callers pick rounded-*,
      and border colour utilities (border-primary/40, border-red-500/20) win. */
   .glass {

@@ -15,6 +15,7 @@ import CountUp from '@/components/ui/CountUp';
 import { Tabs, TabList, Tab, TabPanel } from '@/components/ui/Tabs';
 import { requestAnalysis } from '@/lib/analysisClient';
 import { apiFetch } from '@/lib/api';
+import { policyCategory, track } from '@/lib/track';
 import FeedbackControls from '@/components/FeedbackControls';
 import AiDisclaimer from '@/components/ui/AiDisclaimer';
 import type { DiscoveredPolicy } from '@/types';
@@ -96,7 +97,7 @@ export default function DashboardPage() {
   useEffect(() => {
     const controller = new AbortController();
     unmounted.current = controller;
-    loadFeed(false);
+    void loadFeed(false);
     return () => {
       controller.abort();
       if (feedTimer.current) clearTimeout(feedTimer.current);
@@ -128,7 +129,7 @@ export default function DashboardPage() {
       .order('updated_at', { ascending: false })
       .limit(RECENT_LIMIT);
     if (data) setAnalyses(data);
-    loadTotals();
+    void loadTotals();
   }
 
   useEffect(() => {
@@ -160,13 +161,13 @@ export default function DashboardPage() {
             .eq('user_id', user.id)
             .order('updated_at', { ascending: false })
             .limit(RECENT_LIMIT);
-          loadTotals();
+          void loadTotals();
 
           if (analysesErr) {
             if ((analysesErr as { code?: string }).code !== '42P01') console.error('policy_analyses load error:', analysesErr);
           } else {
             setAnalyses(analysesData || []);
-            if (analysesData && analysesData.length > 0) loadInsight();
+            if (analysesData && analysesData.length > 0) void loadInsight();
           }
         } catch (e) {
           console.error('Failed to load analyses:', e);
@@ -176,7 +177,7 @@ export default function DashboardPage() {
       }
     }
 
-    load();
+    void load();
   }, []);
 
   // Realtime: keep net impact + analyzed list live as this user's analyses change
@@ -184,17 +185,17 @@ export default function DashboardPage() {
     const supabase = createClient();
     let channel: ReturnType<typeof supabase.channel> | null = null;
     let cancelled = false;
-    supabase.auth.getUser().then(({ data: { user } }) => {
+    void supabase.auth.getUser().then(({ data: { user } }) => {
       if (!user || cancelled) return;
       channel = supabase
         .channel(`dashboard-analyses-${user.id}`)
         .on('postgres_changes', { event: '*', schema: 'public', table: 'analyzed_policies', filter: `user_id=eq.${user.id}` },
-          () => { refetchAnalyses(); })
+          () => { void refetchAnalyses(); })
         .subscribe();
     });
     return () => {
       cancelled = true;
-      if (channel) supabase.removeChannel(channel);
+      if (channel) void supabase.removeChannel(channel);
     };
     // Subscribes once per mount; refetchAnalyses only uses the client and state setters.
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -220,6 +221,7 @@ export default function DashboardPage() {
       policies?: FeedPolicy[]; updatedAt?: string | null; generating?: boolean; stale?: boolean; failed?: boolean;
     }>('/api/policies/feed', { ...(refresh && attempt === 0 ? { method: 'POST' } : {}), signal: unmounted.current.signal });
     if (unmounted.current.signal.aborted) return;
+    if (refresh && attempt === 0) track('feed_refreshed', { source: 'dashboard', status: res.ok ? 'ok' : 'error' });
     // A refresh is judged against the feed that was showing when it started.
     const baseline = attempt === 0 && refresh ? feedUpdatedAtRef.current : refreshStartedAt;
 
@@ -236,7 +238,7 @@ export default function DashboardPage() {
       }
       setFeedRefreshing(true);
       if (attempt < FEED_POLL_ATTEMPTS) {
-        feedTimer.current = setTimeout(() => loadFeed(false, attempt + 1, baseline ?? null), FEED_POLL_MS);
+        feedTimer.current = setTimeout(() => { void loadFeed(false, attempt + 1, baseline ?? null); }, FEED_POLL_MS);
         return;
       }
       if (hasFeed.current) showToast('Your feed is taking longer than usual to update. Check back in a few minutes.', 'error');
@@ -268,10 +270,13 @@ export default function DashboardPage() {
   async function handleAnalyze(policy: FeedPolicy) {
     if (analyzingIds.has(policy.id)) return;
     setAnalyzingIds(prev => new Set(prev).add(policy.id));
+    const category = policyCategory(policy.category);
+    track('analysis_requested', { source: 'dashboard', category });
     // Analyses run in the background; this resolves when the job finishes.
     const res = await requestAnalysis(policy.id, { signal: unmounted.current.signal });
     if (unmounted.current.signal.aborted) return;
     if (res.ok) {
+      track('analysis_ready', { source: 'dashboard', category, status: res.fresh ? 'fresh' : 'cached' });
       showToast(`Analysis complete for "${policy.title}"`);
       await refetchAnalyses();
     } else if (!res.cancelled) {
@@ -294,6 +299,7 @@ export default function DashboardPage() {
       body: { targetType: 'feed_item', targetId: policy.id, rating: 'not_relevant' },
     });
     if (!res.ok) return res.message;
+    track('policy_dismissed', { source: 'dashboard', category: policyCategory(policy.category) });
     setFeedPolicies(prev => prev.filter(p => p.id !== policy.id));
     showToast(`Hidden “${policy.title}” from your feed.`);
     return null;

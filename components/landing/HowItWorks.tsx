@@ -192,6 +192,7 @@ export default function HowItWorks({ stateBills }: HowItWorksProps) {
                       <div className="flex items-center justify-between mb-6">
                         <span
                           aria-hidden="true"
+                          data-decorative
                           className="font-mono-data text-5xl font-bold opacity-20"
                           style={{ color: step.color }}
                         >

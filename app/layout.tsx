@@ -5,6 +5,7 @@ import LenisProvider from '@/components/providers/LenisProvider';
 import MotionProvider from '@/components/providers/MotionProvider';
 import { ReadingModeProvider } from '@/components/providers/ReadingModeProvider';
 import CustomCursor from '@/components/ui/CustomCursor';
+import Analytics from '@/components/Analytics';
 import { SITE_DESCRIPTION, SITE_NAME, SITE_URL } from '@/lib/site';
 
 // Self-hosted at build time; exposed as --font-jetbrains (see --font-mono in globals.css).
@@ -67,6 +68,8 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
             </ReadingModeProvider>
           </LenisProvider>
         </MotionProvider>
+        {/* Vercel Web Analytics + Speed Insights (Vercel deployments only). */}
+        <Analytics />
       </body>
     </html>
   );

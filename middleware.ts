@@ -104,6 +104,7 @@ export async function middleware(request: NextRequest) {
 
 export const config = {
   // Skip static assets and API routes (which authenticate themselves).
-  // Generated metadata files (robots.txt, sitemap.xml, icons, the share image) skip it too.
-  matcher: ['/((?!_next/static|_next/image|favicon.ico|api/|opengraph-image|twitter-image|apple-icon|.*\\.(?:svg|png|jpg|jpeg|gif|webp|ico|txt|xml)$).*)'],
+  // Generated metadata files (robots.txt, sitemap.xml, icons, the share image) skip it too,
+  // as do Vercel Analytics / Speed Insights scripts and beacons (/_vercel/*).
+  matcher: ['/((?!_next/static|_next/image|_vercel/|favicon.ico|api/|opengraph-image|twitter-image|apple-icon|.*\\.(?:svg|png|jpg|jpeg|gif|webp|ico|txt|xml)$).*)'],
 };

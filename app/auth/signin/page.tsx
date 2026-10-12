@@ -46,7 +46,7 @@ export default function SignInPage() {
 
   // If already logged in, redirect to the requested page (or the dashboard), or to onboarding
   useEffect(() => {
-    supabase.auth.getUser().then(async ({ data: { user } }) => {
+    void supabase.auth.getUser().then(async ({ data: { user } }) => {
       if (user) {
         const { data: profile } = await supabase
           .from('user_profiles')

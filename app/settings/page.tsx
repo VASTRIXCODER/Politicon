@@ -266,7 +266,7 @@ export default function SettingsPage() {
     setLoading(false);
   };
 
-  useEffect(() => { loadProfile(); }, [loadProfile]);
+  useEffect(() => { void loadProfile(); }, [loadProfile]);
 
   // Show a notice from an email link once the page (and its toast) is up.
   const noticeShown = useRef(false);

@@ -14,6 +14,7 @@ import AmbientBackground from '@/components/landing/AmbientBackground';
 import FullPageLoader from '@/components/auth/FullPageLoader';
 import { friendlyAuthError } from '@/components/auth/authErrors';
 import { MIN_AGE, TERMS_VERSION } from '@/lib/legal';
+import { track } from '@/lib/track';
 
 const THIS_YEAR = new Date().getFullYear();
 const BIRTH_YEARS = Array.from({ length: 100 }, (_, i) => THIS_YEAR - i);
@@ -91,7 +92,7 @@ export default function SignUpPage() {
   // On mount: if the user is already fully signed in, route them appropriately.
   // We only redirect existing sessions — a brand-new signup always goes to onboarding.
   useEffect(() => {
-    supabase.auth.getUser().then(async ({ data: { user } }) => {
+    void supabase.auth.getUser().then(async ({ data: { user } }) => {
       if (user) {
         const { data: profile } = await supabase
           .from('user_profiles')
@@ -154,6 +155,9 @@ export default function SignUpPage() {
       setLoading(false);
       return;
     }
+
+    // An account was created (no details about it are sent).
+    track('signup_completed', { status: data.session ? 'confirmed' : 'pending_confirmation' });
 
     if (data.session) {
       // Email confirmation is disabled — user is immediately signed in.
