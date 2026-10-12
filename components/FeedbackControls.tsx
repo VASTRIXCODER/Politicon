@@ -4,6 +4,7 @@ import { useEffect, useRef, useState } from 'react';
 import Link from 'next/link';
 import { ThumbsUp, ThumbsDown, Flag } from 'lucide-react';
 import { apiFetch } from '@/lib/api';
+import { track } from '@/lib/track';
 
 type Target = 'analysis' | 'feed_item' | 'chat_reply' | 'insight';
 type Rating = 'up' | 'down' | 'not_relevant' | 'report';
@@ -45,6 +46,8 @@ export default function FeedbackControls({
     } else if (res.ok) {
       setSent(rating);
       setReporting(false);
+      // Only the target type and rating; never the reason text or excerpt.
+      track('feedback_sent', { target: targetType, rating });
     } else {
       setError(res.message);
     }
@@ -73,7 +76,7 @@ export default function FeedbackControls({
           </div>
           {reporting && (
             <form
-              onSubmit={(e) => { e.preventDefault(); send('report', reason.trim() || undefined); }}
+              onSubmit={(e) => { e.preventDefault(); void send('report', reason.trim() || undefined); }}
               className="mt-2 flex flex-col sm:flex-row gap-2"
             >
               <label htmlFor={`report-${targetId}`} className="sr-only">What&apos;s wrong?</label>

@@ -16,10 +16,12 @@ interface RevealProps {
   id?: string;
 }
 
+// Sideways slides only from md up: on a phone an off-screen row shifted
+// sideways widens the page and makes it scroll horizontally.
 const hiddenOffset: Record<From, string> = {
   up: 'data-[reveal=hidden]:translate-y-6',
-  left: 'data-[reveal=hidden]:-translate-x-8',
-  right: 'data-[reveal=hidden]:translate-x-8',
+  left: 'data-[reveal=hidden]:translate-y-6 md:data-[reveal=hidden]:translate-y-0 md:data-[reveal=hidden]:-translate-x-8',
+  right: 'data-[reveal=hidden]:translate-y-6 md:data-[reveal=hidden]:translate-y-0 md:data-[reveal=hidden]:translate-x-8',
   none: '',
 };
 

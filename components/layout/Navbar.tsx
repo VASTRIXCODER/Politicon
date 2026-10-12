@@ -350,7 +350,7 @@ export default function Navbar() {
               </nav>
               <div className="flex flex-col gap-3 pt-6 border-t border-white/8">
                 {user ? (
-                  <button type="button" onClick={() => { closeMobile(); handleSignOut(); }}
+                  <button type="button" onClick={() => { closeMobile(); void handleSignOut(); }}
                     className="flex items-center justify-center gap-2 w-full py-3 rounded-xl text-sm text-red-400 border border-red-500/20 hover:bg-red-500/10 transition-all">
                     <LogOut className="w-4 h-4" aria-hidden="true" /> Sign Out
                   </button>

@@ -12,6 +12,7 @@ import {
 } from 'lucide-react';
 import { EMPLOYMENT_STATUSES, FILING_STATUSES, HOUSING_SITUATIONS, INCOME_RANGES, labelOf } from '@/lib/profileOptions';
 import { requestAnalysis } from '@/lib/analysisClient';
+import { policyCategory, track } from '@/lib/track';
 import { costChange, formatPct, formatPts, formatUSD, impactSign, impactTone, impactWords } from '@/lib/format';
 import { applicability, type Applicability } from '@/lib/applicability';
 import { coerceFullAnalysis } from '@/lib/analysisSchema';
@@ -171,8 +172,11 @@ export default function PolicyDetailPage({ params }: { params: Promise<{ policyI
     generationAbort.current = new AbortController();
     setGenerating(true);
     setGenerateError(null);
+    // Following a job started elsewhere isn't a new request.
+    if (!followOnly) track('analysis_requested', { source: 'impact', category: policyCategory(analysis?.category) });
     const res = await requestAnalysis(policyId, { force, followOnly, signal: generationAbort.current.signal });
     if (res.ok) {
+      track('analysis_ready', { source: 'impact', category: policyCategory(res.analysis.category), status: res.fresh ? 'fresh' : 'cached' });
       setAnalysis(coerceFullAnalysis(res.analysis as unknown as Record<string, unknown>, policyFromAnalysis(policyId, res.analysis)));
       if (res.profileSnapshot) setProfile(res.profileSnapshot as ProfileSnapshot);
       setNotFound(false);
@@ -258,8 +262,8 @@ export default function PolicyDetailPage({ params }: { params: Promise<{ policyI
       }
     }
 
-    load().then(() => {
-      if (followRunningJob && !cancelled) generate(false, true);
+    void load().then(() => {
+      if (followRunningJob && !cancelled) void generate(false, true);
     });
     return () => { cancelled = true; };
     // Loads once per policy; generate() only reads policyId and state setters.

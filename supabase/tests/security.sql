@@ -82,17 +82,83 @@ do $$ begin
 end $$;
 commit;
 
--- Every table in public has RLS enabled.
+-- Catalog-wide rules, so a new table, view or function can't skip the
+-- protections the tests above check one by one.
+
+-- Every table in public (plain or partitioned) has RLS enabled.
 do $$
 declare
-  t text;
+  v_bad text;
 begin
-  for t in
-    select c.relname from pg_class c
-    where c.relnamespace = 'public'::regnamespace and c.relkind = 'r' and not c.relrowsecurity
-  loop
-    raise exception 'RLS is disabled on public.%', t;
+  if not exists (select 1 from pg_class where relnamespace = 'public'::regnamespace and relkind in ('r', 'p')) then
+    raise exception 'no tables in public; the schema was not built';
+  end if;
+  select string_agg(c.relname, ', ' order by c.relname) into v_bad
+  from pg_class c
+  where c.relnamespace = 'public'::regnamespace and c.relkind in ('r', 'p') and not c.relrowsecurity;
+  if v_bad is not null then raise exception 'RLS is disabled on public tables: %', v_bad; end if;
+end $$;
+
+-- Views run with the caller's rights, so the RLS of the tables under them applies.
+do $$
+declare
+  v_bad text;
+begin
+  select string_agg(c.relname, ', ' order by c.relname) into v_bad
+  from pg_class c
+  where c.relnamespace = 'public'::regnamespace and c.relkind = 'v'
+    and not exists (select 1 from unnest(c.reloptions) o where o ~* '^security_invoker=(true|on|yes|1)$');
+  if v_bad is not null then raise exception 'views in public without security_invoker: %', v_bad; end if;
+end $$;
+
+-- Every SECURITY DEFINER function in public pins its search_path, so a caller
+-- can't redirect the names it uses to objects of their own.
+do $$
+declare
+  v_bad text;
+begin
+  select string_agg(p.oid::regprocedure::text, ', ' order by p.proname) into v_bad
+  from pg_proc p
+  where p.pronamespace = 'public'::regnamespace and p.prosecdef
+    and not exists (select 1 from unnest(p.proconfig) c where c like 'search_path=%');
+  if v_bad is not null then raise exception 'security definer functions without a fixed search_path: %', v_bad; end if;
+end $$;
+
+-- The API roles can execute no SECURITY DEFINER function in public except
+-- those allowlisted here. The server calls the rest as service_role.
+do $$
+declare
+  v_allow constant text[] := array[
+    -- Trigger functions on auth.users. Postgres refuses to call a trigger
+    -- function directly ("trigger functions can only be called as triggers"),
+    -- so the EXECUTE that PUBLIC gets by default lets nobody run them; the
+    -- denied calls below prove it.
+    'public.handle_new_user()',
+    'public.sync_profile_email()'
+  ];
+  v_name text;
+  v_role text;
+  v_bad text;
+begin
+  foreach v_name in array v_allow loop
+    if to_regprocedure(v_name) is null then
+      raise exception 'allowlisted function % no longer exists; remove it from the allowlist', v_name;
+    end if;
   end loop;
+
+  foreach v_role in array array['anon', 'authenticated'] loop
+    select string_agg(p.oid::regprocedure::text, ', ' order by p.proname) into v_bad
+    from pg_proc p
+    where p.pronamespace = 'public'::regnamespace and p.prosecdef
+      and has_function_privilege(v_role, p.oid, 'EXECUTE')
+      and not p.oid = any (array(select to_regprocedure(x)::oid from unnest(v_allow) x));
+    if v_bad is not null then
+      raise exception '% can execute security definer functions: % (revoke execute, or allowlist with a reason)', v_role, v_bad;
+    end if;
+  end loop;
+
+  perform pg_temp.denied('anon', null, 'select public.handle_new_user()');
+  perform pg_temp.denied('anon', null, 'select public.sync_profile_email()');
 end $$;
 
 -- Budget reservation enforces the per-user quota and the global ceiling.

@@ -18,6 +18,7 @@ import {
 } from '@/lib/profileOptions';
 import { FinancialProfileSchema } from '@/lib/profileSchema';
 import { afterOnboardingPath } from '@/lib/safeNext';
+import { track } from '@/lib/track';
 
 interface Draft {
   state: string;
@@ -179,7 +180,7 @@ export default function OnboardingPage() {
   // Load the session, then prefill from a saved draft or the existing profile.
   useEffect(() => {
     let cancelled = false;
-    (async () => {
+    void (async () => {
       const { data: { user } } = await supabase.auth.getUser();
       if (!user) { router.replace('/auth/signin?next=/onboarding'); return; }
 
@@ -300,6 +301,8 @@ export default function OnboardingPage() {
       return;
     }
     try { if (userId) localStorage.removeItem(draftKey(userId)); } catch { /* storage unavailable */ }
+    // No answers are sent, only that the profile was saved.
+    track('onboarding_completed');
     setShowDone(true);
     // Back to where they were heading (e.g. a question for the AI Policy Guide), else the dashboard.
     const after = afterOnboardingPath(new URLSearchParams(window.location.search).get('next')) || '/dashboard';
@@ -309,7 +312,7 @@ export default function OnboardingPage() {
   const next = () => {
     if (!canAdvance()) return;
     if (step < TOTAL_STEPS - 1) { setNavigated(true); setStep(s => s + 1); }
-    else handleComplete();
+    else void handleComplete();
   };
 
   const back = () => {

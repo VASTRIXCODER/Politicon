@@ -59,14 +59,14 @@ export function ReadingModeProvider({ children }: { children: ReactNode }) {
     let currentUser: string | null | undefined;
     supabase.auth.getUser().then(({ data: { user } }) => {
       currentUser = user?.id ?? null;
-      loadFor(currentUser);
+      void loadFor(currentUser);
     }).catch(() => setReady(true));
     const { data: { subscription } } = supabase.auth.onAuthStateChange((event, session) => {
       const id = session?.user?.id ?? null;
       if (event === 'SIGNED_IN' && currentUser !== undefined && id !== currentUser) {
         currentUser = id;
         dirty.current = false;
-        loadFor(id);
+        void loadFor(id);
       } else if (event === 'SIGNED_OUT') {
         currentUser = null;
       }
@@ -81,7 +81,7 @@ export function ReadingModeProvider({ children }: { children: ReactNode }) {
     try { localStorage.setItem(STORAGE_KEY, next); } catch { /* ignore */ }
     // Persist to Supabase in the background so it follows the user across devices.
     // It still applies on this device if that fails.
-    (async () => {
+    void (async () => {
       try {
         const supabase = createClient();
         const { data: { user } } = await supabase.auth.getUser();

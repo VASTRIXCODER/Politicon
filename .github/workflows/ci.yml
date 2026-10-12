@@ -9,13 +9,19 @@ concurrency:
   group: ci-${{ github.ref }}
   cancel-in-progress: true
 
+permissions:
+  contents: read
+
 jobs:
   check:
     runs-on: ubuntu-latest
+    timeout-minutes: 30
     env:
       NEXT_TELEMETRY_DISABLED: 1
-      # Placeholders so the build can run; no real services are contacted.
-      NEXT_PUBLIC_SUPABASE_URL: https://example.supabase.co
+      # The build points at the in-memory fake Supabase that Playwright starts
+      # on this port (tests/e2e/fake-supabase.mjs), so the signed-in journey
+      # runs hermetically; no real services are contacted. The key is a placeholder.
+      NEXT_PUBLIC_SUPABASE_URL: http://127.0.0.1:3201
       NEXT_PUBLIC_SUPABASE_ANON_KEY: ci-placeholder
     steps:
       - uses: actions/checkout@v4
@@ -24,10 +30,43 @@ jobs:
           node-version-file: .nvmrc
           cache: npm
       - run: npm ci
-      - run: npm run lint
+      - name: Lint (zero warnings)
+        run: npm run lint
       - run: npm run typecheck
       - run: npm test
+      - name: Eval heuristics and guardrail checks (no API key, so no model calls)
+        run: npm run eval
       - run: npm run build
+      - name: Bundle budget (first-load JS per page)
+        run: npm run check:bundle
+      - name: Install Playwright Chromium
+        run: npx playwright install --with-deps chromium
+      - name: End-to-end tests (desktop 1280x800 and mobile 375x812, against the production build)
+        # playwright.config.ts starts the fake Supabase (port 3201) and `next start -p 3200`
+        # on the build above; the hermetic signed-in journey fails here if the build doesn't target the fake.
+        run: npm run test:e2e
+      - name: Upload Playwright report
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: playwright-report
+          path: |
+            playwright-report/
+            test-results/
+          retention-days: 7
+
+  # Separate job so a newly published advisory doesn't hide lint, test and
+  # build results. Reads only package-lock.json; nothing is installed. Fails on
+  # high/critical advisories except those accepted, with a reason, in the script.
+  audit:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version-file: .nvmrc
+      - name: Audit production dependencies (high and critical)
+        run: npm run audit:prod
 
   database:
     runs-on: ubuntu-latest

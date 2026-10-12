@@ -169,7 +169,7 @@ function ImpactContent() {
         setLoading(false);
       }
     }
-    load();
+    void load();
   }, [policyParam]);
 
   const checkedAnalyses = useMemo(() => analyses.filter(a => checkedIds.has(a.id)), [analyses, checkedIds]);
@@ -225,12 +225,13 @@ function ImpactContent() {
     let cancelled = false;
     setCumLoading(true);
     const policyIds = checkedAnalyses.map(a => a.policy_id).slice(0, 50);
-    const t = setTimeout(async () => {
+    const summarize = async () => {
       const res = await apiFetch<{ summary: string }>('/api/cumulative-summary', { body: { policyIds } });
       if (cancelled) return;
       setCumSummary(res.ok ? res.data.summary || '' : '');
       setCumLoading(false);
-    }, 700);
+    };
+    const t = setTimeout(() => { void summarize(); }, 700);
     return () => { cancelled = true; clearTimeout(t); };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [checkedKey]);
