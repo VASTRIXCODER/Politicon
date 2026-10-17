@@ -80,7 +80,7 @@ These are all the variables the app reads (`grep -rn process.env app lib compone
 
 | Variable | Where | Purpose |
 |---|---|---|
-| `NEXT_PUBLIC_APP_URL` | public, build time | Public base URL, for example `https://politicon.app` (no trailing slash). Used for absolute URLs in metadata, the share image, `robots.txt` and `sitemap.xml`. If it isn't set (or is a localhost URL on Vercel), `lib/site.ts` uses Vercel's preview, production or deployment URL, then `http://localhost:3000`. |
+| `NEXT_PUBLIC_APP_URL` | public, build time | Public base URL, for example `https://getpoliticon.app` (no trailing slash). Used for absolute URLs in metadata, the share image, `robots.txt` and `sitemap.xml`. If it isn't set (or is a localhost URL on Vercel), `lib/site.ts` uses Vercel's preview, production or deployment URL, then `http://localhost:3000`. |
 | `RATE_LIMIT_SALT` | server | Secret for hashing client IPs before they're stored for rate limiting (`lib/rateLimit.ts`). Without it the service-role key is used, then a fixed string. Use any long random string. |
 | `CONGRESS_API_KEY` | server | api.data.gov key for Congress.gov. Without it the public `DEMO_KEY` is used, and `/api/health` reports the federal source as not OK in production. |
 | `HEALTHCHECK_TOKEN` | server | Send it as the `x-health-token` header to get per-dependency details from `/api/health`. Without it, `/api/health` only ever returns `{ ok }`. |
@@ -91,7 +91,7 @@ These are all the variables the app reads (`grep -rn process.env app lib compone
 |---|---|---|
 | `OPENSTATES_API_KEY` | server | Open States key. Turns on state bills in the feed. The landing page, explorer, help page and share image only mention state bills when it's set. |
 | `ANTHROPIC_MODEL` | server | Model id. Default `claude-sonnet-5-5`. A model without a built-in price also needs the two `AI_PRICE_*` variables, otherwise AI calls are refused. |
-| `NEXT_PUBLIC_SUPPORT_EMAIL` | public | Contact address shown in the footer, help, terms, privacy and newsletter copy. Default `support@politicon.app`. |
+| `NEXT_PUBLIC_SUPPORT_EMAIL` | public | Contact address shown in the footer, help, terms, privacy and newsletter copy. Default `support@getpoliticon.app`. |
 | `NEXT_PUBLIC_ANALYTICS_DISABLED` | build time | Set to `1` to leave Vercel Web Analytics and Speed Insights off a Vercel deployment. |
 | `AI_KILL_SWITCH` | server | `1`, `true` or `on` turns off every AI feature (`503 ai_disabled`). |
 | `AI_DISABLED_FEATURES` | server | Comma-separated features to turn off: `analyze,feed,advisor,advisor_policy,insight,cumulative_summary`. |
@@ -158,7 +158,7 @@ Or paste each file into the SQL editor in that order. Every migration from `2026
 
 In Authentication → URL Configuration:
 
-- **Site URL**: your production URL, for example `https://politicon.app`.
+- **Site URL**: your production URL, for example `https://getpoliticon.app`.
 - **Redirect URLs**: add these routes for every origin you use (production, `http://localhost:3000`, and a preview pattern such as `https://*-<team>.vercel.app`):
   - `/auth/callback**`: PKCE code exchange for sign-up confirmation, password reset (`?next=/auth/reset`) and email change (`?next=/settings`).
   - `/auth/confirm**`: token-hash email links.
@@ -295,8 +295,8 @@ EVAL_VERBOSE=1 npm run eval           # also print every reply
 ### Health check
 
 ```bash
-curl -s https://politicon.app/api/health                                      # {"ok":true}, 200 or 503
-curl -s -H "x-health-token: $HEALTHCHECK_TOKEN" https://politicon.app/api/health   # per-dependency details
+curl -s https://getpoliticon.app/api/health                                      # {"ok":true}, 200 or 503
+curl -s -H "x-health-token: $HEALTHCHECK_TOKEN" https://getpoliticon.app/api/health   # per-dependency details
 ```
 
 `ok` is true when the required variables are set and all of these checks pass:
