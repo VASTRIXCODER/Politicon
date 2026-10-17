@@ -11,7 +11,7 @@ type Env = Readonly<Record<string, string | undefined>>;
 
 /**
  * Normalises a base URL to an origin (plus any path) with no trailing slash.
- * Accepts a bare host ("politicon.app", as Vercel's variables give it) and
+ * Accepts a bare host ("getpoliticon.app", as Vercel's variables give it) and
  * returns null when the value is missing or isn't a valid http(s) URL.
  */
 export function normaliseSiteUrl(raw: string | undefined): string | null {
