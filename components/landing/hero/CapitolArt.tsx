@@ -33,13 +33,55 @@ interface CapitolArtProps {
   fit?: 'meet' | 'slice';
 }
 
-export default function CapitolArt({ className, motes = true, beams = true, fit = 'meet' }: CapitolArtProps) {
-  // Gradient ids must be unique per drawing: the hero and the film's first
-  // still both draw the Capitol on the same page.
-  const uid = useId().replace(/[^a-zA-Z0-9_-]/g, '');
-  const id = (name: string) => `${uid}-${name}`;
-  const url = (name: string) => `url(#${id(name)})`;
+/**
+ * The gradients the building itself is painted with (CapitolBuilding): its
+ * stone, drums, dome, columns and the shade behind the colonnades. Render
+ * inside a <defs>, with the same `id` maker the building's `url` uses.
+ */
+export function CapitolDefs({ id }: { id: (name: string) => string }) {
+  return (
+    <>
+      {/* Stone: lit from above. */}
+      <linearGradient id={id('stone')} x1="0" y1="0" x2="0" y2="1">
+        <stop offset="0" className="[stop-color:rgb(var(--c-raised))]" />
+        <stop offset="1" className="[stop-color:rgb(var(--c-surface))]" />
+      </linearGradient>
+      {/* A cylinder (the drums): lit on the left, turning into violet shade. */}
+      <linearGradient id={id('drum')} x1="0" y1="0" x2="1" y2="0">
+        <stop offset="0" className="[stop-color:rgb(var(--c-surface))]" />
+        <stop offset="0.28" className="[stop-color:rgb(var(--c-raised))]" />
+        <stop offset="0.7" className="[stop-color:rgb(var(--c-surface))]" />
+        <stop offset="1" className="[stop-color:rgb(var(--c-violet))] [stop-opacity:0.32]" />
+      </linearGradient>
+      <linearGradient id={id('dome')} x1="0.15" y1="0.1" x2="0.95" y2="0.85">
+        <stop offset="0" className="[stop-color:rgb(var(--c-raised))]" />
+        <stop offset="0.42" className="[stop-color:rgb(var(--c-raised))]" />
+        <stop offset="0.78" className="[stop-color:rgb(var(--c-surface))]" />
+        <stop offset="1" className="[stop-color:rgb(var(--c-violet))] [stop-opacity:0.4]" />
+      </linearGradient>
+      {/* A column shaft: a narrow cylinder. */}
+      <linearGradient id={id('column')} x1="0" y1="0" x2="1" y2="0">
+        <stop offset="0" className="[stop-color:rgb(var(--c-raised))]" />
+        <stop offset="0.55" className="[stop-color:rgb(var(--c-raised))]" />
+        <stop offset="1" className="[stop-color:rgb(var(--c-violet))] [stop-opacity:0.3]" />
+      </linearGradient>
+      {/* The shade behind a colonnade. */}
+      <linearGradient id={id('recess')} x1="0" y1="0" x2="0" y2="1">
+        <stop offset="0" className="[stop-color:rgb(var(--c-violet))] [stop-opacity:0.2] dark:[stop-opacity:0.28]" />
+        <stop offset="1" className="[stop-color:rgb(var(--c-violet))] [stop-opacity:0.08]" />
+      </linearGradient>
+    </>
+  );
+}
 
+/**
+ * The building alone, in the drawing's 640 × 600 frame (it stands on the
+ * steps at y 436): the dome assembly, the wings, the portico and the steps,
+ * with their rim light. No halo, beams, plaza, motes or fog, so other
+ * drawings (the film's dusk still) can set it in their own light. Needs
+ * CapitolDefs in the same SVG.
+ */
+export function CapitolBuilding({ url }: { url: (name: string) => string }) {
   const wingColumns = (x0: number, x1: number) =>
     columns(x0, x1, 9).map((x) => (
       <g key={x}>
@@ -49,92 +91,7 @@ export default function CapitolArt({ className, motes = true, beams = true, fit 
     ));
 
   return (
-    <svg
-      viewBox="0 0 640 600"
-      preserveAspectRatio={`xMidYMid ${fit}`}
-      // The light and the plaza run past the drawing's edges into the box.
-      overflow="visible"
-      aria-hidden="true"
-      focusable="false"
-      className={cn('h-full w-full', className)}
-    >
-      <defs>
-        {/* The halo the dome sits in. */}
-        <radialGradient id={id('halo')} cx="0.5" cy="0.5" r="0.5">
-          <stop offset="0" className="[stop-color:rgb(var(--c-glow))] [stop-opacity:0.42] dark:[stop-opacity:0.5]" />
-          <stop offset="0.45" className="[stop-color:rgb(var(--c-glow))] [stop-opacity:0.14]" />
-          <stop offset="1" className="[stop-color:rgb(var(--c-glow))] [stop-opacity:0]" />
-        </radialGradient>
-        <linearGradient id={id('beam')} x1="0" y1="0" x2="1" y2="1">
-          <stop offset="0" className="[stop-color:rgb(var(--c-glow))] [stop-opacity:0.3]" />
-          <stop offset="1" className="[stop-color:rgb(var(--c-glow))] [stop-opacity:0]" />
-        </linearGradient>
-        {/* Stone: lit from above. */}
-        <linearGradient id={id('stone')} x1="0" y1="0" x2="0" y2="1">
-          <stop offset="0" className="[stop-color:rgb(var(--c-raised))]" />
-          <stop offset="1" className="[stop-color:rgb(var(--c-surface))]" />
-        </linearGradient>
-        {/* A cylinder (the drums): lit on the left, turning into violet shade. */}
-        <linearGradient id={id('drum')} x1="0" y1="0" x2="1" y2="0">
-          <stop offset="0" className="[stop-color:rgb(var(--c-surface))]" />
-          <stop offset="0.28" className="[stop-color:rgb(var(--c-raised))]" />
-          <stop offset="0.7" className="[stop-color:rgb(var(--c-surface))]" />
-          <stop offset="1" className="[stop-color:rgb(var(--c-violet))] [stop-opacity:0.32]" />
-        </linearGradient>
-        <linearGradient id={id('dome')} x1="0.15" y1="0.1" x2="0.95" y2="0.85">
-          <stop offset="0" className="[stop-color:rgb(var(--c-raised))]" />
-          <stop offset="0.42" className="[stop-color:rgb(var(--c-raised))]" />
-          <stop offset="0.78" className="[stop-color:rgb(var(--c-surface))]" />
-          <stop offset="1" className="[stop-color:rgb(var(--c-violet))] [stop-opacity:0.4]" />
-        </linearGradient>
-        {/* A column shaft: a narrow cylinder. */}
-        <linearGradient id={id('column')} x1="0" y1="0" x2="1" y2="0">
-          <stop offset="0" className="[stop-color:rgb(var(--c-raised))]" />
-          <stop offset="0.55" className="[stop-color:rgb(var(--c-raised))]" />
-          <stop offset="1" className="[stop-color:rgb(var(--c-violet))] [stop-opacity:0.3]" />
-        </linearGradient>
-        {/* The shade behind a colonnade. */}
-        <linearGradient id={id('recess')} x1="0" y1="0" x2="0" y2="1">
-          <stop offset="0" className="[stop-color:rgb(var(--c-violet))] [stop-opacity:0.2] dark:[stop-opacity:0.28]" />
-          <stop offset="1" className="[stop-color:rgb(var(--c-violet))] [stop-opacity:0.08]" />
-        </linearGradient>
-        {/* Paper fog rising from the ground: the drawing fades into the page. */}
-        <linearGradient id={id('fog')} x1="0" y1="0" x2="0" y2="1">
-          <stop offset="0" className="[stop-color:rgb(var(--c-canvas))] [stop-opacity:0]" />
-          <stop offset="0.55" className="[stop-color:rgb(var(--c-canvas))] [stop-opacity:0.75]" />
-          <stop offset="1" className="[stop-color:rgb(var(--c-canvas))]" />
-        </linearGradient>
-        <linearGradient id={id('cast')} x1="0" y1="0" x2="0.4" y2="1">
-          <stop offset="0" className="[stop-color:rgb(var(--c-violet))] [stop-opacity:0.14] dark:[stop-opacity:0.2]" />
-          <stop offset="1" className="[stop-color:rgb(var(--c-violet))] [stop-opacity:0]" />
-        </linearGradient>
-        <radialGradient id={id('shadow')} cx="0.5" cy="0.5" r="0.5">
-          <stop offset="0" className="[stop-color:rgb(var(--c-violet))] [stop-opacity:0.22]" />
-          <stop offset="1" className="[stop-color:rgb(var(--c-violet))] [stop-opacity:0]" />
-        </radialGradient>
-      </defs>
-
-      {/* Light: the halo, and beams falling from the upper left. */}
-      <ellipse cx="330" cy="190" rx="300" ry="250" fill={url('halo')} />
-      {beams && (
-        <g>
-          <path d="M-260 -260 L-120 -260 L352 236 L312 250 Z" fill={url('beam')} opacity="0.9" />
-          <path d="M-40 -260 L40 -260 L372 214 L350 226 Z" fill={url('beam')} opacity="0.55" />
-          <path d="M-300 -60 L-300 10 L290 280 L300 262 Z" fill={url('beam')} opacity="0.4" />
-        </g>
-      )}
-
-      {/* The plaza: faint perspective joints running out from the steps toward
-          the viewer (the 2.5D ground plane), and the building's shadow cast
-          down and to the right by the light from the upper left. */}
-      <g fill="none" strokeWidth="1" className="stroke-fg/[0.07] dark:stroke-violet-glow/[0.1]">
-        {[-4, -3, -2, -1, 0, 1, 2, 3, 4].map((k) => (
-          <path key={k} d={`M${320 + k * 30} 436 L${320 + k * 160} 590`} />
-        ))}
-      </g>
-      <path d="M396 436 H590 L660 484 H500 Z" fill={url('cast')} />
-      <ellipse cx="320" cy="440" rx="290" ry="30" fill={url('shadow')} />
-
+    <>
       {/* ---- The dome assembly (set back, so the portico overlaps its foot). ---- */}
       <g className={STROKE} strokeWidth="1">
         {/* Attic over the central block. */}
@@ -231,6 +188,77 @@ export default function CapitolArt({ className, motes = true, beams = true, fit 
         <path d="M220 410 H420 L432 422 H208 Z" className="fill-surface" />
         <path d="M208 422 H432 L446 436 H194 Z" className="fill-raised" />
       </g>
+    </>
+  );
+}
+
+export default function CapitolArt({ className, motes = true, beams = true, fit = 'meet' }: CapitolArtProps) {
+  // Gradient ids must be unique per drawing: the hero and the film's first
+  // still both draw the Capitol on the same page.
+  const uid = useId().replace(/[^a-zA-Z0-9_-]/g, '');
+  const id = (name: string) => `${uid}-${name}`;
+  const url = (name: string) => `url(#${id(name)})`;
+
+  return (
+    <svg
+      viewBox="0 0 640 600"
+      preserveAspectRatio={`xMidYMid ${fit}`}
+      // The light and the plaza run past the drawing's edges into the box.
+      overflow="visible"
+      aria-hidden="true"
+      focusable="false"
+      className={cn('h-full w-full', className)}
+    >
+      <defs>
+        {/* The halo the dome sits in. */}
+        <radialGradient id={id('halo')} cx="0.5" cy="0.5" r="0.5">
+          <stop offset="0" className="[stop-color:rgb(var(--c-glow))] [stop-opacity:0.42] dark:[stop-opacity:0.5]" />
+          <stop offset="0.45" className="[stop-color:rgb(var(--c-glow))] [stop-opacity:0.14]" />
+          <stop offset="1" className="[stop-color:rgb(var(--c-glow))] [stop-opacity:0]" />
+        </radialGradient>
+        <linearGradient id={id('beam')} x1="0" y1="0" x2="1" y2="1">
+          <stop offset="0" className="[stop-color:rgb(var(--c-glow))] [stop-opacity:0.3]" />
+          <stop offset="1" className="[stop-color:rgb(var(--c-glow))] [stop-opacity:0]" />
+        </linearGradient>
+        <CapitolDefs id={id} />
+        {/* Paper fog rising from the ground: the drawing fades into the page. */}
+        <linearGradient id={id('fog')} x1="0" y1="0" x2="0" y2="1">
+          <stop offset="0" className="[stop-color:rgb(var(--c-canvas))] [stop-opacity:0]" />
+          <stop offset="0.55" className="[stop-color:rgb(var(--c-canvas))] [stop-opacity:0.75]" />
+          <stop offset="1" className="[stop-color:rgb(var(--c-canvas))]" />
+        </linearGradient>
+        <linearGradient id={id('cast')} x1="0" y1="0" x2="0.4" y2="1">
+          <stop offset="0" className="[stop-color:rgb(var(--c-violet))] [stop-opacity:0.14] dark:[stop-opacity:0.2]" />
+          <stop offset="1" className="[stop-color:rgb(var(--c-violet))] [stop-opacity:0]" />
+        </linearGradient>
+        <radialGradient id={id('shadow')} cx="0.5" cy="0.5" r="0.5">
+          <stop offset="0" className="[stop-color:rgb(var(--c-violet))] [stop-opacity:0.22]" />
+          <stop offset="1" className="[stop-color:rgb(var(--c-violet))] [stop-opacity:0]" />
+        </radialGradient>
+      </defs>
+
+      {/* Light: the halo, and beams falling from the upper left. */}
+      <ellipse cx="330" cy="190" rx="300" ry="250" fill={url('halo')} />
+      {beams && (
+        <g>
+          <path d="M-260 -260 L-120 -260 L352 236 L312 250 Z" fill={url('beam')} opacity="0.9" />
+          <path d="M-40 -260 L40 -260 L372 214 L350 226 Z" fill={url('beam')} opacity="0.55" />
+          <path d="M-300 -60 L-300 10 L290 280 L300 262 Z" fill={url('beam')} opacity="0.4" />
+        </g>
+      )}
+
+      {/* The plaza: faint perspective joints running out from the steps toward
+          the viewer (the 2.5D ground plane), and the building's shadow cast
+          down and to the right by the light from the upper left. */}
+      <g fill="none" strokeWidth="1" className="stroke-fg/[0.07] dark:stroke-violet-glow/[0.1]">
+        {[-4, -3, -2, -1, 0, 1, 2, 3, 4].map((k) => (
+          <path key={k} d={`M${320 + k * 30} 436 L${320 + k * 160} 590`} />
+        ))}
+      </g>
+      <path d="M396 436 H590 L660 484 H500 Z" fill={url('cast')} />
+      <ellipse cx="320" cy="440" rx="290" ry="30" fill={url('shadow')} />
+
+      <CapitolBuilding url={url} />
 
       {/* Motes of light lifting off the dome: the bill about to leave. */}
       {motes && (

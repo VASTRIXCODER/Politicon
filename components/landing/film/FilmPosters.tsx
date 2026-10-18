@@ -1,5 +1,5 @@
-import { useId, type ReactNode } from 'react';
-import CapitolArt from '@/components/landing/hero/CapitolArt';
+import { useId, type CSSProperties, type ReactNode } from 'react';
+import CapitolArt, { CapitolBuilding, CapitolDefs } from '@/components/landing/hero/CapitolArt';
 import { cn } from '@/lib/utils';
 import { BILL_RECORD, EXAMPLE_LEDGER, EXAMPLE_TOTAL_TEXT, type FilmShot } from './shots';
 
@@ -12,7 +12,8 @@ import { BILL_RECORD, EXAMPLE_LEDGER, EXAMPLE_TOTAL_TEXT, type FilmShot } from '
  *   02  a bill sheet lifting off the dome: its official record (an example) and gold seal
  *   03  the sheet streaming as light into a small house
  *   04  a ledger column: teal slabs rising, an amber one sinking, the example number
- *   05  dusk over a low skyline (always a night pane)
+ *   05  dusk: the Capitol on its plinth and the lit household with its
+ *       ledger, under the violet hour (always a night pane)
  *
  * All decorative (aria-hidden); the captions carry the meaning. Colours are
  * tokens set through CSS, so each still follows the theme. Gold appears only
@@ -189,6 +190,23 @@ function BillArt() {
 // ---------------------------------------------------------------------------
 // 03 · The sheet streams as light into a household.
 
+/**
+ * The household's house in 2.5D (front, side, gable, roof, door, windows),
+ * standing on y 448 between x 392 and 564: drawn in shot 3 and again, on its
+ * disc, at dusk.
+ */
+const HOUSE = {
+  front: 'M400 330 H500 V448 H400 Z',
+  side: 'M500 330 L556 306 V420 L500 448 Z',
+  gable: 'M392 334 L450 276 L508 334 Z',
+  roof: 'M450 276 L508 252 L564 306 L508 334 Z',
+  door: 'M440 390 H462 Q464 390 464 392 V448 H438 V392 Q438 390 440 390 Z',
+  windows: ['M412 352 H438 V376 H412 Z', 'M462 352 H488 V376 H462 Z'],
+  sideWindow: 'M516 352 L540 342 V364 L516 374 Z',
+  gableRim: 'M450 276 L392 334',
+  roofRim: 'M508 252 L564 306',
+} as const;
+
 /** Points along a cubic Bézier, for a stream of dots that grow toward the house. */
 function stream(p0: number[], p1: number[], p2: number[], p3: number[], count: number) {
   return Array.from({ length: count }, (_, i) => {
@@ -247,17 +265,18 @@ function HouseholdArt() {
       {/* The house: front, side and roof in 2.5D, its windows lit. */}
       <ellipse cx="470" cy="452" rx="150" ry="20" fill={url('shadow')} />
       <g className="stroke-fg/15" strokeWidth="1" strokeLinejoin="round">
-        <path d="M400 330 H500 V448 H400 Z" fill={url('front')} />
-        <path d="M500 330 L556 306 V420 L500 448 Z" fill={url('side')} />
-        <path d="M392 334 L450 276 L508 334 Z" className="fill-raised" />
-        <path d="M450 276 L508 252 L564 306 L508 334 Z" className="fill-surface" />
-        <rect x="438" y="390" width="26" height="58" rx="2" className="fill-surface" />
-        <rect x="412" y="352" width="26" height="24" rx="2" fill={url('window')} />
-        <rect x="462" y="352" width="26" height="24" rx="2" fill={url('window')} />
-        <path d="M516 352 L540 342 V364 L516 374 Z" fill={url('window')} opacity="0.8" />
+        <path d={HOUSE.front} fill={url('front')} />
+        <path d={HOUSE.side} fill={url('side')} />
+        <path d={HOUSE.gable} className="fill-raised" />
+        <path d={HOUSE.roof} className="fill-surface" />
+        <path d={HOUSE.door} className="fill-surface" />
+        {HOUSE.windows.map((d) => (
+          <path key={d} d={d} fill={url('window')} />
+        ))}
+        <path d={HOUSE.sideWindow} fill={url('window')} opacity="0.8" />
       </g>
-      <path d="M450 276 L392 334" fill="none" strokeWidth="1.6" strokeLinecap="round" className="stroke-white/90 dark:stroke-violet-glow/40" />
-      <path d="M508 252 L564 306" fill="none" strokeWidth="2" strokeLinecap="round" className="stroke-violet/50 dark:stroke-violet-glow/70" />
+      <path d={HOUSE.gableRim} fill="none" strokeWidth="1.6" strokeLinecap="round" className="stroke-white/90 dark:stroke-violet-glow/40" />
+      <path d={HOUSE.roofRim} fill="none" strokeWidth="2" strokeLinecap="round" className="stroke-violet/50 dark:stroke-violet-glow/70" />
       {/* A tree, for scale. */}
       <g className="stroke-fg/15" strokeWidth="1">
         <rect x="583" y="400" width="5" height="40" className="fill-surface" />
@@ -357,7 +376,9 @@ function LedgerArt() {
 }
 
 // ---------------------------------------------------------------------------
-// 05 · Dusk: the camera pulls back over a low skyline. Always a night pane.
+// 05 · Dusk: the camera pulls back over the whole story, the Capitol on its
+// plinth and the household on its disc with the ledger beside it, under the
+// violet hour. Always a night pane.
 
 /** A deterministic scatter (no Math.random: server and client must agree). */
 const scatter = (n: number, seed: number) =>
@@ -367,84 +388,145 @@ const scatter = (n: number, seed: number) =>
     return [a - Math.floor(a), b - Math.floor(b)];
   });
 
+/**
+ * Moonlit porcelain: the night pane's paper tokens lifted to the lavender the
+ * 3D dusk lights its models with, for the models only (set on their group, so
+ * their own gradients resolve against it). Channels, as styles/tokens.css
+ * writes them.
+ */
+const MOONLIT = { '--c-raised': '176 165 228', '--c-surface': '124 112 190' } as CSSProperties;
+
+/** A disc (a plinth seen from above and in front): its rim band, then its top. */
+function Disc({ cx, cy, rx, ry, depth, top, side }: { cx: number; cy: number; rx: number; ry: number; depth: number; top: string; side: string }) {
+  return (
+    <g>
+      <path d={`M${cx - rx} ${cy} V${cy + depth} A${rx} ${ry} 0 0 0 ${cx + rx} ${cy + depth} V${cy} Z`} fill={side} />
+      <ellipse cx={cx} cy={cy} rx={rx} ry={ry} fill={top} />
+      {/* The moonlit far rim, and a hairline inlay. */}
+      <path d={`M${cx - rx} ${cy} A${rx} ${ry} 0 0 1 ${cx + rx} ${cy}`} fill="none" strokeWidth="1.4" className="stroke-violet-glow/70" />
+      <ellipse cx={cx} cy={cy} rx={rx * 0.86} ry={ry * 0.86} fill="none" strokeWidth="0.8" className="stroke-violet/50" />
+    </g>
+  );
+}
+
+/** The example ledger as a small column: savings in teal over the zero plate, costs in amber under it. */
+function DuskLedger({ x, base }: { x: number; base: number }) {
+  const scale = 0.042; // px per dollar
+  const w = 24;
+  const d = 9;
+  const gains = EXAMPLE_LEDGER.filter((l) => l.amount >= 0);
+  const costs = EXAMPLE_LEDGER.filter((l) => l.amount < 0);
+  const down = costs.reduce((sum, l) => sum + Math.abs(l.amount) * scale + 2, 0);
+  const zero = base - 6 - down;
+  const faces = (y: number, h: number, fill: string) => (
+    <g key={`${fill}-${y}`} strokeWidth="0.8" strokeLinejoin="round" className="stroke-fg/15">
+      <path d={`M${x} ${y} H${x + w} V${y + h} H${x} Z`} className={cn(fill, 'opacity-90')} />
+      <path d={`M${x + w} ${y} L${x + w + d} ${y - d * 0.55} V${y + h - d * 0.55} L${x + w} ${y + h} Z`} className={cn(fill, 'opacity-60')} />
+      <path d={`M${x} ${y} L${x + d} ${y - d * 0.55} H${x + w + d} L${x + w} ${y} Z`} className={cn(fill, 'opacity-40')} />
+    </g>
+  );
+  let up = zero;
+  let below = zero + 3;
+  return (
+    <g>
+      <ellipse cx={x + w / 2 + d / 2} cy={base} rx={w} ry={6} className="fill-violet/40" />
+      <path d={`M${x + w / 2 - 2} ${base} V${zero}`} strokeWidth="3" className="stroke-violet-glow/40" />
+      {costs.map((l) => {
+        const h = Math.abs(l.amount) * scale;
+        const slab = faces(below, h, 'fill-loss-fill');
+        below += h + 2;
+        return slab;
+      })}
+      <path d={`M${x - 3} ${zero + 1.5} H${x + w + 3} L${x + w + d + 3} ${zero + 1.5 - d * 0.55} H${x + d - 3} Z`} className="fill-raised" />
+      {gains.map((l) => {
+        const h = Math.abs(l.amount) * scale;
+        up -= h;
+        const slab = faces(up, h, 'fill-gain-fill');
+        up -= 2;
+        return slab;
+      })}
+    </g>
+  );
+}
+
 function DuskArt() {
   const { id, url } = useIds();
-  const ground = 500;
-  // Low buildings either side of the distant Capitol: [x, width, height].
-  // It runs well past the drawing's sides, so a wide frame stays a skyline.
-  const blocks = [
-    [-420, 64, 96], [-350, 46, 132], [-298, 70, 108], [-222, 42, 160], [-174, 58, 112], [-110, 44, 144],
-    [-60, 70, 104], [16, 54, 150], [76, 62, 116], [144, 40, 178], [190, 52, 124],
-    [398, 50, 136], [454, 64, 102], [524, 38, 186], [568, 70, 120], [644, 60, 90],
-    [710, 48, 150], [764, 66, 112], [836, 40, 170], [882, 62, 100], [950, 54, 136],
-  ];
+  const capitol = { cx: 214, cy: 384, rx: 184, ry: 46 };
+  const home = { cx: 462, cy: 470, rx: 146, ry: 36 };
+  // The building's steps (y 436 in its own frame) on the plinth's centre.
+  const building = 0.54;
+  // The house (base y 448, centre x 478 in its frame) on the left of its disc.
+  const house = 0.6;
   return (
     <Art
       defs={
         <>
-          <radialGradient id={id('horizon')} cx="0.5" cy="1" r="0.75">
-            <stop offset="0" className="[stop-color:rgb(var(--c-violet))] [stop-opacity:0.55]" />
-            <stop offset="0.5" className="[stop-color:rgb(var(--c-violet))] [stop-opacity:0.14]" />
+          <radialGradient id={id('horizon')} cx="0.5" cy="0.92" r="0.8">
+            <stop offset="0" className="[stop-color:rgb(var(--c-violet))] [stop-opacity:0.5]" />
+            <stop offset="0.45" className="[stop-color:rgb(var(--c-violet))] [stop-opacity:0.16]" />
             <stop offset="1" className="[stop-color:rgb(var(--c-violet))] [stop-opacity:0]" />
           </radialGradient>
-          <linearGradient id={id('street')} x1="0" y1="0" x2="0" y2="1">
-            <stop offset="0" className="[stop-color:rgb(var(--c-glow))] [stop-opacity:0.16]" />
-            <stop offset="1" className="[stop-color:rgb(var(--c-glow))] [stop-opacity:0]" />
+          <linearGradient id={id('discTop')} x1="0" y1="0" x2="0.3" y2="1">
+            <stop offset="0" className="[stop-color:rgb(var(--c-glow))] [stop-opacity:0.62]" />
+            <stop offset="1" className="[stop-color:rgb(var(--c-glow))] [stop-opacity:0.38]" />
           </linearGradient>
+          <linearGradient id={id('discSide')} x1="0" y1="0" x2="1" y2="0">
+            <stop offset="0" className="[stop-color:rgb(var(--c-violet))] [stop-opacity:0.42]" />
+            <stop offset="1" className="[stop-color:rgb(var(--c-violet))] [stop-opacity:0.22]" />
+          </linearGradient>
+          <radialGradient id={id('window')} cx="0.5" cy="0.5" r="0.6">
+            <stop offset="0" className="[stop-color:rgb(var(--c-ink))]" />
+            <stop offset="1" className="[stop-color:rgb(var(--c-glow))]" />
+          </radialGradient>
+          <radialGradient id={id('lamp')} cx="0.5" cy="0.5" r="0.5">
+            <stop offset="0" className="[stop-color:rgb(var(--c-glow))] [stop-opacity:0.55]" />
+            <stop offset="1" className="[stop-color:rgb(var(--c-glow))] [stop-opacity:0]" />
+          </radialGradient>
         </>
       }
     >
-      <rect x="-400" y="150" width="1440" height={ground - 150} fill={url('horizon')} />
-      {/* Stars, thinning toward the horizon. */}
+      {/* The violet hour, and a few stars thinning toward the horizon. */}
+      <rect x="-400" y="0" width="1440" height="600" fill={url('horizon')} />
       <g className="fill-ink">
-        {scatter(96, 3).map(([u, v], i) => (
-          <circle key={i} cx={(u * 1440 - 400).toFixed(1)} cy={(v * v * 330).toFixed(1)} r={i % 7 === 0 ? 1.4 : 0.8} opacity={(0.2 + (1 - v) * 0.5).toFixed(2)} />
+        {scatter(44, 3).map(([u, v], i) => (
+          <circle key={i} cx={(u * 1440 - 400).toFixed(1)} cy={(v * v * 300).toFixed(1)} r={i % 6 === 0 ? 1.3 : 0.75} opacity={(0.2 + (1 - v) * 0.45).toFixed(2)} />
         ))}
       </g>
-      {/* The Capitol, far off: a low silhouette with a rim-lit dome. */}
-      <g className="fill-surface stroke-violet-glow/30" strokeWidth="1">
-        <rect x="262" y={ground - 34} width="116" height="34" />
-        <rect x="298" y={ground - 66} width="44" height="34" />
-        <path d={`M300 ${ground - 64} C300 ${ground - 92} 310 ${ground - 104} 320 ${ground - 105} C330 ${ground - 104} 340 ${ground - 92} 340 ${ground - 64} Z`} className="fill-raised" />
-        <rect x="318" y={ground - 118} width="4" height="14" className="fill-raised" />
+
+      {/* The Capitol on its plinth, set back on the left. */}
+      <Disc {...capitol} depth={24} top={url('discTop')} side={url('discSide')} />
+      <g style={MOONLIT}>
+        <defs>
+          <CapitolDefs id={id} />
+        </defs>
+        <g transform={`translate(${capitol.cx - 320 * building} ${capitol.cy + 6 - 436 * building}) scale(${building})`}>
+          <CapitolBuilding url={url} />
+        </g>
       </g>
-      <path
-        d={`M320 ${ground - 105} C330 ${ground - 104} 340 ${ground - 92} 340 ${ground - 64}`}
-        fill="none"
-        strokeWidth="1.6"
-        className="stroke-violet-glow/80"
-      />
-      {/* The skyline: windows on a grid, some still lit. */}
-      {blocks.map(([x, w, h], b) => {
-        const cols = Math.max(2, Math.floor((w - 12) / 12));
-        const rows = Math.floor((h - 20) / 16);
-        const lit = scatter(cols * rows, b + 9);
-        return (
-          <g key={x}>
-            <rect x={x} y={ground - h} width={w} height={h} className="fill-surface stroke-fg/10" strokeWidth="1" />
-            {lit.map(([u], i) =>
-              u > 0.72 ? (
-                <rect
-                  key={i}
-                  x={x + 8 + (i % cols) * ((w - 16) / cols)}
-                  y={ground - h + 12 + Math.floor(i / cols) * 16}
-                  width="4"
-                  height="7"
-                  rx="0.6"
-                  className="fill-violet-glow"
-                  opacity={(0.35 + (u - 0.72) * 2).toFixed(2)}
-                />
-              ) : null
-            )}
-          </g>
-        );
-      })}
-      {/* The street, catching the last light, and a few fireflies of it. */}
-      <rect x="-400" y={ground} width="1440" height="160" fill={url('street')} />
-      <path d={`M-400 ${ground} H1040`} className="stroke-violet-glow/50" strokeWidth="1" />
+
+      {/* The household on its disc in front, its windows lamplit, the ledger beside it. */}
+      <Disc {...home} depth={20} top={url('discTop')} side={url('discSide')} />
+      <ellipse cx={home.cx - 60} cy={home.cy + 4} rx="70" ry="16" fill={url('lamp')} />
+      <g style={MOONLIT} transform={`translate(${home.cx - 52 - 478 * house} ${home.cy + 4 - 448 * house}) scale(${house})`}>
+        <g className="stroke-fg/15" strokeWidth="1.4" strokeLinejoin="round">
+          <path d={HOUSE.front} className="fill-raised" />
+          <path d={HOUSE.side} className="fill-surface" />
+          <path d={HOUSE.gable} className="fill-raised" />
+          <path d={HOUSE.roof} className="fill-surface" />
+          <path d={HOUSE.door} className="fill-violet" />
+          {HOUSE.windows.map((d) => (
+            <path key={d} d={d} fill={url('window')} />
+          ))}
+          <path d={HOUSE.sideWindow} fill={url('window')} opacity="0.85" />
+        </g>
+        <path d={HOUSE.roofRim} fill="none" strokeWidth="2.4" strokeLinecap="round" className="stroke-violet-glow/80" />
+      </g>
+      <DuskLedger x={home.cx + 50} base={home.cy + 6} />
+
+      {/* Some of the light out again, as fireflies. */}
       <g className="fill-violet-glow">
-        {scatter(9, 21).map(([u, v], i) => (
-          <circle key={i} cx={(u * 600 + 20).toFixed(1)} cy={(ground - 40 - v * 120).toFixed(1)} r={1.2 + v * 1.4} opacity={(0.35 + v * 0.45).toFixed(2)} />
+        {scatter(14, 21).map(([u, v], i) => (
+          <circle key={i} cx={(u * 520 + 60).toFixed(1)} cy={(250 + v * 230).toFixed(1)} r={1 + v * 1.3} opacity={(0.35 + v * 0.45).toFixed(2)} />
         ))}
       </g>
     </Art>

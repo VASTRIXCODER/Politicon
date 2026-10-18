@@ -280,3 +280,22 @@
     display: flex;
   }
 }
+
+/* ---- The bracket picker on a phone ---------------------------------------
+   A sideways scroller (ExplorerClient): its edges fade, and the option cut
+   at the edge peeks through the fade, wherever more options wait (the
+   data-more-* attributes follow the scroll). */
+@media not all and (min-width: 640px) {
+  .scroller[data-more-after] {
+    -webkit-mask-image: linear-gradient(to right, #000 calc(100% - 3.5rem), transparent);
+    mask-image: linear-gradient(to right, #000 calc(100% - 3.5rem), transparent);
+  }
+  .scroller[data-more-before] {
+    -webkit-mask-image: linear-gradient(to right, transparent, #000 3.5rem);
+    mask-image: linear-gradient(to right, transparent, #000 3.5rem);
+  }
+  .scroller[data-more-before][data-more-after] {
+    -webkit-mask-image: linear-gradient(to right, transparent, #000 3.5rem, #000 calc(100% - 3.5rem), transparent);
+    mask-image: linear-gradient(to right, transparent, #000 3.5rem, #000 calc(100% - 3.5rem), transparent);
+  }
+}

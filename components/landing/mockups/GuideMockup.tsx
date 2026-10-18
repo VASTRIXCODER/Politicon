@@ -49,15 +49,16 @@ export default function GuideMockup({ facing }: { facing: 'left' | 'right' }) {
               <span className={cn(styles.orb, 'mt-1 h-5 w-5 flex-shrink-0')} />
               <div className="min-w-0 max-w-[90%] rounded-2xl rounded-tl-md border border-fg/10 bg-fg/[0.04] px-4 py-3">
                 <p className="text-sm leading-relaxed text-muted">
-                  It depends on the household. For yours, earning{' '}
+                  It depends on the household. For a sample household earning{' '}
                   <span className="text-ink">{asker.bracket.label}</span>, slightly higher prices could{' '}
-                  <span className="font-medium text-loss">cost about {formatUSD(Math.abs(asker.annual))} a year</span>. A household
-                  earning <span className="text-ink">{contrast.bracket.label.toLowerCase()}</span> with a minimum-wage worker could{' '}
-                  <span className="font-medium text-gain">gain about {formatUSD(contrast.annual)}</span>.
+                  <span className="font-medium text-loss">cost about {formatUSD(Math.abs(asker.annual))} a year</span>. A typical
+                  household earning <span className="text-ink">{contrast.bracket.label.toLowerCase()}</span> could{' '}
+                  <span className="font-medium text-gain">gain about {formatUSD(contrast.annual)}</span> (more where someone earns the
+                  minimum wage).
                 </p>
                 <div className="mt-3 flex flex-wrap gap-2">
                   <span className="rounded-lg border border-loss/30 bg-loss-fill/10 px-2.5 py-1 font-mono-data text-meta font-semibold text-loss">
-                    {formatUSD(asker.annual, { signed: true, suffix: '/yr' })} · yours
+                    {formatUSD(asker.annual, { signed: true, suffix: '/yr' })} · sample
                   </span>
                   <span className="rounded-lg border border-gain/30 bg-gain-fill/10 px-2.5 py-1 font-mono-data text-meta font-semibold text-gain">
                     {formatUSD(contrast.annual, { signed: true, suffix: '/yr' })} · {contrast.bracket.label}

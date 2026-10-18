@@ -52,8 +52,15 @@ export interface FilmStageProps {
 }
 
 const DESKTOP_SNAP = '(min-width: 1024px) and (hover: hover) and (pointer: fine)';
-/** How long a rail jump may take to land before it stops waiting to move focus. */
-const FOCUS_WAIT_MS = 2500;
+/**
+ * How long a rail jump may take to land before it stops waiting to move
+ * focus. Generous, since a slow device can take seconds to scroll five
+ * screens; the wait also ends as soon as the reader does anything else
+ * (scrolls, touches, clicks or presses a key), so focus never jumps later.
+ */
+const FOCUS_WAIT_MS = 10_000;
+/** Input that means the reader has moved on from a rail jump. */
+const LET_GO = ['wheel', 'touchstart', 'pointerdown', 'keydown'] as const;
 /** How long the scroll must be still before a gentle snap to the nearest shot. */
 const SNAP_IDLE_MS = 180;
 
@@ -244,6 +251,21 @@ export default function FilmStage({ captions, transcripts, posters, labels, nume
     window.clearTimeout(pending.timer);
     pendingFocus.current = null;
   }, [shot, focusStep]);
+
+  // Any other input while a jump is under way lets go of its focus move.
+  useEffect(() => {
+    const letGo = () => {
+      const pending = pendingFocus.current;
+      if (!pending) return;
+      window.clearTimeout(pending.timer);
+      pendingFocus.current = null;
+    };
+    for (const type of LET_GO) window.addEventListener(type, letGo, { passive: true, capture: true });
+    return () => {
+      for (const type of LET_GO) window.removeEventListener(type, letGo, { capture: true });
+      window.clearTimeout(pendingFocus.current?.timer);
+    };
+  }, []);
 
   const jump = (target: number, fromKeyboard: boolean) => {
     const trackEl = track.current;

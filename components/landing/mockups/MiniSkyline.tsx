@@ -73,7 +73,8 @@ export default function MiniSkyline({ className }: { className?: string }) {
                   })}
                 </div>
               </div>
-              <p className="mt-4 text-center font-mono-data text-meta text-muted">
+              {/* Every name stays readable (muted text, never dimmed); the chosen one is ink (explorer.module.css). */}
+              <p className={cn(styles.label, 'mt-4 text-center font-mono-data text-meta text-muted')}>
                 <span className="sm:hidden">{SHORT[row.key]}</span>
                 <span className="hidden sm:inline">{row.label}</span>
               </p>

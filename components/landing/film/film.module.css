@@ -219,13 +219,19 @@
 }
 
 /* Phones and short screens: the caption keeps its story and drops the
-   extras (tags, ledger detail), so the scene keeps the top of the screen. */
+   extras (tags, the example's note), so the scene keeps the top of the
+   screen. The example ledger folds its four lines into two, savings and
+   costs each with its sign and words, so the costs never drop out. */
 .stage [data-caption-title] {
   font-size: clamp(1.625rem, 1.2rem + 2vw, 2.75rem);
 }
 @media not all and (min-width: 640px) and (min-height: 720px) {
-  .stage [data-caption-extra] {
+  .stage [data-caption-extra],
+  .stage [data-caption-line] {
     display: none;
+  }
+  .stage [data-caption-summary] {
+    display: flex;
   }
   .stage [data-caption-body] {
     font-size: 0.9375rem;

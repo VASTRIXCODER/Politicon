@@ -12,7 +12,7 @@ import styles from './legal.module.css';
 /*
  * The reading pages (Privacy, Terms, Disclaimer, Help) as an editorial paper
  * document: a porcelain sheet with a masthead (eyebrow, a Fraunces title, a
- * dated record stamp with a small archive-gold seal) and an introduction
+ * dated stamp with a small violet seal) and an introduction
  * with a drop cap, then numbered sections at a comfortable measure (about
  * 68 characters). On wide screens a sticky table of contents, built from
  * the sections' headings, sits beside the sheet; on phones it folds into a
@@ -72,10 +72,14 @@ export function withAnchors(children: ReactNode): { entries: TocEntry[]; content
   return { entries, content };
 }
 
-/** The archive-gold record seal beside the "last updated" date: a ring, its ticks and the mark. */
-function RecordSeal({ className }: { className?: string }) {
+/**
+ * The document's seal beside the "last updated" date and at its foot: a
+ * ring, its ticks and the mark, in violet. Never archive gold: these are
+ * Politicon's own documents, not official records.
+ */
+function DocumentSeal({ className }: { className?: string }) {
   return (
-    <svg viewBox="0 0 40 40" aria-hidden="true" data-decorative="" focusable="false" className={cn('text-gold', className)}>
+    <svg viewBox="0 0 40 40" aria-hidden="true" data-decorative="" focusable="false" className={cn('text-primary-300', className)}>
       <circle cx="20" cy="20" r="18.5" fill="none" stroke="currentColor" strokeWidth="1.2" />
       <circle cx="20" cy="20" r="15.6" fill="none" stroke="currentColor" strokeWidth="2.4" strokeDasharray="0.6 2.7" opacity="0.8" />
       <circle cx="20" cy="20" r="12.6" fill="currentColor" opacity="0.12" />
@@ -189,7 +193,7 @@ export default function LegalPage({
                   {updated && (
                     // The record stamp: when this text last changed.
                     <p className="inline-flex items-center gap-2.5 font-mono-data text-meta uppercase tracking-[0.14em] text-muted">
-                      <RecordSeal className="h-7 w-7 flex-shrink-0" />
+                      <DocumentSeal className="h-7 w-7 flex-shrink-0" />
                       <span>
                         Last updated <time dateTime={updated} className="text-ink">{formatLegalDate(updated)}</time>
                       </span>
@@ -223,7 +227,7 @@ export default function LegalPage({
               {/* The foot of the document. */}
               <div aria-hidden="true" className="flex items-center gap-4 px-5 pb-10 sm:px-12">
                 <span className="h-px flex-1 bg-[linear-gradient(to_right,rgb(var(--c-fg)/0.18)_55%,transparent_0)] bg-[length:7px_1px]" />
-                <RecordSeal className="h-5 w-5 opacity-70" />
+                <DocumentSeal className="h-5 w-5 opacity-70" />
                 <span className="h-px flex-1 bg-[linear-gradient(to_right,rgb(var(--c-fg)/0.18)_55%,transparent_0)] bg-[length:7px_1px]" />
               </div>
             </article>

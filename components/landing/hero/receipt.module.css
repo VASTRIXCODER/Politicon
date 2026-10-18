@@ -40,7 +40,10 @@
   background-size: 7px 1px;
 }
 
-/* A slide that changes in (never the first one, which renders final). */
+/* A slide that changes in (never the first one, which renders final). It
+   only moves: its words are never transparent, so a slow or busy main
+   thread (the 3D stage compiling its shaders, say) can delay the motion
+   but never leave the receipt blank. */
 .enter {
   animation: receipt-in 0.45s var(--ease-civic) both;
 }
@@ -54,17 +57,16 @@
 
 @keyframes receipt-in {
   from {
-    opacity: 0;
-    transform: translate3d(0, 0.5rem, 0);
+    transform: translate3d(0, 0.375rem, 0);
   }
   to {
-    opacity: 1;
     transform: none;
   }
 }
 @keyframes bar-grow {
+  /* From a stub, not nothing: a stalled frame still shows every bar. */
   from {
-    transform: scaleX(0);
+    transform: scaleX(0.12);
   }
   to {
     transform: scaleX(1);

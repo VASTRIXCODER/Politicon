@@ -44,10 +44,10 @@ function buildFeatures(stateBills: boolean): Feature[] {
       tag: 'Policy pages',
       title: { lead: 'Every bill,', accent: 'in plain English.' },
       description: stateBills
-        ? 'Your feed starts from recent bills in Congress and your state legislature, ranked by how likely they are to affect your finances. Each one opens on its official record, a plain-English summary and a dollar estimate for your income range, location and life stage.'
-        : 'Your feed starts from recent bills in Congress, ranked by how likely they are to affect your finances. Each one opens on its official record, a plain-English summary and a dollar estimate for your income range, location and life stage.',
+        ? 'Your feed starts from recent bills in Congress and your state legislature, ranked by how likely they are to affect your finances. Each verified bill links to its official record and status. Analyze one for a plain-English explanation and a dollar estimate for your income range, location and life stage. Anything the record can’t confirm is marked unverified.'
+        : 'Your feed starts from recent bills in Congress, ranked by how likely they are to affect your finances. Each verified bill links to its official record and status. Analyze one for a plain-English explanation and a dollar estimate for your income range, location and life stage. Anything the record can’t confirm is marked unverified.',
       bullets: [
-        'Official status and a link to every bill',
+        'Official status and a record link for verified bills',
         'The effect on your monthly budget',
         '1, 3 and 5-year projections',
         'The assumptions, and a confidence level',

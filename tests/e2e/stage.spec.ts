@@ -35,33 +35,66 @@ async function pastIdle(page: Page) {
   await page.waitForTimeout(4_500);
 }
 
+/** The /lab section with the landing film's own pieces (app/lab/FilmLab.tsx). */
+const FILM_LAB = 'section[aria-labelledby="lab-film"]';
+
+/**
+ * The film's five still frames on /lab are the same LandingFilm scene as its
+ * film view (every piece mounted and compiled), at other progress values.
+ * Their still path is checked where it ships instead, on the landing page
+ * under reduced motion (below), which saves minutes of software rendering.
+ */
+const LAB_STILLS = /^Shot \d:/;
+
+/** Opens /lab at a tier and waits for the stage (skips where /lab isn't served). */
+async function openLab(page: Page, fx: 1 | 2) {
+  const response = await page.goto(`/lab?fx=${fx}`);
+  test.skip(response?.status() === 404, '/lab is not served on the production deployment');
+  await expect(page.getByRole('heading', { level: 1, name: /^lab$/i })).toBeVisible();
+  // The canvas is in and faded up: <html data-stage="ready">.
+  await expect(page.locator('html')).toHaveAttribute('data-stage', 'ready', { timeout: 45_000 });
+  const canvas = page.locator('canvas');
+  await expect(canvas).toHaveCount(1);
+  // Decorative: hidden from assistive tech, and behind the page content.
+  await expect(page.locator('[aria-hidden="true"][data-decorative]').filter({ has: canvas })).toHaveCount(1);
+}
+
+/**
+ * Scrolls each chosen view into sight and waits for it to draw (its poster
+ * steps aside: data-scene-view="live"). Returns the names it checked.
+ */
+async function drawEach(page: Page, pick: (view: { name: string; inFilmLab: boolean }) => boolean): Promise<string[]> {
+  const views = page.locator('[data-scene-view]');
+  const all = await views.evaluateAll(
+    (els, filmLab) => els.map((el, i) => ({ name: el.getAttribute('aria-label') ?? `view ${i + 1}`, inFilmLab: !!el.closest(filmLab) })),
+    FILM_LAB
+  );
+  const checked: string[] = [];
+  for (let i = 0; i < all.length; i++) {
+    if (!pick(all[i])) continue;
+    const view = views.nth(i);
+    await view.scrollIntoViewIfNeeded();
+    // The first heavy view on a page compiles its programs from cold (beside its neighbours, on a shared CPU).
+    await expect(view, all[i].name).toHaveAttribute('data-scene-view', 'live', { timeout: 90_000 });
+    checked.push(all[i].name);
+  }
+  return checked;
+}
+
+// One run per tier, each on the project it is for: tier 1 is the phone path
+// (coarse pointer, high DPR), tier 2 the desktop one. The kit and the
+// landing film's pieces are separate tests, so the two halves of /lab draw
+// on both workers at once.
 for (const fx of [1, 2] as const) {
-  // Tier 1 is the phone path (coarse pointer, high DPR), so it runs on both projects.
-  test(`/lab draws every 3D view at tier ${fx}${fx === 2 ? ' @desktop-only' : ''}`, async ({ page }) => {
-    // Two dozen views, each compiled and drawn in software, sharing the CPU with the other worker.
-    test.setTimeout(360_000);
+  const tag = fx === 2 ? '@desktop-only' : '@phone';
+
+  test(`/lab draws every kit view at tier ${fx} ${tag}`, async ({ page }) => {
+    // A dozen views, each compiled and drawn in software, sharing the CPU with the other worker.
+    test.setTimeout(fx === 2 ? 240_000 : 150_000);
     const trouble = watchGl(page);
-    const response = await page.goto(`/lab?fx=${fx}`);
-    test.skip(response?.status() === 404, '/lab is not served on the production deployment');
-    await expect(page.getByRole('heading', { level: 1, name: /^lab$/i })).toBeVisible();
-
-    // The canvas is in and faded up: <html data-stage="ready">.
-    await expect(page.locator('html')).toHaveAttribute('data-stage', 'ready', { timeout: 45_000 });
-    const canvas = page.locator('canvas');
-    await expect(canvas).toHaveCount(1);
-    // Decorative: hidden from assistive tech, and behind the page content.
-    await expect(page.locator('[aria-hidden="true"][data-decorative]').filter({ has: canvas })).toHaveCount(1);
-
-    // Every scene, scrolled into view, draws, and its poster steps aside.
-    const views = page.locator('[data-scene-view]');
-    const count = await views.count();
-    expect(count).toBeGreaterThanOrEqual(8);
-    for (let i = 0; i < count; i++) {
-      const view = views.nth(i);
-      await view.scrollIntoViewIfNeeded();
-      const name = (await view.getAttribute('aria-label')) ?? `view ${i + 1}`;
-      await expect(view, name).toHaveAttribute('data-scene-view', 'live', { timeout: 45_000 });
-    }
+    await openLab(page, fx);
+    const checked = await drawEach(page, (v) => !v.inFilmLab);
+    expect(checked.length).toBeGreaterThanOrEqual(8);
 
     // The night section: once the field paints the Chamber behind it, its own
     // background steps aside so the view inside shows through.
@@ -74,7 +107,40 @@ for (const fx of [1, 2] as const) {
     await expect(page.locator('html')).toHaveAttribute('data-stage', 'ready');
     expect(trouble, 'WebGL or three.js errors').toEqual([]);
   });
+
+  test(`/lab draws the landing film's pieces at tier ${fx} ${tag}`, async ({ page }) => {
+    test.setTimeout(fx === 2 ? 240_000 : 150_000);
+    const trouble = watchGl(page);
+    await openLab(page, fx);
+    // The hero vignette, the film itself (every piece of it, compiled before
+    // its first frame), and the household, ledger and plinth on their own.
+    const checked = await drawEach(page, (v) => v.inFilmLab && !LAB_STILLS.test(v.name));
+    expect(checked.length).toBeGreaterThanOrEqual(5);
+    expect(checked.some((name) => /landing film/i.test(name)), 'the film view is checked').toBe(true);
+
+    await expect(page.locator('html')).toHaveAttribute('data-stage', 'ready');
+    expect(trouble, 'WebGL or three.js errors').toEqual([]);
+  });
 }
+
+test('the landing film’s still frames draw under reduced motion, dusk included', async ({ page, isMobile }) => {
+  test.setTimeout(180_000);
+  const trouble = watchGl(page);
+  await page.emulateMedia({ reducedMotion: 'reduce' });
+  await page.goto(`/?fx=${isMobile ? 1 : 2}`);
+  await expect(page.getByRole('heading', { level: 1, name: /your money\. real bills\. crystal clear\./i })).toBeVisible();
+  await expect(page.locator('html')).toHaveAttribute('data-stage', 'ready', { timeout: 90_000 });
+  // Reduced motion keeps the five panels; on a device that runs 3D each
+  // drawing becomes a composed frame of the real scene (FilmStill). The
+  // dusk panel is a night pane, so its frame uses the night palette.
+  await expect(page.locator('#how-it-works [data-film-mode="static"]')).toHaveCount(1);
+  const dusk = page.locator('#how-it-works [data-scene-night] [data-scene-view]');
+  await expect(dusk).toHaveCount(1, { timeout: 60_000 });
+  await dusk.scrollIntoViewIfNeeded();
+  await expect(dusk).toHaveAttribute('data-scene-view', 'live', { timeout: 90_000 });
+  await expect(page.locator('html')).toHaveAttribute('data-stage', 'ready');
+  expect(trouble, 'WebGL or three.js errors').toEqual([]);
+});
 
 test('pages with nothing 3D on them never load the stage', async ({ page }) => {
   test.slow();

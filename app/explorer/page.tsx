@@ -66,7 +66,7 @@ export default function ExplorerPage() {
       <AmbientBackground animated />
       <div className="relative z-10">
         <Navbar />
-        <main id="main" tabIndex={-1} className="overflow-x-clip pb-24 pt-28 sm:pt-36">
+        <main id="main" tabIndex={-1} className="overflow-x-clip pb-24 pt-28 sm:pt-32 lg:pt-28">
           {/* Header: the copy, and beside it the dataset's facts as a ledger. */}
           <div className="mx-auto grid max-w-7xl gap-10 px-4 sm:px-6 lg:grid-cols-12 lg:items-end lg:gap-12 lg:px-8">
             <div className="lg:col-span-7">
@@ -98,7 +98,8 @@ export default function ExplorerPage() {
                 <div
                   key={f.label}
                   className={cn(
-                    'flex flex-col gap-1 py-5 sm:py-6',
+                    // Compact, so the city rises into the first screen on a laptop.
+                    'flex flex-col gap-1 py-4 lg:py-3.5',
                     i % 2 === 1 ? 'border-l border-fg/10 pl-5 sm:pl-6' : 'pr-5 sm:pr-6',
                     i >= 2 && 'border-t border-fg/10'
                   )}
@@ -107,14 +108,14 @@ export default function ExplorerPage() {
                     {f.label}
                     <span className="mt-0.5 block text-meta text-muted">{f.note}</span>
                   </dt>
-                  <dd className="order-first font-display text-display-sm font-medium text-ink">{f.value}</dd>
+                  <dd className="order-first font-display text-[2rem] font-medium leading-none text-ink sm:text-[2.25rem]">{f.value}</dd>
                 </div>
               ))}
             </dl>
           </div>
 
           {/* The city, its controls and readout, then every figure. */}
-          <div className="mt-16 sm:mt-24">
+          <div className="mt-12 sm:mt-16 lg:mt-12">
             <ExplorerClient poster={<CityPoster />} legend={<CityLegend />} />
           </div>
 

@@ -94,9 +94,11 @@ export function buildFilmShots(stateBills: boolean): FilmShot[] {
       numeral: '02',
       label: 'Plain English',
       kicker: 'A bill in plain English',
-      title: { lead: 'Legal text,', accent: 'in plain words.' },
-      body: 'The AI Policy Guide reads the bill and explains what it would change: who it reaches, when it starts and what it costs. No jargon, and no spin.',
-      tags: [{ text: 'What changes' }, { text: 'Who it reaches' }, { text: 'When it starts' }],
+      title: { lead: 'The record,', accent: 'in plain words.' },
+      // What the analysis really reads: the official summary and the record
+      // (app/api/analyze, lib/claude.ts), never the full legal text.
+      body: 'Politicon’s AI reads the bill’s official summary and record, then explains what it would change and who it reaches. Where the record doesn’t say, such as amounts or start dates, it lists what it assumed. No jargon, and no spin.',
+      tags: [{ text: 'What changes' }, { text: 'Who it reaches' }, { text: 'What it assumed' }],
     },
     {
       id: 'household',
@@ -104,7 +106,8 @@ export function buildFilmShots(stateBills: boolean): FilmShot[] {
       label: 'Your household',
       kicker: 'Mapped to your household',
       title: { lead: 'Then it meets', accent: 'your household.' },
-      body: 'Your profile uses ranges, not exact figures: income range, location and life situation. Only those ranges, never your name or email, go to our AI provider, and you can export or delete your data anytime.',
+      // Scoped as the Privacy Policy is: what goes with the bill to make an estimate.
+      body: 'Your profile uses ranges and categories, not exact figures: income range, location and life situation. To make your estimates, only those go to our AI provider with the bill, never your name or email. You can export or delete your data anytime.',
       tags: [{ text: 'Income range' }, { text: 'Location' }, { text: 'Life situation' }],
     },
     {

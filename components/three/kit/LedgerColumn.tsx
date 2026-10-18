@@ -3,19 +3,15 @@
 import { useEffect, useMemo, useRef } from 'react';
 import { useFrame } from '@react-three/fiber';
 import {
-  CatmullRomCurve3,
   Color,
   CustomBlending,
   CylinderGeometry,
   DoubleSide,
-  MeshBasicMaterial,
   MeshPhysicalMaterial,
   OneFactor,
   OneMinusSrcAlphaFactor,
   PlaneGeometry,
   ShaderMaterial,
-  TubeGeometry,
-  Vector3,
   type Group,
   type Mesh,
 } from 'three';
@@ -28,11 +24,12 @@ import { useWarmup } from '@/components/three/kit/warmup';
 
 /*
  * A ledger as a column of glass slabs on a porcelain pedestal: gains in
- * ledger teal stacked up from a baseline (the zero line, a plate edged in
- * violet light), costs in ember amber hanging down from it, each slab's
- * height linear in its dollars, and a soft ring of violet light around the
- * column marking the net. The numbers themselves are never 3D: the page
- * says them in text.
+ * ledger teal stacked up from a baseline (the zero line, a porcelain plate
+ * with a faint violet tint), costs in ember amber hanging down from it, each
+ * slab's height linear in its dollars, and a soft round halo of violet light
+ * around the column marking the net. The halo has no hard core line and no
+ * corners, so from no angle does it read as a wire box. The numbers
+ * themselves are never 3D: the page says them in text.
  *
  *   fill  0..1, how far the slabs have grown out from the baseline (both
  *         ways, as a share of the taller stack), so they can fill as light
@@ -73,9 +70,11 @@ diffuseColor.a = clamp(diffuseColor.a + rimLight * 0.3, 0.0, 1.0);
 #include <opaque_fragment>
 `;
 
-// The net ring's halo: a soft band of light either side of a rounded square,
-// drawn flat around the column. Premultiplied, so it reads as violet haze on
-// paper by day (uAdd 0) and adds up as light by night (uAdd 1).
+// The net's halo: a round, soft band of light drawn flat around the column
+// (a circle clear of the slabs' corners), brightest along its radius and
+// fading out both ways, with no core line. Premultiplied, so it reads as
+// violet haze on paper by day (uAdd < 1) and adds up as light by night
+// (uAdd 1).
 const HALO_VERTEX = /* glsl */ `
 varying vec2 vP;
 void main() {
@@ -86,41 +85,19 @@ void main() {
 
 const HALO_FRAGMENT = /* glsl */ `
 uniform vec3 uColor;
-uniform float uHalf;
 uniform float uRadius;
 uniform float uWidth;
 uniform float uStrength;
 uniform float uAdd;
 varying vec2 vP;
 void main() {
-  vec2 q = abs(vP) - vec2(uHalf - uRadius);
-  float sd = length(max(q, 0.0)) + min(max(q.x, q.y), 0.0) - uRadius;
-  float d = abs(sd) / uWidth;
-  float a = (exp(-d * d * 6.0) * 0.7 + exp(-d * 1.6) * 0.3) * uStrength;
+  float d = (length(vP) - uRadius) / uWidth;
+  float a = (exp(-d * d * 2.2) * 0.72 + exp(-abs(d) * 1.1) * 0.28) * uStrength;
   if (a < 0.003) discard;
   vec4 o = linearToOutputTexel(vec4(uColor, 1.0));
   gl_FragColor = vec4(o.rgb * a, a * (1.0 - uAdd));
 }
 `;
-
-/** A closed rounded square in the xz plane (the net ring's core), `half` from its centre to each side. */
-function roundedSquare(half: number, radius: number): Vector3[] {
-  const pts: Vector3[] = [];
-  const c = half - radius;
-  const corners: [number, number, number][] = [
-    [c, c, 0],
-    [-c, c, Math.PI / 2],
-    [-c, -c, Math.PI],
-    [c, -c, (3 * Math.PI) / 2],
-  ];
-  for (const [cx, cz, a0] of corners) {
-    for (let i = 0; i <= 6; i++) {
-      const a = a0 + (i / 6) * (Math.PI / 2);
-      pts.push(new Vector3(cx + Math.cos(a) * radius, 0, cz + Math.sin(a) * radius));
-    }
-  }
-  return pts;
-}
 
 function slabGlass(key: string) {
   const m = new MeshPhysicalMaterial({
@@ -175,29 +152,24 @@ export default function LedgerColumn({
     const foot = occlude(new CylinderGeometry(width * 0.78, width * 0.84, base, 48), -base / 2, base / 2, 0.25);
     foot.translate(0, base / 2, 0);
     const plate = new RoundedBoxGeometry(width + 0.07, 0.016, width + 0.07, 2, 0.006);
-    // The zero line's lit edge: a slightly wider slip of violet light under the plate's rim.
-    const lip = new RoundedBoxGeometry(width + 0.084, 0.007, width + 0.084, 2, 0.0034);
-    lip.translate(0, -0.0068, 0);
-    // The net ring: a fine tube of light around the column, inside a soft halo.
-    const ringHalf = (width + 0.11) / 2;
-    const ringRadius = Math.min(0.05, ringHalf * 0.35);
-    const ring = new TubeGeometry(new CatmullRomCurve3(roundedSquare(ringHalf, ringRadius), true, 'centripetal'), 96, 0.0042, 8, true);
-    const halo = new PlaneGeometry((ringHalf + 0.08) * 2, (ringHalf + 0.08) * 2);
+    // The net halo: a circle clear of the slabs' corners (half their diagonal), on a plane wide enough for its falloff.
+    const haloRadius = width * 0.71 + 0.05;
+    const haloWidth = 0.045;
+    const haloHalf = haloRadius + haloWidth * 4;
+    const halo = new PlaneGeometry(haloHalf * 2, haloHalf * 2);
     halo.rotateX(-Math.PI / 2);
     // A slim spine from the pedestal to the baseline, so the zero line never floats.
     const spineHeight = Math.max(0.001, layout.baseline - base);
     const spine = new CylinderGeometry(0.014, 0.014, spineHeight, 16);
     spine.translate(0, base + spineHeight / 2, 0);
-    return { slabs, foot, plate, lip, spine, ring, halo, ringHalf, ringRadius };
+    return { slabs, foot, plate, spine, halo, haloRadius, haloWidth };
   }, [layout, width]);
   useEffect(
     () => () => {
       geo.slabs.forEach((g) => g.dispose());
       geo.foot.dispose();
       geo.plate.dispose();
-      geo.lip.dispose();
       geo.spine.dispose();
-      geo.ring.dispose();
       geo.halo.dispose();
     },
     [geo]
@@ -208,15 +180,12 @@ export default function LedgerColumn({
       gain: slabGlass('gain'),
       loss: slabGlass('loss'),
       porcelain: new MeshPhysicalMaterial({ roughness: 0.7, metalness: 0, vertexColors: true }),
-      plate: new MeshPhysicalMaterial({ roughness: 0.5, metalness: 0, clearcoat: 0.6 }),
-      line: new MeshBasicMaterial({ toneMapped: false, transparent: true }),
-      ring: new MeshBasicMaterial({ toneMapped: false, transparent: true, depthWrite: false }),
+      plate: new MeshPhysicalMaterial({ roughness: 0.5, metalness: 0, clearcoat: 0.6, emissive: new Color() }),
       halo: new ShaderMaterial({
         uniforms: {
           uColor: { value: new Color() },
-          uHalf: { value: 0.1 },
-          uRadius: { value: 0.03 },
-          uWidth: { value: 0.03 },
+          uRadius: { value: 0.2 },
+          uWidth: { value: 0.04 },
           uStrength: { value: 0 },
           uAdd: { value: 0 },
         },
@@ -258,15 +227,15 @@ export default function LedgerColumn({
     (mats.gain.userData.rim as { uRimColor: { value: Color } }).uRimColor.value.set(mixHex(palette.gain, '#FFFFFF', 0.45));
     (mats.loss.userData.rim as { uRimColor: { value: Color } }).uRimColor.value.set(mixHex(palette.loss, '#FFFFFF', 0.45));
     mats.porcelain.color.set(base);
-    mats.plate.color.set(base);
-    mats.line.color.set(palette.night ? palette.glow : palette.violet);
-    mats.ring.color.set(palette.night ? palette.violetLight : palette.violet);
+    // The zero plate: porcelain with a breath of violet (a lit slab, never a line of light).
+    mats.plate.color.set(mixHex(base, palette.violet, palette.night ? 0.1 : 0.08));
+    mats.plate.emissive.set(palette.night ? palette.violet : '#000000');
+    mats.plate.emissiveIntensity = palette.night ? 0.12 : 0;
     const halo = mats.halo.uniforms;
     halo.uColor.value.set(palette.night ? palette.violetLight : palette.glow);
     halo.uAdd.value = palette.night ? 1 : 0.35;
-    halo.uHalf.value = geo.ringHalf;
-    halo.uRadius.value = geo.ringRadius;
-    halo.uWidth.value = 0.035;
+    halo.uRadius.value = geo.haloRadius;
+    halo.uWidth.value = geo.haloWidth;
   }, [mats, palette, tones, geo]);
 
   useFrame(() => {
@@ -285,7 +254,6 @@ export default function LedgerColumn({
       m.opacity = 0.62 + g * 0.22;
       m.emissiveIntensity = 0.2 + g * 0.55;
     }
-    mats.line.opacity = 0.7 + g * 0.3;
     const k = read(mark);
     if (ring.current) {
       ring.current.visible = k > 0.002 || warm;
@@ -293,8 +261,7 @@ export default function LedgerColumn({
       const s = 1.35 - 0.35 * k * k * (3 - 2 * k);
       ring.current.scale.set(s, 1, s);
     }
-    mats.ring.opacity = k;
-    mats.halo.uniforms.uStrength.value = k * (palette.night ? 0.55 + g * 0.35 : 0.85);
+    mats.halo.uniforms.uStrength.value = k * (palette.night ? 0.6 + g * 0.35 : 0.9);
   });
 
   return (
@@ -313,14 +280,10 @@ export default function LedgerColumn({
           position={[0, layout.baseline + (s.gain ? s.inner : -s.inner), 0]}
         />
       ))}
-      {/* The baseline: zero, a porcelain plate over a lit violet edge. */}
-      <group position={[0, layout.baseline, 0]}>
-        <mesh geometry={geo.plate} material={mats.plate} />
-        <mesh geometry={geo.lip} material={mats.line} />
-      </group>
-      {/* The net: a ring of violet light around the column, closing in as it appears. */}
+      {/* The baseline: zero, a porcelain plate. */}
+      <mesh geometry={geo.plate} material={mats.plate} position={[0, layout.baseline, 0]} />
+      {/* The net: a soft round halo of violet light around the column, closing in as it appears. */}
       <group ref={ring} position={[0, layout.netY, 0]}>
-        <mesh geometry={geo.ring} material={mats.ring} renderOrder={6} />
         <mesh geometry={geo.halo} material={mats.halo} renderOrder={7} />
       </group>
     </group>

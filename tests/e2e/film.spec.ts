@@ -13,7 +13,7 @@ import { PUBLIC_PAGES, expect, horizontalOverflow, test } from './support';
 test.use({ launchOptions: { args: ['--use-gl=angle', '--use-angle=swiftshader', '--enable-unsafe-swiftshader'] } });
 
 const WCAG_TAGS = ['wcag2a', 'wcag2aa', 'wcag21a', 'wcag21aa', 'wcag22a', 'wcag22aa'];
-const STEP_TITLES = [/it starts with a real bill/i, /legal text, in plain words/i, /then it meets your household/i, /it resolves into your number/i, /and then, you decide/i];
+const STEP_TITLES = [/it starts with a real bill/i, /the record, in plain words/i, /then it meets your household/i, /it resolves into your number/i, /and then, you decide/i];
 /** Where each shot comes to rest (filmShots STILL_PROGRESS, which the rail jumps to). */
 const REST = [0.12, 0.35, 0.5, 0.755, 0.985];
 
@@ -34,9 +34,33 @@ async function scrollFilm(page: Page, shot: number) {
     window.scrollTo(0, top + p * (track.offsetHeight - stage.offsetHeight));
   }, REST[shot]);
   // The page renders on a CPU shared with the software-drawn scene: give it time.
-  await expect(page.locator(`#how-it-works [data-film-step="${shot}"] > [data-state="active"]`)).toHaveCount(1, { timeout: 30_000 });
-  await page.waitForTimeout(700);
+  const caption = page.locator(`#how-it-works [data-film-step="${shot}"] > [data-state="active"]`);
+  await expect(caption).toHaveCount(1, { timeout: 30_000 });
+  await settled(page, caption);
 }
+
+/**
+ * Until the caption has finished coming in: its cross-fade and lift (and the
+ * colour change of its words at dusk) have run, so what is measured or
+ * checked for contrast is the caption at rest.
+ */
+async function settled(page: Page, caption: Locator) {
+  await expect
+    .poll(
+      () =>
+        caption.evaluate((el) =>
+          el
+            .getAnimations({ subtree: true })
+            .filter((a) => (a.playState === 'running' || a.pending) && a.effect?.getComputedTiming().endTime !== Infinity).length
+        ),
+      { timeout: 15_000, message: 'the caption comes to rest' }
+    )
+    .toBe(0);
+  await expect(caption).toHaveCSS('opacity', '1');
+}
+
+/** Two frames: whatever a scroll changed has been laid out and painted. */
+const twoFrames = (page: Page) => page.evaluate(() => new Promise<void>((r) => requestAnimationFrame(() => requestAnimationFrame(() => r()))));
 
 /** The step caption that is on screen (not inert, not hidden). */
 const activeCaption = (page: Page) => page.locator('#how-it-works [data-film-step] > [data-state="active"]');
@@ -127,7 +151,10 @@ test.describe('the pinned film', () => {
     await page.setViewportSize({ width: 667, height: 375 });
     await page.goto('/?fx=1');
     await expect(page.getByRole('heading', { level: 1, name: PUBLIC_PAGES[0].h1 })).toBeVisible();
-    await page.waitForTimeout(4_000);
+    // The 3D stage is up (for the hero), so the device runs 3D and the film
+    // has decided how to play: on a screen this short it stays static.
+    await expect(page.locator('html')).toHaveAttribute('data-stage', 'ready', { timeout: 60_000 });
+    await twoFrames(page);
     await expect(page.locator('[data-film-mode="static"]')).toHaveCount(1);
     // Turned upright, the film pins (the same switch as any other).
     await page.setViewportSize({ width: 375, height: 667 });
@@ -167,7 +194,7 @@ test.describe('the pinned film', () => {
       }
       // Past the film, over the closing call to action (a night section).
       await page.locator('#how-it-works ~ section[data-night], main section[data-night]').last().scrollIntoViewIfNeeded();
-      await page.waitForTimeout(600);
+      await twoFrames(page);
       const closing = await page.evaluate(() => {
         const bar = document.querySelector('nav[aria-label="Main"] .glass-nav')?.getBoundingClientRect();
         const night = [...document.querySelectorAll('main section[data-night]')].pop()?.getBoundingClientRect();
@@ -189,7 +216,10 @@ test.describe('the pinned film', () => {
     await page.reload();
     await expect(page.locator('html')).toHaveAttribute('data-motion', 'paused');
     await expect(page.getByRole('button', { name: 'Pause motion' })).toHaveAttribute('aria-pressed', 'true');
-    await page.waitForTimeout(4_000);
+    // Paused on a device that runs 3D, the film has decided once its still
+    // frames have loaded (each panel's drawing becomes a scene view): static.
+    await expect(page.locator('#how-it-works [data-film-mode="static"] [data-scene-view]').first()).toBeAttached({ timeout: 60_000 });
+    await twoFrames(page);
     await expect(page.locator('[data-film-mode="static"]')).toHaveCount(1);
     // And back.
     await page.getByRole('button', { name: 'Pause motion' }).click();

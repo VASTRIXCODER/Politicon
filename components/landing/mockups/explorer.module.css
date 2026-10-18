@@ -60,9 +60,6 @@
 
 .district {
   position: relative;
-  transition:
-    opacity 0.5s var(--ease-civic),
-    filter 0.5s var(--ease-civic);
 }
 /* A column of violet light over the chosen district. */
 .district::before {
@@ -75,17 +72,33 @@
   transition: opacity 0.5s var(--ease-civic);
 }
 
-.root:has(input:checked) .district {
+/* The districts not chosen dim their towers, street and water, never their
+   names: every label stays at the muted text tone (AA). The chosen
+   district's name turns ink. */
+.district > :not(.label) {
+  transition:
+    opacity 0.5s var(--ease-civic),
+    filter 0.5s var(--ease-civic);
+}
+.root:has(input:checked) .district > :not(.label) {
   opacity: 0.45;
   filter: saturate(0.55);
 }
-.root:has(input[value='under25k']:checked) .district[data-bracket='under25k'],
-.root:has(input[value='25to50k']:checked) .district[data-bracket='25to50k'],
-.root:has(input[value='50to75k']:checked) .district[data-bracket='50to75k'],
-.root:has(input[value='75to100k']:checked) .district[data-bracket='75to100k'],
-.root:has(input[value='100kPlus']:checked) .district[data-bracket='100kPlus'] {
+.root:has(input[value='under25k']:checked) .district[data-bracket='under25k'] > *,
+.root:has(input[value='25to50k']:checked) .district[data-bracket='25to50k'] > *,
+.root:has(input[value='50to75k']:checked) .district[data-bracket='50to75k'] > *,
+.root:has(input[value='75to100k']:checked) .district[data-bracket='75to100k'] > *,
+.root:has(input[value='100kPlus']:checked) .district[data-bracket='100kPlus'] > * {
   opacity: 1;
   filter: none;
+}
+.root:has(input[value='under25k']:checked) .district[data-bracket='under25k'] .label,
+.root:has(input[value='25to50k']:checked) .district[data-bracket='25to50k'] .label,
+.root:has(input[value='50to75k']:checked) .district[data-bracket='50to75k'] .label,
+.root:has(input[value='75to100k']:checked) .district[data-bracket='75to100k'] .label,
+.root:has(input[value='100kPlus']:checked) .district[data-bracket='100kPlus'] .label {
+  color: rgb(var(--c-ink));
+  font-weight: 500;
 }
 .root:has(input[value='under25k']:checked) .district[data-bracket='under25k']::before,
 .root:has(input[value='25to50k']:checked) .district[data-bracket='25to50k']::before,

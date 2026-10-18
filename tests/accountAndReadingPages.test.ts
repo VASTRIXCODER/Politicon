@@ -81,17 +81,20 @@ describe('reading pages', () => {
     expect([...new Set(links)].slice(0, 3)).toEqual(['who-can-use-politicon', 'what-we-collect', 'how-we-use-it']);
   });
 
-  it('stamps the last-updated date beside a decorative record seal', () => {
+  it('stamps the last-updated date beside a decorative violet seal (gold is for official records only)', () => {
     const html = renderToString(
       h(LegalPage, { title: 'Terms of Service', intro: 'Intro.', updated: '2026-10-07', children: h(Section, { title: 'One', children: 'x' }) })
     );
     expect(text(html)).toMatch(/Last updated October 7, 2026/);
     expect(html).toMatch(/<time dateTime="2026-10-07"/i);
-    expect(html).toMatch(/<svg[^>]*aria-hidden="true"[^>]*data-decorative=""[^>]*class="[^"]*text-gold/);
+    expect(html).toMatch(/<svg[^>]*aria-hidden="true"[^>]*data-decorative=""[^>]*class="[^"]*text-primary-300/);
+    expect(html).not.toMatch(/text-gold|bg-gold|fill-gold|stroke-gold/);
   });
 
   it('asks Help questions as native disclosures and keeps the support address', () => {
     const html = renderToString(h(HelpPage));
+    // Help is not a record: no archive gold anywhere on it.
+    expect(html).not.toMatch(/text-gold|bg-gold|fill-gold|stroke-gold/);
     expect((html.match(/<details\b/g) ?? []).length).toBeGreaterThanOrEqual(6);
     expect((html.match(/<summary\b/g) ?? []).length).toBe((html.match(/<details\b/g) ?? []).length);
     expect(text(html)).toMatch(/Will Politicon tell me how to vote\?/);

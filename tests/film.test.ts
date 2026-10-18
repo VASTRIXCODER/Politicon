@@ -1,3 +1,5 @@
+import { readFileSync } from 'node:fs';
+import path from 'node:path';
 import { describe, expect, it } from 'vitest';
 import { createElement as h } from 'react';
 import { renderToString } from 'react-dom/server';
@@ -14,6 +16,7 @@ import {
 import { anchorCorrection, anchorFor } from '@/components/landing/film/filmAnchor';
 import { EXAMPLE_TOTAL, EXAMPLE_TOTAL_TEXT, buildFilmShots } from '@/components/landing/film/shots';
 import FilmSection from '@/components/landing/film/FilmSection';
+import FilmPoster from '@/components/landing/film/FilmPosters';
 import ImpactCard from '@/components/landing/hero/ImpactCard';
 import { buildImpactExamples } from '@/components/landing/hero/impactExamples';
 import HeroPoster from '@/components/landing/hero/HeroPoster';
@@ -178,6 +181,21 @@ describe('the film’s words', () => {
     }
   });
 
+  it('says what the AI really reads (the official summary and record, not the legal text)', () => {
+    const shot = buildFilmShots(true).find((s) => s.id === 'plain-english')!;
+    const words = JSON.stringify(shot);
+    expect(words).not.toMatch(/legal text|full text|reads the bill\b(?!’s official summary)|AI Policy Guide/i);
+    expect(shot.body).toMatch(/official summary/);
+    expect(shot.body).toMatch(/what it assumed/);
+  });
+
+  it('scopes what goes to the AI provider as the Privacy Policy does', () => {
+    const shot = buildFilmShots(true).find((s) => s.id === 'household')!;
+    expect(shot.body).toMatch(/never your name or email/);
+    expect(shot.body).toMatch(/with the bill/);
+    expect(shot.body).not.toMatch(/Only those ranges, never your name or email, go to our AI provider,/);
+  });
+
   it('stays non-partisan and educational', () => {
     const all = JSON.stringify(buildFilmShots(true));
     expect(all).toMatch(/non-partisan/i);
@@ -204,6 +222,17 @@ describe('server render', () => {
     for (const tag of hidden) expect(tag, 'only decoration is aria-hidden').not.toMatch(/<(article|h3|p|a)\b/);
   });
 
+  it('keeps the costs in the example on phones and short screens (only tags and the note fold away)', () => {
+    // The four ledger lines fold into a saves/costs pair there, never into the total alone.
+    expect(html).toMatch(/data-caption-summary=""[^>]*>[\s\S]*?Saves you[\s\S]*?\+\$2,020\/yr/);
+    expect(html).toMatch(/data-caption-summary=""[^>]*>[\s\S]*?Costs you[\s\S]*?−\$780\/yr/);
+    expect(html.match(/data-caption-line=""/g)).toHaveLength(4);
+    const css = readFileSync(path.resolve(__dirname, '../components/landing/film/film.module.css'), 'utf8');
+    const small = css.slice(css.indexOf('@media not all and (min-width: 640px) and (min-height: 720px)'));
+    expect(small).toMatch(/\.stage \[data-caption-line\]/);
+    expect(small).toMatch(/\.stage \[data-caption-summary\]\s*\{\s*display: flex;/);
+  });
+
   it('labels the example figure as an example', () => {
     expect(text(html)).toContain('Example');
     expect(text(html)).toContain('+$1,240/yr');
@@ -212,6 +241,21 @@ describe('server render', () => {
 
   it('renders the stills as decoration', () => {
     expect(html.match(/data-decorative=""/g)?.length ?? 0).toBeGreaterThanOrEqual(FILM_SHOTS);
+  });
+
+  it('draws dusk as the film’s own finale: the Capitol, the lit household and its ledger, at night', () => {
+    const dusk = renderToString(h(FilmPoster, { shot: 'decide' }));
+    expect(dusk).toContain('data-night=""');
+    // The same building as the hero's (its dome) and the same house as shot 3 (its front).
+    expect(dusk).toContain('M258 156 C258 104 288 74 320 72 C352 74 382 104 382 156 Z');
+    expect(dusk).toContain('M400 330 H500 V448 H400 Z');
+    // The example ledger: savings in teal over costs in amber.
+    expect(dusk).toMatch(/fill-gain-fill/);
+    expect(dusk).toMatch(/fill-loss-fill/);
+    // No archive gold: nothing in it is an official record.
+    expect(dusk).not.toMatch(/gold/);
+    const ids = [...dusk.matchAll(/ id="([^"]+)"/g)].map((m) => m[1]);
+    expect(new Set(ids).size).toBe(ids.length);
   });
 
   it('starts kinetic headlines visible (no style, no split) on the server', () => {
@@ -235,6 +279,14 @@ describe('the hero receipt and poster', () => {
       expect(e.projection.map((p) => p.label)).toEqual(['Year 1', 'Year 3', 'Year 5']);
       expect(Math.max(...e.projection.map((p) => p.width))).toBe(100);
     }
+  });
+
+  it('changes slides by moving, never by fading, so a busy frame can’t leave the receipt blank', () => {
+    const css = readFileSync(path.resolve(__dirname, '../components/landing/hero/receipt.module.css'), 'utf8');
+    const keyframes = css.match(/@keyframes receipt-in\s*\{[\s\S]*?\n\}/)?.[0] ?? '';
+    expect(keyframes).toMatch(/transform/);
+    expect(keyframes).not.toMatch(/opacity|visibility|clip/);
+    expect(css.match(/@keyframes bar-grow\s*\{[\s\S]*?\n\}/)?.[0]).not.toMatch(/scaleX\(0\)/);
   });
 
   it('renders the receipt labelled as an example, paused until it knows the motion preference', () => {

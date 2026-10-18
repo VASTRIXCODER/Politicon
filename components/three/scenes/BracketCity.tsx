@@ -465,7 +465,8 @@ function CityLights() {
         <Lightformer form="rect" intensity={2.2} color={p.key} position={[0, 6, 2]} rotation={[Math.PI / 2, 0, 0]} scale={[14, 4, 1]} />
         <Lightformer form="ring" intensity={p.night ? 6 : 4} color={p.rim} position={[-7, 2.5, -5]} scale={4.5} target={[0, 0, 0]} />
         <Lightformer form="rect" intensity={p.night ? 3.2 : 2.2} color={p.glow} position={[7, 1, -3]} scale={[1.6, 6, 1]} target={[0, 0, 0]} />
-        <Lightformer form="rect" intensity={p.night ? 0.4 : 0.8} color={p.gold} position={[2, -3, 6]} scale={[6, 1, 1]} target={[0, 0, 0]} />
+        {/* A low warm bounce in the key's own white (never archive gold: nothing here is an official record). */}
+        <Lightformer form="rect" intensity={p.night ? 0.4 : 0.8} color={p.key} position={[2, -3, 6]} scale={[6, 1, 1]} target={[0, 0, 0]} />
         <Lightformer form="circle" intensity={p.night ? 0.5 : 1.3} color={p.key} position={[0, 1.5, 10]} scale={6} target={[0, 0, 0]} />
       </Environment>
       {/* By day a warm, near-neutral fill (the palette's lilac mist would tint the paper). */}

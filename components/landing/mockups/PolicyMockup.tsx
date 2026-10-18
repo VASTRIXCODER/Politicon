@@ -13,8 +13,9 @@ const CATEGORY_LABEL = { taxes: 'Taxes', healthcare: 'Healthcare', housing: 'Hou
 const YEARS = [1, 3, 5] as const;
 
 /**
- * The policy page, "the Transmission", in miniature: the official record's
- * header with its gold seal and status, where the bill stands on its path,
+ * The policy page, "the Transmission", in miniature: the record header with
+ * its seal and status (a hypothetical policy, so the header says it is an
+ * example and names no real source), where the bill stands on its path,
  * the plain-English summary and the estimate for a sample household. A
  * slip of the ranked feed floats beside it. All figures are illustrative
  * (lib/explorerData) and the pane says so.
@@ -36,19 +37,21 @@ export default function PolicyMockup({ facing }: { facing: 'left' | 'right' }) {
             <RecordSeal className="h-12 w-12 flex-shrink-0 sm:h-14 sm:w-14" />
             <div className="min-w-0 flex-1">
               <div className="flex flex-wrap items-center justify-between gap-2">
-                <p className="font-mono-data text-meta uppercase tracking-[0.16em] text-gold">Official record</p>
+                {/* A muted kicker: the policy is hypothetical, so nothing but the seal (which depicts the real page's record header) is gold. */}
+                <p className="font-mono-data text-meta uppercase tracking-[0.16em] text-muted">Record header · example</p>
                 <ExampleStamp>Example bill</ExampleStamp>
               </div>
               <p className="mt-1 font-display text-xl font-medium leading-tight text-ink sm:text-2xl">{policy.title}</p>
               <div className="mt-2.5 flex flex-wrap items-center gap-x-3 gap-y-1.5 text-meta text-muted">
                 <span className="inline-flex items-center gap-1.5 rounded-full border border-primary/20 bg-primary/10 px-2.5 py-0.5 font-mono-data font-medium text-primary-300">
                   <span className="h-1.5 w-1.5 rounded-full bg-current opacity-80" />
-                  In committee
+                  In committee (example)
                 </span>
                 <span>
                   {policy.scope} · {CATEGORY_LABEL[policy.category]}
                 </span>
-                <span className="hidden sm:inline">Source: Congress.gov</span>
+                {/* A real page names its source here; a hypothetical policy has none. */}
+                <span className="hidden sm:inline">Source: example</span>
               </div>
             </div>
           </div>

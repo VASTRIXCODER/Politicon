@@ -43,7 +43,7 @@ export const GUIDE_EXAMPLE = {
   question: 'What would a minimum wage increase mean for my household?',
   /** The household asking: pays a little more through prices. */
   asker: exampleImpact('minimum-wage-increase', '50to75k'),
-  /** The contrast the answer draws: a household with a minimum-wage earner gains. */
+  /** The contrast the answer draws: a typical household in the lowest bracket gains (a bracket average, not a minimum-wage earner's own figure). */
   contrast: exampleImpact('minimum-wage-increase', 'under25k'),
 };
 

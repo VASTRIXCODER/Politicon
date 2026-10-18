@@ -4,7 +4,17 @@ import Button from '@/components/ui/Button';
 import { formatUSD } from '@/lib/format';
 import { cn } from '@/lib/utils';
 import { FILM_SHOTS } from '@/lib/three/film';
-import type { FilmShot } from './shots';
+import type { FilmShot, LedgerLine } from './shots';
+
+/** The example's savings and costs, each added up, with the words that say which way they go. */
+function ledgerSummary(lines: LedgerLine[]): { direction: string; amount: number }[] {
+  const saves = lines.filter((l) => l.amount >= 0).reduce((sum, l) => sum + l.amount, 0);
+  const costs = lines.filter((l) => l.amount < 0).reduce((sum, l) => sum + l.amount, 0);
+  return [
+    ...(saves ? [{ direction: 'Saves you', amount: saves }] : []),
+    ...(costs ? [{ direction: 'Costs you', amount: costs }] : []),
+  ];
+}
 
 /**
  * One shot's caption: the real "how it works" copy, set editorially (a mono
@@ -56,11 +66,19 @@ export default function FilmCaption({ shot, index, className }: { shot: FilmShot
           </figcaption>
           <dl className="mt-3 space-y-1.5 font-mono-data text-sm">
             {shot.example.lines.map((line) => (
-              <div key={line.label} data-caption-extra="" className="flex items-baseline justify-between gap-4">
+              <div key={line.label} data-caption-line="" className="flex items-baseline justify-between gap-4">
                 <dt className="text-muted">
                   {line.direction} <span className="text-ink">· {line.label}</span>
                 </dt>
                 <dd className={line.amount < 0 ? 'text-loss' : 'text-gain'}>{formatUSD(line.amount, { signed: true })}</dd>
+              </div>
+            ))}
+            {/* The same lines in two, for the pinned film on phones and short
+                screens (film.module.css swaps them in): the costs never drop out. */}
+            {ledgerSummary(shot.example.lines).map((row) => (
+              <div key={row.direction} data-caption-summary="" className="hidden items-baseline justify-between gap-4">
+                <dt className="text-muted">{row.direction}</dt>
+                <dd className={row.amount < 0 ? 'text-loss' : 'text-gain'}>{formatUSD(row.amount, { signed: true, suffix: '/yr' })}</dd>
               </div>
             ))}
             <div className="!mt-3 flex items-baseline justify-between gap-4 border-t border-dashed border-fg/15 pt-3">

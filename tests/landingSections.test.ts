@@ -141,6 +141,26 @@ describe('FeatureShowcase', () => {
     expect(t).toMatch(/Example bill/);
     expect(t).not.toMatch(/\b(H\.R\.|S\.)\s?\d/);
   });
+
+  it('never gives the hypothetical policy a real source or an unlabelled stage', () => {
+    expect(t).not.toMatch(/Source:\s*Congress\.gov/i);
+    expect(t).not.toMatch(/Source:\s*Open States/i);
+    expect(t).toMatch(/In committee \(example\)/);
+  });
+
+  it('claims an estimate only after an analysis, and a record only for verified bills', () => {
+    expect(t).not.toMatch(/Each one opens on its official record/i);
+    expect(t).toMatch(/Each verified bill links to its official record/);
+    expect(t).toMatch(/Analyze one for a plain-English explanation and a dollar estimate/);
+    expect(t).toMatch(/marked unverified/);
+  });
+
+  it('calls the guide’s households samples, and the contrast a bracket average', () => {
+    expect(t).toMatch(/For a sample household earning/);
+    expect(t).not.toMatch(/For yours|· yours/);
+    expect(t).toMatch(/A typical household earning under \$25k could gain about/);
+    expect(t).not.toMatch(/with a minimum-wage worker could/);
+  });
 });
 
 describe('ShareableCards', () => {

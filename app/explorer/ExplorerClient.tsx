@@ -1,6 +1,6 @@
 'use client';
 
-import { useCallback, useId, useMemo, useRef, useState, useSyncExternalStore, type ReactNode } from 'react';
+import { useCallback, useEffect, useId, useMemo, useRef, useState, useSyncExternalStore, type ReactNode, type RefObject } from 'react';
 import { BarChart3, Move3d, Table2, X } from 'lucide-react';
 import SceneView from '@/components/three/SceneView';
 import Badge from '@/components/ui/Badge';
@@ -346,6 +346,34 @@ function usePhone(): boolean {
   );
 }
 
+/**
+ * Whether a sideways scroller has more to show before or after what's in
+ * view (false, false until measured, as on the server), kept current as it
+ * scrolls and resizes.
+ */
+function useScrollEdges(ref: RefObject<HTMLElement | null>): { before: boolean; after: boolean } {
+  const [edges, setEdges] = useState({ before: false, after: false });
+  useEffect(() => {
+    const el = ref.current;
+    if (!el) return;
+    const update = () => {
+      const max = el.scrollWidth - el.clientWidth;
+      const before = el.scrollLeft > 1;
+      const after = el.scrollLeft < max - 1;
+      setEdges((prev) => (prev.before === before && prev.after === after ? prev : { before, after }));
+    };
+    update();
+    el.addEventListener('scroll', update, { passive: true });
+    const resize = typeof ResizeObserver === 'undefined' ? null : new ResizeObserver(update);
+    resize?.observe(el);
+    return () => {
+      el.removeEventListener('scroll', update);
+      resize?.disconnect();
+    };
+  }, [ref]);
+  return edges;
+}
+
 const BRACKET_OPTIONS: SegmentedOption<BracketKey | 'all'>[] = [
   { value: 'all', label: 'All', ariaLabel: 'All brackets' },
   ...BRACKETS.map((b) => ({
@@ -378,6 +406,8 @@ export default function ExplorerClient({ poster, legend }: ExplorerClientProps) 
   const tipBox = useRef<HTMLDivElement>(null);
   const labelEls = useRef<Partial<Record<BracketKey, HTMLSpanElement | null>>>({});
   const bracketLabel = useId();
+  const bracketScroller = useRef<HTMLDivElement>(null);
+  const bracketEdges = useScrollEdges(bracketScroller);
 
   const choose = useCallback((next: CityFocus) => {
     setFocus(next);
@@ -434,15 +464,14 @@ export default function ExplorerClient({ poster, legend }: ExplorerClientProps) 
     <>
       <section aria-labelledby="city-heading" data-scene-section="explorer-city" className="relative overflow-x-clip">
         <div className="mx-auto max-w-7xl px-4 sm:px-6 lg:px-8">
-          <div className="flex flex-col gap-4 sm:flex-row sm:items-end sm:justify-between sm:gap-10">
-            <div>
-              <div className="flex flex-wrap items-center gap-3">
-                <p className="font-mono-data text-meta uppercase tracking-[0.18em] text-muted">Fig. 1 · The city</p>
-                <Badge variant="example">Illustrative</Badge>
-              </div>
-              <h2 id="city-heading" className="mt-4 font-display text-display-sm font-medium text-ink [text-wrap:balance]">
+          {/* A figure's title line, kept to one row so the model rises into the first screen. */}
+          <div className="flex flex-col gap-3 sm:flex-row sm:items-end sm:justify-between sm:gap-10">
+            <div className="flex flex-wrap items-center gap-x-4 gap-y-2">
+              <p className="font-mono-data text-meta uppercase tracking-[0.18em] text-muted">Fig. 1</p>
+              <h2 id="city-heading" className="font-display text-[1.75rem] font-medium leading-tight text-ink sm:text-[2rem]">
                 Brackets as a <em>city</em>
               </h2>
+              <Badge variant="example">Illustrative</Badge>
             </div>
             <p className="max-w-md text-sm leading-relaxed text-muted sm:text-right">
               Pick a bracket or a category. The model lights it; the readout gives the numbers.
@@ -450,13 +479,19 @@ export default function ExplorerClient({ poster, legend }: ExplorerClientProps) 
           </div>
 
           {/* The controls: glass, as controls are. */}
-          <div className="glass mt-8 flex flex-col gap-5 rounded-pane p-4 sm:p-5 xl:flex-row xl:items-center xl:justify-between">
+          <div className="glass mt-5 flex flex-col gap-4 rounded-pane p-4 xl:flex-row xl:items-center xl:justify-between">
             <div className="min-w-0">
-              <p id={bracketLabel} className="mb-2 px-1 font-mono-data text-meta uppercase tracking-[0.16em] text-muted">
+              <p id={bracketLabel} className="mb-1.5 px-1 font-mono-data text-meta uppercase tracking-[0.16em] text-muted">
                 Income bracket
               </p>
-              {/* Scrolls sideways on a phone rather than squeezing the labels. */}
-              <div className="-mx-4 overflow-x-auto px-4 pb-1 scrollbar-hide sm:mx-0 sm:px-0">
+              {/* Scrolls sideways on a phone rather than squeezing the labels,
+                  its edges fading where more options wait (city.module.css). */}
+              <div
+                ref={bracketScroller}
+                className={cn(styles.scroller, '-mx-4 overflow-x-auto px-4 pb-1 scrollbar-hide sm:mx-0 sm:px-0')}
+                data-more-before={bracketEdges.before ? '' : undefined}
+                data-more-after={bracketEdges.after ? '' : undefined}
+              >
                 <SegmentedControl
                   options={BRACKET_OPTIONS}
                   value={focus.bracket ?? 'all'}
@@ -468,7 +503,7 @@ export default function ExplorerClient({ poster, legend }: ExplorerClientProps) 
               </div>
             </div>
             <div className="min-w-0">
-              <p className="mb-2 px-1 font-mono-data text-meta uppercase tracking-[0.16em] text-muted" aria-hidden="true">
+              <p className="mb-1.5 px-1 font-mono-data text-meta uppercase tracking-[0.16em] text-muted" aria-hidden="true">
                 Category
               </p>
               <div role="group" aria-label="Filter by category" className="flex flex-wrap gap-2">
@@ -500,7 +535,7 @@ export default function ExplorerClient({ poster, legend }: ExplorerClientProps) 
             </div>
           </div>
 
-          <div className="mt-6 grid gap-6 lg:grid-cols-12">
+          <div className="mt-4 grid gap-6 lg:grid-cols-12">
             <figure className="min-w-0 lg:col-span-8 xl:col-span-9">
               <div
                 ref={frame}
