@@ -5,12 +5,12 @@ import { GeistMono } from 'geist/font/mono';
 import '@/styles/tokens.css';
 import './globals.css';
 import LenisProvider from '@/components/providers/LenisProvider';
-import MotionProvider from '@/components/providers/MotionProvider';
 import { ReadingModeProvider } from '@/components/providers/ReadingModeProvider';
 import Analytics from '@/components/Analytics';
 import StageLoader from '@/components/three/StageLoader';
 import { SITE_DESCRIPTION, SITE_NAME, SITE_URL } from '@/lib/site';
 import { THEME_SCRIPT } from '@/lib/theme';
+import { MOTION_SCRIPT } from '@/lib/motionScript';
 import { BRAND_COLORS } from '@/lib/design/tokens';
 
 // All type is self-hosted at build time by next/font (no third-party font CSS).
@@ -65,18 +65,20 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
       suppressHydrationWarning
     >
       <head>
-        {/* Applies the saved theme before first paint (see lib/theme.ts). */}
+        {/* Applies the saved theme, and a paused-motion choice, before first paint (lib/theme.ts, lib/motion.ts). */}
         <script dangerouslySetInnerHTML={{ __html: THEME_SCRIPT }} />
+        <script dangerouslySetInnerHTML={{ __html: MOTION_SCRIPT }} />
       </head>
       <body>
         <a href="#main" className="skip-link">Skip to main content</a>
-        <MotionProvider>
-          <LenisProvider>
-            <ReadingModeProvider>
-              {children}
-            </ReadingModeProvider>
-          </LenisProvider>
-        </MotionProvider>
+        {/* Motion (motion/react) is set up by the signed-in app's own layouts
+            (components/providers/MotionProvider), the only pages that animate
+            with it, so marketing pages never load it. */}
+        <LenisProvider>
+          <ReadingModeProvider>
+            {children}
+          </ReadingModeProvider>
+        </LenisProvider>
         {/* The shared WebGL stage behind every page (loads at idle, tier 1+ only). */}
         <StageLoader />
         {/* Vercel Web Analytics + Speed Insights (Vercel deployments only). */}

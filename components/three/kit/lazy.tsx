@@ -5,7 +5,10 @@ import type { ApertureDome3DProps } from '@/components/three/kit/ApertureDome3D'
 import type { BillSheetProps } from '@/components/three/kit/BillSheet';
 import type { CapitolDomeProps } from '@/components/three/kit/CapitolDome';
 import type { GlassMaterialProps } from '@/components/three/kit/GlassMaterial';
+import type { HouseholdDioramaProps } from '@/components/three/kit/HouseholdDiorama';
+import type { LedgerColumnProps } from '@/components/three/kit/LedgerColumn';
 import type { LightParticlesProps } from '@/components/three/kit/LightParticles';
+import type { PlinthProps } from '@/components/three/kit/Plinth';
 import type { PostFXProps } from '@/components/three/kit/PostFX';
 import type { SceneCameraProps } from '@/components/three/kit/SceneCamera';
 import type { StudioLightsProps } from '@/components/three/kit/StudioLights';
@@ -30,7 +33,10 @@ const LazyApertureDome3D = lazy(() => import('@/components/three/kit/ApertureDom
 const LazyBillSheet = lazy(() => import('@/components/three/kit/BillSheet'));
 const LazyCapitolDome = lazy(() => import('@/components/three/kit/CapitolDome'));
 const LazyGlassMaterial = lazy(() => import('@/components/three/kit/GlassMaterial'));
+const LazyHouseholdDiorama = lazy(() => import('@/components/three/kit/HouseholdDiorama'));
+const LazyLedgerColumn = lazy(() => import('@/components/three/kit/LedgerColumn'));
 const LazyLightParticles = lazy(() => import('@/components/three/kit/LightParticles'));
+const LazyPlinth = lazy(() => import('@/components/three/kit/Plinth'));
 const LazyPostFX = lazy(() => import('@/components/three/kit/PostFX'));
 const LazySceneCamera = lazy(() => import('@/components/three/kit/SceneCamera'));
 const LazyStudioLights = lazy(() => import('@/components/three/kit/StudioLights'));
@@ -52,8 +58,20 @@ export function GlassMaterial(props: GlassMaterialProps) {
   return <LazyGlassMaterial {...props} />;
 }
 
+export function HouseholdDiorama(props: HouseholdDioramaProps) {
+  return <LazyHouseholdDiorama {...props} />;
+}
+
+export function LedgerColumn(props: LedgerColumnProps) {
+  return <LazyLedgerColumn {...props} />;
+}
+
 export function LightParticles(props: LightParticlesProps) {
   return <LazyLightParticles {...props} />;
+}
+
+export function Plinth(props: PlinthProps) {
+  return <LazyPlinth {...props} />;
 }
 
 export function PostFX(props: PostFXProps) {

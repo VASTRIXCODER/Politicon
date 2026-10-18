@@ -8,6 +8,7 @@ import {
   LatheGeometry,
   Matrix4,
   MeshPhysicalMaterial,
+  type MeshStandardMaterial,
   Shape,
   Vector2,
   type Group,
@@ -33,6 +34,12 @@ export interface BillSheetProps {
   scale?: number;
   /** A slow float and sway (when motion is allowed). */
   float?: boolean;
+  /**
+   * How much of the embossed title and text lines shows (0 … 1, read every
+   * frame), for a sheet whose record is printed on it as DOM type instead
+   * (the landing film's shot 2). Default 1.
+   */
+  text?: () => number;
 }
 
 const WIDTH = 0.773; // 8.5 × 11
@@ -66,6 +73,8 @@ function sheetShape() {
 
 /** An embossed seal: a raised rim, a recessed field and an inner ridge, turned on a lathe. */
 function sealGeometry(radius: number) {
+  // Rim to centre: with the turn below, that order puts the front faces on the
+  // seal's face (centre outward would face them into the sheet, culled).
   const p = [
     [0, 0.004],
     [radius * 0.62, 0.004],
@@ -75,19 +84,23 @@ function sealGeometry(radius: number) {
     [radius * 0.92, 0.009],
     [radius, 0.006],
     [radius * 1.02, 0],
-  ].map(([x, y]) => new Vector2(x, y));
+  ]
+    .reverse()
+    .map(([x, y]) => new Vector2(x, y));
   const g = new LatheGeometry(p, 64);
   // Lathe turns around y; the seal faces +z.
   g.rotateX(Math.PI / 2);
   return g;
 }
 
-export default function BillSheet({ material = 'paper', position = [0, 0, 0], rotation = [0, 0, 0], scale = 1, float = true }: BillSheetProps) {
+export default function BillSheet({ material = 'paper', position = [0, 0, 0], rotation = [0, 0, 0], scale = 1, float = true, text }: BillSheetProps) {
   const palette = useScenePalette();
   const animated = useAnimated(30);
   const sway = useRef<Group>(null);
   const lines = useRef<InstancedMesh>(null);
+  const linesMaterial = useRef<MeshStandardMaterial>(null);
   const glass = material === 'glass';
+  const linesOpacity = glass ? 0.45 : palette.night ? 0.32 : 0.26;
 
   const geo = useMemo(() => {
     const sheet = new ExtrudeGeometry(sheetShape(), {
@@ -137,6 +150,11 @@ export default function BillSheet({ material = 'paper', position = [0, 0, 0], ro
   }, [paper, palette]);
 
   useFrame((state) => {
+    if (text && linesMaterial.current) {
+      const k = Math.min(1, Math.max(0, text()));
+      linesMaterial.current.opacity = linesOpacity * k;
+      if (lines.current) lines.current.visible = k > 0.002;
+    }
     const g = sway.current;
     if (!g) return;
     if (!float || !animated) {
@@ -161,9 +179,10 @@ export default function BillSheet({ material = 'paper', position = [0, 0, 0], ro
         )}
         <instancedMesh ref={lines} args={[geo.line, undefined, LINES.length]}>
           <meshStandardMaterial
+            ref={linesMaterial}
             color={glass ? palette.glow : palette.emboss}
             transparent
-            opacity={glass ? 0.45 : palette.night ? 0.32 : 0.26}
+            opacity={linesOpacity}
             roughness={0.7}
             depthWrite={false}
           />

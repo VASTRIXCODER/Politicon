@@ -8,30 +8,14 @@
  * the canvas (filmStore.get()) and subscribe to one slice in React.
  */
 import { useSyncExternalStore } from 'react';
+import { INITIAL_FILM_STATE, shotAt, type FilmState } from '@/lib/three/film';
 
-export const FILM_SHOTS = 5;
-
-export interface FilmState {
-  /** 0 (the Capitol) … 1 (dusk). */
-  progress: number;
-  /** 0 … FILM_SHOTS - 1. */
-  shot: number;
-  /** The film section is on screen (scenes may idle when it isn't). */
-  active: boolean;
-}
-
-export const INITIAL_FILM_STATE: FilmState = Object.freeze({ progress: 0, shot: 0, active: false });
+export { FILM_SHOTS, INITIAL_FILM_STATE, shotAt, type FilmState } from '@/lib/three/film';
 
 type Listener = (state: FilmState) => void;
 
 let state: FilmState = INITIAL_FILM_STATE;
 const listeners = new Set<Listener>();
-
-/** The shot a progress value falls in (equal shares of the film). */
-export function shotAt(progress: number): number {
-  const p = Math.min(1, Math.max(0, progress));
-  return Math.min(FILM_SHOTS - 1, Math.floor(p * FILM_SHOTS));
-}
 
 export const filmStore = {
   get(): FilmState {
@@ -63,5 +47,41 @@ export function useFilmStore<T>(selector: (state: FilmState) => T): T {
     filmStore.subscribe,
     () => selector(state),
     () => selector(INITIAL_FILM_STATE)
+  );
+}
+
+// ---------------------------------------------------------------------------
+// The other way round: where the playing 3D film actually is. Its director
+// damps the scroll, so the picture trails a fast scroll by a moment; the page
+// around the film (its captions' night at dusk) follows this when a scene is
+// playing, so the two never disagree. null while no film scene is playing.
+
+let sceneProgress: number | null = null;
+const sceneListeners = new Set<() => void>();
+
+export const filmScene = {
+  get(): number | null {
+    return sceneProgress;
+  },
+  /** Called by the film's director every frame it moves (and with null when it stops). */
+  set(progress: number | null) {
+    if (progress === sceneProgress) return;
+    sceneProgress = progress;
+    sceneListeners.forEach((l) => l());
+  },
+  subscribe(listener: () => void): () => void {
+    sceneListeners.add(listener);
+    return () => {
+      sceneListeners.delete(listener);
+    };
+  },
+};
+
+/** One slice of the playing scene's progress (null: no scene); re-renders only when it changes. */
+export function useFilmScene<T>(selector: (progress: number | null) => T): T {
+  return useSyncExternalStore(
+    filmScene.subscribe,
+    () => selector(sceneProgress),
+    () => selector(null)
   );
 }

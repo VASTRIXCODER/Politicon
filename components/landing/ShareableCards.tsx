@@ -1,96 +1,123 @@
 import { ArrowRight } from 'lucide-react';
 import Badge from '@/components/ui/Badge';
 import Button from '@/components/ui/Button';
-import Logo from '@/components/ui/Logo';
-import Reveal from './Reveal';
-import { CATEGORIES, exampleImpact, formatAnnual } from '@/lib/explorerData';
+import { LogoMark } from '@/components/ui/Logo';
+import KineticHeadline from '@/components/landing/KineticHeadline';
+import { MARK_PATHS, MARK_VIEWBOX } from '@/lib/brand/mark';
+import { formatUSD } from '@/lib/format';
+import { CATEGORIES } from '@/lib/explorerData';
+import { cn } from '@/lib/utils';
+import { SHARE_EXAMPLES } from './mockups/data';
+import styles from './mockups/cards.module.css';
 
-const categoryLabel = (key: string) => CATEGORIES.find(c => c.key === key)?.label ?? key;
+const categoryLabel = (key: string) => CATEGORIES.find((c) => c.key === key)?.label ?? key;
 
 // Illustrative designs for a feature that isn't built yet. The figures come
 // from the explorer's illustrative dataset (lib/explorerData) and are chosen
 // to be even-handed: a gain for a higher-income household, a gain for a
 // lower-income one, and a cost that reaches every bracket.
-const exampleCards = [
-  { impact: exampleImpact('income-tax-rate-cut', '100kPlus'), tilt: '-rotate-2' },
-  { impact: exampleImpact('premium-subsidy-extension', '25to50k'), tilt: '' },
-  { impact: exampleImpact('import-tariff', '50to75k'), tilt: 'rotate-2' },
-].map(({ impact: { policy, bracket, annual }, tilt }) => ({
+const POSITIONS = ['left', 'center', 'right'] as const;
+const exampleCards = SHARE_EXAMPLES.map(({ policy, bracket, annual }, i) => ({
+  id: policy.id,
+  number: String(i + 1).padStart(2, '0'),
+  position: POSITIONS[i] ?? 'center',
   policy: policy.title,
-  impact: formatAnnual(annual),
-  household: `${bracket.label} household`,
-  direction: annual < 0 ? ('negative' as const) : ('positive' as const),
   category: categoryLabel(policy.category),
-  // Fill tones (lighter than the text tones), so the tint reads as light on paper.
-  gradient: annual < 0 ? 'from-loss-fill/20 to-loss-fill/5' : 'from-gain-fill/20 to-gain-fill/5',
-  borderColor: annual < 0 ? 'border-loss/15' : 'border-gain/20',
-  tilt,
+  impact: formatUSD(annual, { signed: true }),
+  household: `${bracket.label} household`,
+  words: annual < 0 ? 'Could cost' : 'Could save',
+  tone: annual < 0 ? 'text-loss' : 'text-gain',
 }));
+
+/**
+ * The share-card designs as collectible impact cards: a porcelain face with
+ * the mark pressed into it, and a night nameplate carrying the example
+ * figure. A light island (data-day) over a night one (data-night), in both
+ * themes. Decorative: the section's summary describes them.
+ */
+function ImpactCard({ card }: { card: (typeof exampleCards)[number] }) {
+  return (
+    <div data-day="" data-pos={card.position} className={styles.card}>
+      <div className={cn(styles.face, 'flex flex-col text-ink')}>
+        <div className={styles.frame} />
+        <div className="flex items-center justify-between px-5 pt-5">
+          <span className="flex items-center gap-1.5">
+            <LogoMark className="h-5 w-5" detail="small" />
+            <span className="font-display text-sm font-medium">Politicon</span>
+          </span>
+          <span className="font-mono-data text-meta tracking-[0.14em] text-muted">No. {card.number}</span>
+        </div>
+
+        {/* The mark, embossed. */}
+        <div className="flex flex-1 items-center justify-center">
+          <svg viewBox={MARK_VIEWBOX} focusable="false" className={cn(styles.emboss, 'h-20 w-20')}>
+            <path d={MARK_PATHS.dome + MARK_PATHS.base + MARK_PATHS.aperture} fill="currentColor" />
+          </svg>
+        </div>
+
+        <div className="px-5 pb-4">
+          <p className="font-mono-data text-meta uppercase tracking-[0.16em] text-muted">{card.category}</p>
+          <p className="mt-1 font-display text-lg font-medium leading-snug text-ink">{card.policy}</p>
+        </div>
+
+        <div data-night="" className={cn(styles.plate, 'px-5 pb-5 pt-4 text-ink')}>
+          <div className="flex items-center justify-between gap-2">
+            <p className="text-meta text-muted">{card.words}</p>
+            <span className="rounded-full border border-dashed border-fg/30 px-2 py-0.5 font-mono-data text-meta text-muted">
+              Example
+            </span>
+          </div>
+          <p className={cn('mt-1.5 font-mono-data text-3xl font-semibold leading-none tracking-tight', card.tone)}>
+            {card.impact}
+            <span className="ml-0.5 text-base font-medium">/yr</span>
+          </p>
+          <p className="mt-2 text-meta text-muted">{card.household} · illustrative</p>
+        </div>
+      </div>
+      <span className={styles.foil} />
+    </div>
+  );
+}
 
 export default function ShareableCards() {
   return (
-    <section aria-labelledby="share-heading" className="py-24 relative">
-      <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
-        <Reveal className="text-center mb-16">
-          <Badge variant="secondary" size="md" className="mb-4 uppercase tracking-widest">Coming soon</Badge>
-          <h2 id="share-heading" className="font-display text-4xl sm:text-5xl font-medium text-text-primary mb-4">
-            Your impact,{' '}
-            <em>as a card you can share</em>
-          </h2>
-          <p className="text-text-muted text-lg max-w-xl mx-auto">
-            We&apos;re working on turning an analysis into a branded card you can save or share. It isn&apos;t available yet;
+    <section aria-labelledby="share-heading" data-scene-section="share" className="relative overflow-x-clip py-24 sm:py-32">
+      <div className="mx-auto grid max-w-7xl grid-cols-1 items-center gap-12 px-4 sm:px-6 lg:grid-cols-12 lg:gap-8 lg:px-8">
+        <div className="lg:col-span-5">
+          <div className="flex flex-wrap items-center gap-3">
+            <p className="flex items-center gap-3 font-mono-data text-meta uppercase tracking-[0.18em] text-muted">
+              <span aria-hidden="true" className="h-px w-8 bg-gradient-to-r from-transparent to-primary/70" />
+              Share
+            </p>
+            <Badge variant="secondary" size="md" className="uppercase tracking-widest">
+              Coming soon
+            </Badge>
+          </div>
+          <KineticHeadline id="share-heading" className="mt-5 font-display text-display-md font-medium text-ink">
+            Your impact, <em>as a card you can share.</em>
+          </KineticHeadline>
+          <p className="mt-6 max-w-md text-lg leading-relaxed text-muted">
+            We&apos;re working on turning an analysis into a card you can save or share. It isn&apos;t available yet;
             these are examples of the design.
           </p>
-        </Reveal>
-
-        {/* Illustrations of the planned card; screen readers get the summary instead. */}
-        <p className="sr-only">
-          Example card designs, with illustrative figures, show a policy name, its category and an estimated dollar impact.
-        </p>
-        <div aria-hidden="true" className="flex flex-wrap justify-center gap-6 mb-12">
-          {exampleCards.map((card, i) => (
-            <Reveal key={card.policy} delay={i * 100}>
-              {/* No backdrop-filter on repeated cards; the tinted gradient carries the look. */}
-              <div
-                className={`glass backdrop-filter-none ${card.borderColor} ${card.tilt} rounded-3xl p-6 w-64 relative overflow-hidden transition-transform duration-200 hover:rotate-0 hover:-translate-y-2`}
-              >
-                {/* Background gradient */}
-                <div className={`absolute inset-0 bg-gradient-to-br ${card.gradient} opacity-50`} />
-
-                <div className="relative z-10">
-                  <Logo variant="full" size="sm" href={null} className="mb-5" />
-
-                  <p className="text-meta font-mono-data text-text-muted uppercase tracking-wide mb-1">{card.category}</p>
-                  <p className="text-xs font-medium text-text-primary mb-4 leading-snug">{card.policy}</p>
-
-                  <div className={`font-mono-data text-2xl font-bold mb-1 ${
-                    card.direction === 'positive' ? 'text-positive' : 'text-negative'
-                  }`}>
-                    {card.impact}
-                  </div>
-                  <p className="text-meta text-text-muted">{card.household}</p>
-
-                  <p className="mt-5 pt-4 border-t border-fg/6 text-meta font-mono-data text-text-muted uppercase tracking-wide">
-                    Example · illustrative figures
-                  </p>
-                </div>
-              </div>
-            </Reveal>
-          ))}
+          <div className="mt-8">
+            <Button href="/auth/signup" variant="secondary" size="lg" icon={<ArrowRight className="h-4 w-4" />} iconPosition="end">
+              Get your impact report
+            </Button>
+          </div>
         </div>
 
-        <Reveal from="none" className="text-center">
-          <Button
-            href="/auth/signup"
-            variant="ghost"
-            size="lg"
-            icon={<ArrowRight className="w-4 h-4" />}
-            iconPosition="end"
-            className="rounded-2xl bg-primary/10 border-primary/20 text-primary-300 hover:bg-primary/20 hover:border-primary/40"
-          >
-            Get your impact report
-          </Button>
-        </Reveal>
+        <div className="lg:col-span-7">
+          {/* Illustrations of the planned card; screen readers get the summary instead. */}
+          <p className="sr-only">
+            Example card designs, with illustrative figures, show a policy name, its category and an estimated dollar impact.
+          </p>
+          <div aria-hidden="true" data-decorative="" className={styles.hand}>
+            {exampleCards.map((card) => (
+              <ImpactCard key={card.id} card={card} />
+            ))}
+          </div>
+        </div>
       </div>
     </section>
   );

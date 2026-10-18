@@ -199,9 +199,12 @@
     }
   }
 
-  /* Fixed top bar: frosted glass with a bottom hairline (glass is for controls). */
+  /* Fixed top bar: frosted glass with a bottom hairline (glass is for controls).
+     Opaque enough that its muted links keep 4.5:1 over any page beneath, a
+     night scene included (the bar also turns to night glass over night
+     sections: components/layout/useNavNight). */
   .glass-nav {
-    background-color: rgb(var(--c-canvas) / 0.72);
+    background-color: rgb(var(--c-canvas) / 0.88);
     backdrop-filter: blur(20px) saturate(160%);
     -webkit-backdrop-filter: blur(20px) saturate(160%);
     border-bottom: 1px solid rgb(var(--c-fg) / 0.08);
@@ -328,4 +331,17 @@ html[data-stage='ready'] [data-scene-night][data-scene-night-live] {
     animation-iteration-count: 1 !important;
     transition-duration: 0.01ms !important;
   }
+}
+
+/* The same, whatever the OS says, once the visitor presses "Pause motion"
+   (components/ui/MotionToggle; lib/motion.ts sets the attribute). */
+html[data-motion='paused'] {
+  scroll-behavior: auto !important;
+}
+html[data-motion='paused'] *,
+html[data-motion='paused'] *::before,
+html[data-motion='paused'] *::after {
+  animation-duration: 0.01ms !important;
+  animation-iteration-count: 1 !important;
+  transition-duration: 0.01ms !important;
 }

@@ -1,0 +1,106 @@
+/*
+ * Scenery for the landing page's closing sections: the night sky of the
+ * closing call to action (ClosingCta) and the postmark of the newsletter
+ * (NewsletterSection). Decorative layers only; colours are tokens, so they
+ * follow data-night / the theme.
+ */
+
+/* ---- ClosingCta: the Chamber at dusk -------------------------------- */
+
+/*
+ * Aurora curtains from the top edge and a glow on the horizon: the
+ * section's own night, shown until the WebGL light field paints the
+ * Chamber behind it (data-scene-night-live; see ClosingCta). Kept faint
+ * behind the copy, so muted night text stays above AA on it.
+ */
+.aurora {
+  pointer-events: none;
+  position: absolute;
+  inset: 0;
+  background:
+    radial-gradient(38% 62% at 16% -12%, rgb(var(--c-violet) / 0.34), transparent 72%),
+    radial-gradient(28% 50% at 54% -16%, rgb(var(--c-glow) / 0.14), transparent 74%),
+    radial-gradient(32% 58% at 88% -10%, rgb(var(--c-accent) / 0.13), transparent 74%),
+    radial-gradient(70% 34% at 50% 108%, rgb(var(--c-violet) / 0.3), transparent 78%);
+  transition: opacity 0.7s var(--ease-civic);
+}
+/* A slow curtain of light that drifts (mouse devices, motion allowed: see ClosingCta). */
+.curtain {
+  pointer-events: none;
+  position: absolute;
+  top: -30%;
+  left: 20%;
+  width: min(60vmax, 900px);
+  height: min(60vmax, 900px);
+  background: radial-gradient(closest-side, rgb(var(--c-violet) / 0.16), rgb(var(--c-violet) / 0.05) 60%, transparent);
+}
+
+/* The horizon: an arc of violet light low in the frame, the dome rising behind it. */
+.horizon {
+  pointer-events: none;
+  position: absolute;
+  left: 50%;
+  bottom: 0;
+  width: min(72rem, 150vw);
+  aspect-ratio: 2 / 1;
+  border-radius: 50%;
+  transform: translate(-50%, 62%);
+  background: radial-gradient(closest-side, rgb(var(--c-glow) / 0.3), rgb(var(--c-violet) / 0.1) 58%, transparent 74%);
+}
+.horizon::before {
+  content: '';
+  position: absolute;
+  inset: 12%;
+  border-radius: 50%;
+  border-top: 1px solid rgb(var(--c-glow) / 0.55);
+  mask-image: linear-gradient(to right, transparent 8%, black 35%, black 65%, transparent 92%);
+  -webkit-mask-image: linear-gradient(to right, transparent 8%, black 35%, black 65%, transparent 92%);
+}
+.dome {
+  pointer-events: none;
+  position: absolute;
+  left: 50%;
+  bottom: 0;
+  width: min(30rem, 84vw);
+  transform: translate(-50%, 46%);
+  color: rgb(var(--c-glow) / 0.16);
+}
+
+/* ---- NewsletterSection: a postmark ---------------------------------- */
+
+.postmark {
+  pointer-events: none;
+  color: rgb(var(--c-violet) / 0.22);
+}
+.stamp {
+  position: relative;
+  border-radius: 0.375rem;
+  background-color: rgb(var(--c-raised));
+  box-shadow:
+    0 0 0 1px rgb(var(--c-violet) / 0.18),
+    0 12px 24px -14px rgb(var(--c-violet) / 0.5);
+}
+/* The stamp's perforated edge, as a dotted rule just inside it. */
+.stamp::before {
+  content: '';
+  pointer-events: none;
+  position: absolute;
+  inset: 4px;
+  border-radius: 0.2rem;
+  border: 1.5px dotted rgb(var(--c-violet) / 0.35);
+}
+
+/* The confirmation, rising in once (instant under reduced motion: app/globals.css). */
+.arrive {
+  animation: arrive 0.45s var(--ease-civic) both;
+}
+@keyframes arrive {
+  from {
+    opacity: 0;
+    translate: 0 0.5rem;
+  }
+  to {
+    opacity: 1;
+    translate: none;
+  }
+}

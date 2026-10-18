@@ -11,7 +11,7 @@ export const metadata: Metadata = {
 export default function TermsPage() {
   return (
     <LegalPage
-      title="Terms of Service"
+      title={<>Terms of <em>Service</em></>}
       intro="These terms govern your use of Politicon. By creating an account you agree to them. Please read them together with our Privacy Policy and Disclaimer."
       updated={TERMS_UPDATED}
     >

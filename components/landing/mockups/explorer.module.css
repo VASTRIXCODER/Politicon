@@ -1,0 +1,146 @@
+/*
+ * The explorer teaser on the landing page (PublicExplorer): a bracket
+ * picker, the chosen bracket's category bars, and a 2.5D mini skyline of
+ * all five brackets, in CSS alone.
+ *
+ * The picker is a group of native radio buttons, so it works before (and
+ * without) JavaScript and keeps the browser's own keyboard handling. Which
+ * panel shows, and which district of the skyline is lit, follows the checked
+ * radio through :has(). The bracket keys below must match BRACKETS in
+ * lib/explorerData.ts (tests/landingSections.test.ts checks). Browsers
+ * without :has() show every panel and the whole skyline lit.
+ */
+
+.panel {
+  display: none;
+}
+
+.root:has(input[value='under25k']:checked) .panel[data-bracket='under25k'],
+.root:has(input[value='25to50k']:checked) .panel[data-bracket='25to50k'],
+.root:has(input[value='50to75k']:checked) .panel[data-bracket='50to75k'],
+.root:has(input[value='75to100k']:checked) .panel[data-bracket='75to100k'],
+.root:has(input[value='100kPlus']:checked) .panel[data-bracket='100kPlus'] {
+  display: block;
+}
+
+@supports not selector(:has(a)) {
+  .panel {
+    display: block;
+  }
+  .panel + .panel {
+    margin-top: 2rem;
+  }
+}
+
+/* ---- The skyline ---------------------------------------------------- */
+
+.city {
+  /* Height of the tallest possible tower (the explorer's chart scale). */
+  --sky: 6.5rem;
+  position: relative;
+  perspective: 1400px;
+  perspective-origin: 50% 0%;
+}
+@media (min-width: 640px) {
+  .city {
+    --sky: 9rem;
+  }
+}
+@media (min-width: 1024px) {
+  .city {
+    --sky: 11.5rem;
+  }
+}
+
+/* The city stands on a plate tipped back a little, seen from just above. */
+.plate {
+  transform: rotateX(16deg);
+  transform-origin: 50% 100%;
+}
+
+.district {
+  position: relative;
+  transition:
+    opacity 0.5s var(--ease-civic),
+    filter 0.5s var(--ease-civic);
+}
+/* A column of violet light over the chosen district. */
+.district::before {
+  content: '';
+  pointer-events: none;
+  position: absolute;
+  inset: -18% -14% 30%;
+  background: radial-gradient(closest-side, rgb(var(--c-glow) / 0.3), transparent);
+  opacity: 0;
+  transition: opacity 0.5s var(--ease-civic);
+}
+
+.root:has(input:checked) .district {
+  opacity: 0.45;
+  filter: saturate(0.55);
+}
+.root:has(input[value='under25k']:checked) .district[data-bracket='under25k'],
+.root:has(input[value='25to50k']:checked) .district[data-bracket='25to50k'],
+.root:has(input[value='50to75k']:checked) .district[data-bracket='50to75k'],
+.root:has(input[value='75to100k']:checked) .district[data-bracket='75to100k'],
+.root:has(input[value='100kPlus']:checked) .district[data-bracket='100kPlus'] {
+  opacity: 1;
+  filter: none;
+}
+.root:has(input[value='under25k']:checked) .district[data-bracket='under25k']::before,
+.root:has(input[value='25to50k']:checked) .district[data-bracket='25to50k']::before,
+.root:has(input[value='50to75k']:checked) .district[data-bracket='50to75k']::before,
+.root:has(input[value='75to100k']:checked) .district[data-bracket='75to100k']::before,
+.root:has(input[value='100kPlus']:checked) .district[data-bracket='100kPlus']::before {
+  opacity: 1;
+}
+
+/* Gains rise above the street; costs sink below it, into the water. */
+.sky,
+.below {
+  display: flex;
+  gap: 0.3rem;
+  padding-right: 0.45rem;
+}
+.sky {
+  height: var(--sky);
+  align-items: flex-end;
+}
+.below {
+  align-items: flex-start;
+}
+.slot {
+  flex: 1 1 0;
+  min-width: 0;
+  display: flex;
+}
+.sky .slot {
+  align-items: flex-end;
+}
+.tower {
+  width: 100%;
+}
+
+/* The street: a thin slab the towers stand on (a .box; its depth and colour are set inline). */
+.street {
+  height: 3px;
+  margin-right: 0.45rem;
+}
+
+/* The water under the street, with a faint ripple. */
+.water {
+  position: relative;
+}
+.water::before {
+  content: '';
+  pointer-events: none;
+  position: absolute;
+  inset: 0 -0.5rem -0.75rem;
+  border-radius: 0 0 0.75rem 0.75rem;
+  background:
+    repeating-linear-gradient(to bottom, transparent 0 7px, rgb(var(--c-fg) / 0.04) 7px 8px),
+    linear-gradient(to bottom, rgb(var(--c-violet) / 0.08), transparent);
+}
+.sunk {
+  opacity: 0.85;
+}

@@ -5,6 +5,7 @@
  * SceneView and StageLoader, so it must never import three, R3F or drei.
  */
 import { Component, createContext, useContext, useEffect, useSyncExternalStore, type ReactNode } from 'react';
+import { useLessMotion } from '@/lib/motion';
 
 type Listener = () => void;
 
@@ -272,23 +273,12 @@ export function useViewState(): ViewState {
 }
 
 // ---------------------------------------------------------------------------
-// prefers-reduced-motion, SSR-safe (false on the server and during hydration).
-
-const REDUCED = '(prefers-reduced-motion: reduce)';
-
-function subscribeReduced(l: Listener) {
-  if (typeof window.matchMedia !== 'function') return () => undefined;
-  const mql = window.matchMedia(REDUCED);
-  mql.addEventListener?.('change', l);
-  return () => mql.removeEventListener?.('change', l);
-}
+// Reduced motion, SSR-safe (false on the server and during hydration): the
+// OS setting, or the site's own "Pause motion" control (lib/motion.ts). Every
+// scene drops to its composed still frame while either is on.
 
 export function usePrefersReducedMotion(): boolean {
-  return useSyncExternalStore(
-    subscribeReduced,
-    () => typeof window.matchMedia === 'function' && window.matchMedia(REDUCED).matches,
-    () => false
-  );
+  return useLessMotion();
 }
 
 // ---------------------------------------------------------------------------

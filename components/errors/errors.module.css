@@ -1,0 +1,101 @@
+/*
+ * The 404 page's poster: a bill sheet adrift in a shaft of soft light (what
+ * the LostBill scene shows before and without WebGL). The sheet floats and
+ * turns a little; under reduced motion it holds its pose.
+ */
+
+.shaft {
+  background:
+    radial-gradient(ellipse 30% 62% at 47% 0%, rgb(var(--c-glow) / 0.3), rgb(var(--c-glow) / 0.08) 55%, transparent 82%),
+    linear-gradient(to bottom, rgb(var(--c-glow) / 0.1), transparent 85%);
+  clip-path: polygon(41% 0, 53% 0, 82% 100%, 14% 100%);
+  filter: blur(14px);
+  /* Out of nowhere at the top, gone before the floor. */
+  mask-image: linear-gradient(to bottom, transparent 0%, #000 22%, #000 55%, transparent 92%);
+}
+
+.motes {
+  background-image:
+    radial-gradient(circle, rgb(var(--c-violet) / 0.55) 0 1.2px, transparent 1.6px),
+    radial-gradient(circle, rgb(var(--c-glow) / 0.5) 0 1px, transparent 1.4px);
+  background-size: 46px 58px, 31px 39px;
+  background-position: 0 0, 13px 21px;
+  mask-image: radial-gradient(ellipse 34% 52% at 48% 48%, #000 30%, transparent 75%);
+  opacity: 0.7;
+}
+
+.sheet {
+  aspect-ratio: 8.5 / 11;
+  border-radius: 3.5%;
+  background:
+    radial-gradient(120% 70% at 25% 0%, rgb(255 255 255 / 0.9), transparent 60%),
+    linear-gradient(170deg, rgb(var(--c-raised)), rgb(var(--c-surface)));
+  box-shadow:
+    inset 0 1px 0 rgb(255 255 255 / 0.8),
+    inset 0 0 0 1px rgb(var(--c-fg) / 0.06),
+    0 2px 0 rgb(var(--c-fg) / 0.03),
+    0 30px 50px -26px rgb(var(--c-fg) / 0.35),
+    -10px 0 36px -18px rgb(var(--c-violet) / 0.45);
+  transform: rotateX(16deg) rotateY(-28deg) rotateZ(-9deg);
+}
+:global([data-theme='dark']) .sheet {
+  background:
+    radial-gradient(120% 70% at 25% 0%, rgb(255 255 255 / 0.5), transparent 60%),
+    linear-gradient(170deg, #E4DEF6, #BDB1E8);
+  box-shadow:
+    inset 0 1px 0 rgb(255 255 255 / 0.6),
+    0 30px 50px -26px rgb(0 0 0 / 0.7),
+    -10px 0 40px -14px rgb(var(--c-violet) / 0.6);
+}
+
+.line {
+  border-radius: 999px;
+  background: rgb(21 18 31 / 0.12);
+}
+
+.record {
+  border-radius: 999px;
+  background: radial-gradient(circle at 35% 30%, #F2D27C, #E3B341 55%, #A9821F 100%);
+}
+
+.floor {
+  background: radial-gradient(closest-side, rgb(var(--c-fg) / 0.16), transparent);
+}
+:global([data-theme='dark']) .floor {
+  background: radial-gradient(closest-side, rgb(0 0 0 / 0.55), transparent);
+}
+
+@media (prefers-reduced-motion: no-preference) {
+  .drift {
+    animation: drift 9s ease-in-out infinite;
+  }
+  .floor {
+    animation: floor 9s ease-in-out infinite;
+  }
+}
+@keyframes drift {
+  0%,
+  100% {
+    transform: translate3d(0, 0, 0) rotate(0deg);
+  }
+  50% {
+    transform: translate3d(2%, -4%, 0) rotate(4deg);
+  }
+}
+@keyframes floor {
+  0%,
+  100% {
+    transform: scale(1);
+    opacity: 1;
+  }
+  50% {
+    transform: scale(0.86);
+    opacity: 0.75;
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .drift,
+  .floor {
+    animation: none;
+  }
+}

@@ -38,7 +38,8 @@ async function pastIdle(page: Page) {
 for (const fx of [1, 2] as const) {
   // Tier 1 is the phone path (coarse pointer, high DPR), so it runs on both projects.
   test(`/lab draws every 3D view at tier ${fx}${fx === 2 ? ' @desktop-only' : ''}`, async ({ page }) => {
-    test.setTimeout(240_000);
+    // Two dozen views, each compiled and drawn in software, sharing the CPU with the other worker.
+    test.setTimeout(360_000);
     const trouble = watchGl(page);
     const response = await page.goto(`/lab?fx=${fx}`);
     test.skip(response?.status() === 404, '/lab is not served on the production deployment');
@@ -87,18 +88,22 @@ test('pages with nothing 3D on them never load the stage', async ({ page }) => {
   expect(trouble).toEqual([]);
 });
 
-test('the landing light drifts in WebGL only under a mouse', async ({ page, isMobile }) => {
+test('the landing hero draws its 3D Capitol on one canvas, on phones too', async ({ page, isMobile }) => {
   test.slow();
   const trouble = watchGl(page);
+  // Tier 1 is the phone path; desktops run tier 2. Since R1 the landing page
+  // has real scenes (the hero's Capitol, the film), so a touch screen loads
+  // the stage for them too; only the ambient light's drift needs a mouse.
   await page.goto(`/?fx=${isMobile ? 1 : 2}`);
   await expect(page.getByRole('heading', { level: 1, name: /your money\. real bills\. crystal clear\./i })).toBeVisible();
-  if (isMobile) {
-    // A touch screen keeps the CSS light: no WebGL context for a still background.
-    await pastIdle(page);
-    await expect(page.locator('canvas')).toHaveCount(0);
-  } else {
-    await expect(page.locator('html')).toHaveAttribute('data-stage', 'ready', { timeout: 45_000 });
-    await expect(page.locator('canvas')).toHaveCount(1);
-  }
+  // The hero's first frame compiles its shaders in software here (and shares
+  // the CPU with the other worker): allow more than /lab's single views.
+  await expect(page.locator('html')).toHaveAttribute('data-stage', 'ready', { timeout: 90_000 });
+  await expect(page.locator('canvas')).toHaveCount(1);
+  // The hero's scene view draws once it's on screen (a band above the
+  // headline on a phone), and its poster steps aside.
+  const hero = page.locator('[data-scene-section="hero"] [data-scene-view]').first();
+  await hero.scrollIntoViewIfNeeded();
+  await expect(hero).toHaveAttribute('data-scene-view', 'live', { timeout: 45_000 });
   expect(trouble).toEqual([]);
 });

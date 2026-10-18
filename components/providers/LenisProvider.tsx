@@ -4,11 +4,11 @@ import { useEffect } from 'react';
 import { usePathname } from 'next/navigation';
 import Lenis from 'lenis';
 import 'lenis/dist/lenis.css';
+import { prefersLessMotion, subscribeMotion } from '@/lib/motion';
 
 // Smooth scrolling is a marketing-page effect. App pages (chat, feeds, tables)
 // keep native scrolling so nested scroll areas and keyboard scrolling just work.
 const MARKETING = new Set(['/', '/explorer', '/privacy', '/terms', '/disclaimer', '/help']);
-const REDUCED_MOTION = '(prefers-reduced-motion: reduce)';
 
 /* The live instance, for code that needs to hook into the smooth scroll. */
 let current: Lenis | null = null;
@@ -21,7 +21,7 @@ function setCurrent(lenis: Lenis | null) {
 
 /**
  * The page's Lenis instance, or null while smooth scrolling is off (app
- * pages, reduced motion) or not yet started. Lenis is created in an effect
+ * pages, reduced or paused motion) or not yet started. Lenis is created in an effect
  * after the page's own effects have run, so code that mounts with the page
  * should also subscribe with onLenisChange:
  *
@@ -50,7 +50,6 @@ export default function LenisProvider({ children }: { children: React.ReactNode 
 
   useEffect(() => {
     if (!enabled) return;
-    const reduced = window.matchMedia(REDUCED_MOTION);
     let lenis: Lenis | null = null;
     let frame = 0;
 
@@ -63,7 +62,7 @@ export default function LenisProvider({ children }: { children: React.ReactNode 
     };
 
     const start = () => {
-      if (lenis || reduced.matches) return;
+      if (lenis || prefersLessMotion()) return;
       lenis = new Lenis({
         duration: 1.2,
         easing: (t: number) => Math.min(1, 1.001 - Math.pow(2, -10 * t)),
@@ -85,13 +84,13 @@ export default function LenisProvider({ children }: { children: React.ReactNode 
       setCurrent(null);
     };
 
-    // Turning reduced motion on mid-visit hands scrolling straight back to the browser.
-    const onPreferenceChange = () => (reduced.matches ? stop() : start());
+    // Reduced or paused motion mid-visit hands scrolling straight back to the browser.
+    const onPreferenceChange = () => (prefersLessMotion() ? stop() : start());
 
     start();
-    reduced.addEventListener('change', onPreferenceChange);
+    const unsubscribe = subscribeMotion(onPreferenceChange);
     return () => {
-      reduced.removeEventListener('change', onPreferenceChange);
+      unsubscribe();
       stop();
     };
   }, [enabled]);

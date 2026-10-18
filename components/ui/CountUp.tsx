@@ -2,6 +2,7 @@
 
 import { useEffect, useLayoutEffect, useRef, useState } from 'react';
 import { cn } from '@/lib/utils';
+import { prefersLessMotion } from '@/lib/motion';
 
 interface CountUpProps {
   /** The number to show. When it changes, the display tweens from where it is now. */
@@ -39,8 +40,9 @@ function formatNumber(n: number, decimals: number): string {
 
 const easeOutCubic = (t: number) => 1 - Math.pow(1 - t, 3);
 
+/** Reduced motion, or the site's "Pause motion" control (lib/motion.ts). */
 function prefersReducedMotion(): boolean {
-  return typeof window !== 'undefined' && !!window.matchMedia?.('(prefers-reduced-motion: reduce)').matches;
+  return prefersLessMotion();
 }
 
 /**

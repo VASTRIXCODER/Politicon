@@ -1,16 +1,18 @@
 'use client';
 
 import { useState, useEffect, useRef, useId, useCallback } from 'react';
-import { m, AnimatePresence } from 'motion/react';
 import Link from 'next/link';
 import { usePathname, useRouter } from 'next/navigation';
 import { Menu, X, LogOut, LayoutDashboard, Settings, ChevronDown, ArrowUpRight } from 'lucide-react';
 import { createClient } from '@/lib/supabase/client';
 import Button from '@/components/ui/Button';
 import Logo from '@/components/ui/Logo';
+import MotionToggle from '@/components/ui/MotionToggle';
 import SoundToggle from '@/components/ui/SoundToggle';
 import ThemeToggle from '@/components/ui/ThemeToggle';
 import { useModalDialog } from '@/components/layout/useModalDialog';
+import { usePresence } from '@/components/layout/usePresence';
+import { useNavNight } from '@/components/layout/useNavNight';
 import { cn } from '@/lib/utils';
 import type { User as SupabaseUser } from '@supabase/supabase-js';
 
@@ -26,8 +28,9 @@ const APP_LINKS = [
   { label: 'Policy Guide', href: '/advisor' },
 ];
 
-/** The product's one easing curve (CSS: ease-civic). */
-const EASE = [0.2, 0.7, 0.2, 1] as const;
+/** How long the account menu and the drawer take to leave (their CSS transitions). */
+const MENU_EXIT_MS = 180;
+const DRAWER_EXIT_MS = 450;
 
 const MENU_ITEM =
   'w-full flex items-center gap-3 px-3.5 py-2.5 rounded-xl text-sm transition-colors duration-200 ease-civic';
@@ -46,6 +49,9 @@ const DESKTOP_LINK = cn(
 );
 const DESKTOP_LINK_ACTIVE = 'bg-primary/8 text-ink after:!scale-x-100 after:!opacity-100';
 
+/** The motion, sound and theme buttons: narrower on the smallest phones and at md, where the bar is fullest. */
+const PREF_BUTTON = 'max-[359px]:w-8 md:max-lg:w-8';
+
 const menuItems = (menu: HTMLElement | null) =>
   Array.from(menu?.querySelectorAll<HTMLElement>('[role="menuitem"]') ?? []);
 
@@ -60,6 +66,7 @@ function UserDropdown({ user, onSignOut }: { user: SupabaseUser; onSignOut: () =
   const id = useId();
   const triggerId = `${id}-trigger`;
   const menuId = `${id}-menu`;
+  const menu = usePresence(open, MENU_EXIT_MS);
   const firstName = (user.user_metadata?.first_name as string) || user.email?.split('@')[0] || 'Account';
   const initials = firstName.slice(0, 2).toUpperCase();
 
@@ -141,51 +148,51 @@ function UserDropdown({ user, onSignOut }: { user: SupabaseUser; onSignOut: () =
         />
       </button>
 
-      <AnimatePresence>
-        {open && (
-          <m.div
-            ref={menuRef}
-            id={menuId}
-            role="menu"
-            aria-labelledby={triggerId}
-            onKeyDown={onMenuKeyDown}
-            initial={{ opacity: 0, y: 6, scale: 0.98 }}
-            animate={{ opacity: 1, y: 0, scale: 1 }}
-            exit={{ opacity: 0, y: 6, scale: 0.98 }}
-            transition={{ duration: 0.18, ease: EASE }}
-            className="absolute right-0 z-50 mt-2.5 w-56 origin-top-right rounded-2xl border border-fg/10 bg-raised p-1.5 shadow-lift"
+      {menu.mounted && (
+        <div
+          ref={menuRef}
+          id={menuId}
+          role="menu"
+          aria-labelledby={triggerId}
+          onKeyDown={onMenuKeyDown}
+          inert={!open}
+          data-shown={menu.shown || undefined}
+          className={cn(
+            'absolute right-0 z-50 mt-2.5 w-56 origin-top-right rounded-2xl border border-fg/10 bg-raised p-1.5 shadow-lift',
+            'translate-y-1.5 scale-[0.98] opacity-0 transition-[opacity,transform] duration-[180ms] ease-civic motion-reduce:transition-none',
+            'data-[shown]:translate-y-0 data-[shown]:scale-100 data-[shown]:opacity-100'
+          )}
+        >
+          <Link
+            href="/dashboard"
+            role="menuitem"
+            tabIndex={-1}
+            onClick={() => setOpen(false)}
+            className={`${MENU_ITEM} text-muted hover:text-ink hover:bg-fg/5 focus:text-ink focus:bg-primary/8`}
           >
-            <Link
-              href="/dashboard"
-              role="menuitem"
-              tabIndex={-1}
-              onClick={() => setOpen(false)}
-              className={`${MENU_ITEM} text-muted hover:text-ink hover:bg-fg/5 focus:text-ink focus:bg-primary/8`}
-            >
-              <LayoutDashboard className="h-4 w-4" aria-hidden="true" /> Dashboard
-            </Link>
-            <Link
-              href="/settings"
-              role="menuitem"
-              tabIndex={-1}
-              onClick={() => setOpen(false)}
-              className={`${MENU_ITEM} text-muted hover:text-ink hover:bg-fg/5 focus:text-ink focus:bg-primary/8`}
-            >
-              <Settings className="h-4 w-4" aria-hidden="true" /> Settings
-            </Link>
-            <div role="separator" className="mx-2 my-1 h-px bg-fg/8" />
-            <button
-              type="button"
-              role="menuitem"
-              tabIndex={-1}
-              onClick={() => { close(true); onSignOut(); }}
-              className={`${MENU_ITEM} text-danger hover:bg-danger/10 focus:bg-danger/10`}
-            >
-              <LogOut className="h-4 w-4" aria-hidden="true" /> Sign Out
-            </button>
-          </m.div>
-        )}
-      </AnimatePresence>
+            <LayoutDashboard className="h-4 w-4" aria-hidden="true" /> Dashboard
+          </Link>
+          <Link
+            href="/settings"
+            role="menuitem"
+            tabIndex={-1}
+            onClick={() => setOpen(false)}
+            className={`${MENU_ITEM} text-muted hover:text-ink hover:bg-fg/5 focus:text-ink focus:bg-primary/8`}
+          >
+            <Settings className="h-4 w-4" aria-hidden="true" /> Settings
+          </Link>
+          <div role="separator" className="mx-2 my-1 h-px bg-fg/8" />
+          <button
+            type="button"
+            role="menuitem"
+            tabIndex={-1}
+            onClick={() => { close(true); onSignOut(); }}
+            className={`${MENU_ITEM} text-danger hover:bg-danger/10 focus:bg-danger/10`}
+          >
+            <LogOut className="h-4 w-4" aria-hidden="true" /> Sign Out
+          </button>
+        </div>
+      )}
     </div>
   );
 }
@@ -204,6 +211,10 @@ export default function Navbar() {
   const closeMobile = useCallback(() => setMobileOpen(false), []);
   const drawerRef = useModalDialog<HTMLDivElement>(mobileOpen, closeMobile, { returnFocusRef: menuButtonRef, lockScroll: true });
   const drawerTitleId = useId();
+  const drawer = usePresence(mobileOpen, DRAWER_EXIT_MS);
+  // Over a night section the bar turns to night glass with it (its tokens flip).
+  const barRef = useRef<HTMLDivElement>(null);
+  const overNight = useNavNight(barRef);
 
   useEffect(() => {
     const handler = () => setScrolled(window.scrollY > 24);
@@ -263,16 +274,20 @@ export default function Navbar() {
         A floating bar of frosted glass (glass is for navigation and controls).
         No entrance animation: it is server-rendered visible, so it paints
         before hydration. At the top of the page it rests lighter and lower;
-        once the page scrolls it rises a little and turns more opaque.
+        once the page scrolls it rises a little and turns more opaque. Over a
+        night section (the film at dusk, the closing call to action) it turns
+        to night glass, so its links keep their contrast.
       */}
       <nav
         aria-label="Main"
+        data-night={overNight ? '' : undefined}
         className={cn(
           'fixed inset-x-0 top-0 z-nav px-3 transition-[padding] duration-300 ease-civic sm:px-5',
           scrolled ? 'pt-2 sm:pt-3' : 'pt-3 sm:pt-4'
         )}
       >
         <div
+          ref={barRef}
           className={cn(
             'glass-nav relative mx-auto flex h-14 max-w-6xl items-center justify-between gap-2 rounded-full border border-fg/10 pl-4 pr-2 sm:pl-5 lg:gap-3',
             'transition-[background-color,border-color,box-shadow] duration-300 ease-civic',
@@ -301,10 +316,12 @@ export default function Navbar() {
             ))}
           </div>
 
-          {/* Preferences, then the CTA or the account menu (desktop) / the menu button (mobile) */}
+          {/* Preferences, then the CTA or the account menu (desktop) / the menu button (mobile).
+              The three preference buttons slim down where the bar is narrowest. */}
           <div className="flex items-center gap-0.5 sm:gap-1">
-            <SoundToggle />
-            <ThemeToggle />
+            <MotionToggle className={PREF_BUTTON} />
+            <SoundToggle className={PREF_BUTTON} />
+            <ThemeToggle className={PREF_BUTTON} />
             <span aria-hidden="true" className="mx-1.5 hidden h-5 w-px bg-fg/12 md:block" />
             <div className="hidden items-center gap-2 md:flex">
               {authLoading ? (
@@ -336,129 +353,124 @@ export default function Navbar() {
       </nav>
 
       {/* Mobile menu: a full-height sheet of paper (night in the dark theme) with large editorial links. */}
-      <AnimatePresence>
-        {mobileOpen && (
-          <>
-            <m.div
-              key="drawer-backdrop"
-              initial={{ opacity: 0 }}
-              animate={{ opacity: 1 }}
-              exit={{ opacity: 0 }}
-              transition={{ duration: 0.3, ease: EASE }}
-              className="fixed inset-0 z-overlay bg-ink/40 backdrop-blur-sm dark:bg-black/60"
-              onClick={closeMobile}
+      {drawer.mounted && (
+        <>
+          <div
+            data-shown={drawer.shown || undefined}
+            className="fixed inset-0 z-overlay bg-ink/40 opacity-0 backdrop-blur-sm transition-opacity duration-300 ease-civic data-[shown]:opacity-100 motion-reduce:transition-none dark:bg-black/60"
+            onClick={closeMobile}
+            aria-hidden="true"
+            // Wheel/touch over the backdrop must not reach Lenis (the page is scroll-locked).
+            data-lenis-prevent
+          />
+          <div
+            ref={drawerRef}
+            role="dialog"
+            aria-modal="true"
+            aria-labelledby={drawerTitleId}
+            tabIndex={-1}
+            data-lenis-prevent
+            // Leaving: out of reach at once, while it slides away.
+            inert={!mobileOpen}
+            data-shown={drawer.shown || undefined}
+            className={cn(
+              'group/drawer fixed inset-y-0 right-0 z-modal flex w-full flex-col overflow-y-auto overscroll-contain bg-canvas focus:outline-none sm:max-w-sm sm:border-l sm:border-fg/10',
+              'shadow-[-24px_0_60px_-30px_rgb(var(--c-fg)/0.35)] dark:shadow-[-24px_0_60px_-24px_rgb(0_0_0/0.8)]',
+              'translate-x-full transition-transform duration-[450ms] ease-civic data-[shown]:translate-x-0 motion-reduce:transition-none'
+            )}
+          >
+            {/* Light falling into the sheet from its top corner. */}
+            <div
               aria-hidden="true"
-              // Wheel/touch over the backdrop must not reach Lenis (the page is scroll-locked).
-              data-lenis-prevent
+              className="pointer-events-none absolute inset-x-0 top-0 h-80 bg-[radial-gradient(ellipse_80%_70%_at_85%_-10%,rgb(var(--c-violet)/0.16),transparent_70%)]"
             />
-            <m.div
-              key="drawer"
-              ref={drawerRef}
-              role="dialog"
-              aria-modal="true"
-              aria-labelledby={drawerTitleId}
-              tabIndex={-1}
-              data-lenis-prevent
-              initial={{ x: '100%' }}
-              animate={{ x: 0 }}
-              exit={{ x: '100%' }}
-              transition={{ duration: 0.45, ease: EASE }}
-              className={cn(
-                'fixed inset-y-0 right-0 z-modal flex w-full flex-col overflow-y-auto overscroll-contain bg-canvas focus:outline-none sm:max-w-sm sm:border-l sm:border-fg/10',
-                'shadow-[-24px_0_60px_-30px_rgb(var(--c-fg)/0.35)] dark:shadow-[-24px_0_60px_-24px_rgb(0_0_0/0.8)]'
-              )}
-            >
-              {/* Light falling into the sheet from its top corner. */}
-              <div
-                aria-hidden="true"
-                className="pointer-events-none absolute inset-x-0 top-0 h-80 bg-[radial-gradient(ellipse_80%_70%_at_85%_-10%,rgb(var(--c-violet)/0.16),transparent_70%)]"
-              />
 
-              <div className="relative flex items-center justify-between px-5 pb-4 pt-5">
-                <h2 id={drawerTitleId} className="sr-only">Menu</h2>
-                <Logo variant="wordmark" href={null} />
+            <div className="relative flex items-center justify-between px-5 pb-4 pt-5">
+              <h2 id={drawerTitleId} className="sr-only">Menu</h2>
+              <Logo variant="wordmark" href={null} />
+              <button
+                type="button"
+                onClick={closeMobile}
+                aria-label="Close menu"
+                className="inline-flex h-11 w-11 items-center justify-center rounded-full border border-fg/10 bg-raised/70 text-ink transition-colors duration-200 ease-civic hover:border-primary/30 hover:bg-raised"
+              >
+                <X className="h-5 w-5" aria-hidden="true" />
+              </button>
+            </div>
+
+            <nav aria-label="Main" className="relative flex flex-1 flex-col px-5 pt-6">
+              <ol className="flex flex-col">
+                {navLinks.map((link, i) => {
+                  const active = isActive(link.href);
+                  return (
+                    <li
+                      key={link.label}
+                      // Each link rises in after the sheet, one after another.
+                      style={{ transitionDelay: `${80 + i * 50}ms` }}
+                      className={cn(
+                        'border-b border-fg/8 translate-y-3.5 opacity-0 transition-[opacity,transform] duration-[450ms] ease-civic motion-reduce:transition-none',
+                        'group-data-[shown]/drawer:translate-y-0 group-data-[shown]/drawer:opacity-100'
+                      )}
+                    >
+                      <Link
+                        href={link.href}
+                        aria-current={active ? 'page' : undefined}
+                        className={cn(
+                          'group flex items-baseline gap-4 rounded-lg py-4 font-display text-[2rem] leading-none tracking-[-0.02em] transition-colors duration-200 ease-civic',
+                          active ? 'text-ink' : 'text-ink/80 hover:text-ink'
+                        )}
+                        onClick={closeMobile}
+                      >
+                        <span aria-hidden="true" className="w-6 font-mono-data text-meta text-muted">
+                          {String(i + 1).padStart(2, '0')}
+                        </span>
+                        {/* The current page in the display face's violet italic (.font-display .accent). */}
+                        <span className={active ? 'accent' : undefined}>{link.label}</span>
+                        {active && (
+                          <span
+                            aria-hidden="true"
+                            className="ml-auto h-2 w-2 self-center rounded-full bg-primary shadow-[0_0_10px_2px_rgb(var(--c-violet)/0.55)]"
+                          />
+                        )}
+                      </Link>
+                    </li>
+                  );
+                })}
+              </ol>
+              {user && (
+                <Link
+                  href="/settings"
+                  onClick={closeMobile}
+                  aria-current={isActive('/settings') ? 'page' : undefined}
+                  className="mt-6 flex w-fit items-center gap-2.5 rounded-lg py-2 text-base text-muted transition-colors hover:text-ink"
+                >
+                  <Settings className="h-4 w-4" aria-hidden="true" /> Settings
+                </Link>
+              )}
+            </nav>
+
+            <div className="relative flex flex-col gap-3 px-5 pb-[max(1.5rem,env(safe-area-inset-bottom))] pt-8">
+              {user ? (
                 <button
                   type="button"
-                  onClick={closeMobile}
-                  aria-label="Close menu"
-                  className="inline-flex h-11 w-11 items-center justify-center rounded-full border border-fg/10 bg-raised/70 text-ink transition-colors duration-200 ease-civic hover:border-primary/30 hover:bg-raised"
+                  onClick={() => { closeMobile(); void handleSignOut(); }}
+                  className="flex min-h-12 w-full items-center justify-center gap-2 rounded-full border border-danger/25 text-sm text-danger transition-colors hover:bg-danger/10"
                 >
-                  <X className="h-5 w-5" aria-hidden="true" />
+                  <LogOut className="h-4 w-4" aria-hidden="true" /> Sign Out
                 </button>
-              </div>
-
-              <nav aria-label="Main" className="relative flex flex-1 flex-col px-5 pt-6">
-                <ol className="flex flex-col">
-                  {navLinks.map((link, i) => {
-                    const active = isActive(link.href);
-                    return (
-                      <m.li
-                        key={link.label}
-                        initial={{ y: 14, opacity: 0 }}
-                        animate={{ y: 0, opacity: 1 }}
-                        transition={{ delay: 0.08 + i * 0.05, duration: 0.45, ease: EASE }}
-                        className="border-b border-fg/8"
-                      >
-                        <Link
-                          href={link.href}
-                          aria-current={active ? 'page' : undefined}
-                          className={cn(
-                            'group flex items-baseline gap-4 rounded-lg py-4 font-display text-[2rem] leading-none tracking-[-0.02em] transition-colors duration-200 ease-civic',
-                            active ? 'text-ink' : 'text-ink/80 hover:text-ink'
-                          )}
-                          onClick={closeMobile}
-                        >
-                          <span aria-hidden="true" className="w-6 font-mono-data text-meta text-muted">
-                            {String(i + 1).padStart(2, '0')}
-                          </span>
-                          {/* The current page in the display face's violet italic (.font-display .accent). */}
-                          <span className={active ? 'accent' : undefined}>{link.label}</span>
-                          {active && (
-                            <span
-                              aria-hidden="true"
-                              className="ml-auto h-2 w-2 self-center rounded-full bg-primary shadow-[0_0_10px_2px_rgb(var(--c-violet)/0.55)]"
-                            />
-                          )}
-                        </Link>
-                      </m.li>
-                    );
-                  })}
-                </ol>
-                {user && (
-                  <Link
-                    href="/settings"
-                    onClick={closeMobile}
-                    aria-current={isActive('/settings') ? 'page' : undefined}
-                    className="mt-6 flex w-fit items-center gap-2.5 rounded-lg py-2 text-base text-muted transition-colors hover:text-ink"
-                  >
-                    <Settings className="h-4 w-4" aria-hidden="true" /> Settings
-                  </Link>
-                )}
-              </nav>
-
-              <div className="relative flex flex-col gap-3 px-5 pb-[max(1.5rem,env(safe-area-inset-bottom))] pt-8">
-                {user ? (
-                  <button
-                    type="button"
-                    onClick={() => { closeMobile(); void handleSignOut(); }}
-                    className="flex min-h-12 w-full items-center justify-center gap-2 rounded-full border border-danger/25 text-sm text-danger transition-colors hover:bg-danger/10"
-                  >
-                    <LogOut className="h-4 w-4" aria-hidden="true" /> Sign Out
-                  </button>
-                ) : (
-                  <>
-                    <Button href="/auth/signin" variant="ghost" size="lg" fullWidth onClick={closeMobile}>Sign In</Button>
-                    <Button href="/auth/signup" variant="primary" size="lg" fullWidth onClick={closeMobile} icon={<ArrowUpRight className="h-4 w-4" />} iconPosition="end">
-                      Get Started Free
-                    </Button>
-                  </>
-                )}
-                <p className="pt-2 text-center text-meta text-muted">Non-partisan · Educational estimates, not advice</p>
-              </div>
-            </m.div>
-          </>
-        )}
-      </AnimatePresence>
+              ) : (
+                <>
+                  <Button href="/auth/signin" variant="ghost" size="lg" fullWidth onClick={closeMobile}>Sign In</Button>
+                  <Button href="/auth/signup" variant="primary" size="lg" fullWidth onClick={closeMobile} icon={<ArrowUpRight className="h-4 w-4" />} iconPosition="end">
+                    Get Started Free
+                  </Button>
+                </>
+              )}
+              <p className="pt-2 text-center text-meta text-muted">Non-partisan · Educational estimates, not advice</p>
+            </div>
+          </div>
+        </>
+      )}
     </>
   );
 }

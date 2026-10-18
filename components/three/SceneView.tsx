@@ -49,12 +49,18 @@ export interface SceneViewProps {
   eager?: boolean;
   /** The scene takes pointer events over its box (raycasting through document.body). */
   interactive?: boolean;
+  /**
+   * Unmount the scene (and free its GPU memory) once the box is well off
+   * screen, bringing the poster back; it mounts again on the way back. For
+   * pages with many views of the same heavy scene (the film's still frames).
+   */
+  release?: boolean;
 }
 
 /** How long the poster takes to fade once the scene is up (matches duration-500). */
 const POSTER_FADE_MS = 500;
 
-export default function SceneView({ className, poster, label, children, eager = false, interactive = false }: SceneViewProps) {
+export default function SceneView({ className, poster, label, children, eager = false, interactive = false, release = false }: SceneViewProps) {
   const tier = useTier();
   const status = useStageStatus();
   const generation = useStageGeneration();
@@ -89,13 +95,21 @@ export default function SceneView({ className, poster, label, children, eager = 
       if (e?.isIntersecting) setNear(true);
     }, { rootMargin: '50% 0px' });
     const visible = new IntersectionObserver(([e]) => setOnScreen(!!e?.isIntersecting));
+    // Let go of a released view only well past the mount margin, so scrolling to and fro doesn't churn it.
+    const far = release
+      ? new IntersectionObserver(([e]) => {
+          if (e && !e.isIntersecting) setNear(eager);
+        }, { rootMargin: '150% 0px' })
+      : null;
     ahead.observe(el);
     visible.observe(el);
+    far?.observe(el);
     return () => {
       ahead.disconnect();
       visible.disconnect();
+      far?.disconnect();
     };
-  }, [tier]);
+  }, [tier, release, eager]);
 
   // Once the scene is up, take the faded poster out of the layout and the
   // accessibility tree; bring it straight back if the scene goes away.
@@ -107,6 +121,11 @@ export default function SceneView({ className, poster, label, children, eager = 
     const id = window.setTimeout(() => setPosterGone(true), POSTER_FADE_MS);
     return () => window.clearTimeout(id);
   }, [shown]);
+
+  // A scene that goes away (released, or the stage down) must draw again before its poster goes.
+  useEffect(() => {
+    if (!live) setReadyIn(-1);
+  }, [live]);
 
   // Read at call time: the canvas that just drew may be newer than this render.
   const onReady = useCallback(() => setReadyIn(stageGeneration.get()), []);

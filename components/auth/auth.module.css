@@ -1,0 +1,166 @@
+/*
+ * The account pages' motion and light, in CSS: nothing here hides text, and
+ * everything that moves is decoration that holds still under reduced motion
+ * (the app-wide rule in app/globals.css shortens animations; the rules at
+ * the end of this file switch the looping ones off outright).
+ */
+
+/* ── The night panel (the Chamber beside the form) ─────────────────────── */
+
+/* Aurora curtains and a low horizon glow, painted until the WebGL light
+   field takes the panel over (it then sets data-scene-night-live). */
+.aurora {
+  background:
+    radial-gradient(ellipse 46% 62% at 18% -6%, rgb(var(--c-violet) / 0.34), rgb(var(--c-violet) / 0.1) 48%, transparent 76%),
+    radial-gradient(ellipse 34% 52% at 64% -12%, rgb(var(--c-glow) / 0.16), rgb(var(--c-glow) / 0.05) 52%, transparent 80%),
+    radial-gradient(ellipse 40% 56% at 96% 4%, rgb(var(--c-accent) / 0.12), rgb(var(--c-accent) / 0.04) 50%, transparent 80%),
+    radial-gradient(ellipse 90% 40% at 50% 112%, rgb(var(--c-violet) / 0.22), rgb(var(--c-violet) / 0.06) 52%, transparent 82%);
+  transition: opacity 0.7s var(--ease-civic);
+}
+:global([data-scene-night-live]) .aurora {
+  opacity: 0;
+}
+
+/* A hairline of light along the panel's inner edge. */
+.panelRim {
+  box-shadow:
+    inset 0 0 0 1px rgb(var(--c-fg) / 0.08),
+    inset 0 1px 0 rgb(var(--c-fg) / 0.1),
+    0 40px 80px -40px rgb(0 0 0 / 0.6);
+}
+
+/* ── The form pane ─────────────────────────────────────────────────────── */
+
+/* The rim of violet light along the pane's top edge draws itself in. */
+.rim {
+  transform-origin: 50% 50%;
+}
+@media (prefers-reduced-motion: no-preference) {
+  .rim {
+    animation: rim-in 1.1s 0.15s var(--ease-civic) both;
+  }
+}
+@keyframes rim-in {
+  from {
+    transform: scaleX(0.1);
+    opacity: 0;
+  }
+  to {
+    transform: none;
+    opacity: 1;
+  }
+}
+
+/* An error or notice that appears: a short settle, never a fade from nothing. */
+@media (prefers-reduced-motion: no-preference) {
+  .settle {
+    animation: settle 0.35s var(--ease-civic) both;
+  }
+}
+@keyframes settle {
+  from {
+    transform: translate3d(0, -4px, 0);
+  }
+  to {
+    transform: none;
+  }
+}
+
+/* ── The seal poster (what the 3D seal shows before and without WebGL) ── */
+
+.stage {
+  perspective: 1200px;
+}
+
+/* A bill sheet leaning back on a lectern, turned a little to the right: the
+   lilac paper the night studio light gives the 3D sheet. */
+.sheet {
+  aspect-ratio: 8.5 / 11;
+  transform: rotateX(11deg) rotateY(-19deg) rotateZ(2.5deg);
+  border-radius: 3.5%;
+  background:
+    radial-gradient(120% 80% at 18% 8%, rgb(255 255 255 / 0.55), transparent 60%),
+    linear-gradient(162deg, #ECE7FA 0%, #D9D1F4 46%, #BFB2EC 100%);
+  box-shadow:
+    inset 0 1px 0 rgb(255 255 255 / 0.7),
+    inset 0 0 0 1px rgb(255 255 255 / 0.25),
+    0 30px 60px -24px rgb(0 0 0 / 0.65),
+    0 0 60px -10px rgb(var(--c-violet) / 0.45);
+}
+
+.line {
+  border-radius: 999px;
+  background: rgb(var(--c-violet-fill) / 0.16);
+}
+
+/* The glass medallion: a violet lens with a bright rim and a soft drop. */
+.medallion {
+  border-radius: 999px;
+  background:
+    radial-gradient(60% 60% at 34% 28%, rgb(255 255 255 / 0.55), transparent 60%),
+    radial-gradient(closest-side, rgb(var(--c-glow)) 0%, rgb(var(--c-violet)) 58%, rgb(var(--c-violet-fill)) 100%);
+  box-shadow:
+    inset 0 2px 1px rgb(255 255 255 / 0.65),
+    inset 0 -6px 14px rgb(54 26 170 / 0.45),
+    inset 0 0 0 5px rgb(255 255 255 / 0.18),
+    0 14px 26px -10px rgb(30 12 90 / 0.6);
+}
+
+/* The record seal at the lower right: archive gold (the poster only ever sits
+   in a night panel, where --c-gold is the bright night gold). */
+.record {
+  border-radius: 999px;
+  background: radial-gradient(circle at 35% 30%, #F2D27C, rgb(var(--c-gold)) 55%, #A9821F 100%);
+  box-shadow: inset 0 1px 0 rgb(255 255 255 / 0.5), 0 3px 6px -2px rgb(60 40 0 / 0.45);
+}
+
+/* The band of light that crosses the sheet now and then. */
+.sweep {
+  background: linear-gradient(105deg, transparent 38%, rgb(255 255 255 / 0.5) 49%, rgb(255 255 255 / 0.12) 55%, transparent 64%);
+  transform: translate3d(-10%, 0, 0);
+}
+@media (prefers-reduced-motion: no-preference) {
+  .sweep {
+    animation: sweep 9s var(--ease-civic) 1s infinite;
+  }
+}
+@keyframes sweep {
+  0% {
+    transform: translate3d(-110%, 0, 0);
+  }
+  62%,
+  100% {
+    transform: translate3d(110%, 0, 0);
+  }
+}
+
+/* ── The lettered ring of the small seal, turning very slowly ─────────── */
+
+.turning {
+  transform-box: view-box;
+  transform-origin: center;
+}
+@media (prefers-reduced-motion: no-preference) {
+  .turning {
+    animation: turn 90s linear infinite;
+  }
+}
+@keyframes turn {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .sweep,
+  .turning {
+    animation: none;
+  }
+}
+
+@media print {
+  .aurora,
+  .sweep {
+    display: none;
+  }
+}
