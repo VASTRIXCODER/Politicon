@@ -63,6 +63,8 @@ export interface LedgerModel {
   analysed: number;
   /** How many of them the category slabs were built from (the rest are in the "Other analyses" slab). */
   listed: number;
+  /** How many of the listed analyses are of policies that aren't law (proposed, passed, rejected, repealed): their amounts are what they would mean. */
+  notLaw: number;
 }
 
 /** One row of the dashboard's analyses list (only the fields the ledger reads). */
@@ -70,6 +72,8 @@ export interface LedgerAnalysis {
   category?: string | null;
   /** The policy's net yearly impact (PostgREST may send a numeric as a string). */
   dollar_impact?: number | string | null;
+  /** The policy's recorded status (the view's `status`): 'enacted' is law; anything else known isn't. */
+  status?: string | null;
 }
 
 export interface LedgerInput {
@@ -87,6 +91,7 @@ export const EMPTY_LEDGER: LedgerModel = Object.freeze({
   slabs: Object.freeze([]) as unknown as LedgerSlab[],
   analysed: 0,
   listed: 0,
+  notLaw: 0,
 }) as LedgerModel;
 
 const CATEGORY_LABELS: Record<string, string> = {
@@ -145,7 +150,9 @@ export function buildLedger(input: LedgerInput): LedgerModel {
   const rows = (input.analyses ?? []).filter((r): r is LedgerAnalysis => !!r);
   const groups = new Map<string, { label: string; raw: number; policies: number }>();
   let listedRaw = 0;
+  let notLaw = 0;
   for (const row of rows) {
+    if (typeof row.status === 'string' && row.status.trim() && row.status.trim().toLowerCase() !== 'enacted') notLaw += 1;
     const v = dollars(row.dollar_impact);
     const key = categoryKey(row.category);
     const g = groups.get(key) ?? { label: categoryLabel(row.category), raw: 0, policies: 0 };
@@ -183,7 +190,7 @@ export function buildLedger(input: LedgerInput): LedgerModel {
 
   const gains = slabs.reduce((s, x) => s + Math.max(0, x.value), 0);
   const costs = slabs.reduce((s, x) => s + Math.max(0, -x.value), 0);
-  return { net: whole(netRaw), gains, costs, slabs, analysed: listed + rest, listed };
+  return { net: whole(netRaw), gains, costs, slabs, analysed: listed + rest, listed, notLaw };
 }
 
 // ---------------------------------------------------------------------------
@@ -236,11 +243,22 @@ export const LEDGER_WORLD = {
   emptyBaseline: 0.36,
   /** How far a highlighted slab slides out toward the viewer. */
   slideOut: 0.07,
-  plinth: { radius: 1.05, height: 0.2 },
+  plinth: { radius: 1.15, height: 0.2 },
   /** The scale staff, standing just clear of the column's right side. */
   staff: { x: 0.5, z: 0.02, radius: 0.007, tick: 0.055 },
-  /** The household at the column's foot, front left. */
-  household: { position: [-0.6, 0, 0.36] as readonly [number, number, number], rotationY: 0.45 },
+  /**
+   * The household at the column's foot, front left: the user's diorama (the
+   * kit's HouseholdDiorama, its avatar) in miniature, on its own plinth.
+   * `plinth` and `house` repeat the diorama's own units (DIORAMA in
+   * components/three/kit/dioramaLayout.ts; tests/ledger.test.ts keeps them equal).
+   */
+  household: {
+    position: [-0.62, 0, 0.48] as readonly [number, number, number],
+    rotationY: 0.5,
+    scale: 0.27,
+    plinth: { radius: 1.3, height: 0.2 },
+    house: [-0.24, 0, -0.1] as readonly [number, number, number],
+  },
 } as const;
 
 /** The composed view (the scene's camera and the poster's projection). Radians; fov in degrees. */
@@ -373,8 +391,15 @@ export function ledgerViewBounds(withHousehold: boolean): { minX: number; maxX: 
     pts.push([Math.cos(a) * r, 0, Math.sin(a) * r], [Math.cos(a) * r, -W.plinth.height, Math.sin(a) * r]);
   }
   if (withHousehold) {
-    const [hx, , hz] = W.household.position;
-    pts.push([hx, 0.45, hz]);
+    const { position, scale, plinth } = W.household;
+    const [hx, , hz] = position;
+    const lift = plinth.height * scale;
+    for (let i = 0; i < 12; i++) {
+      const a = (i / 12) * Math.PI * 2;
+      pts.push([hx + Math.cos(a) * plinth.radius * scale, 0, hz + Math.sin(a) * plinth.radius * scale]);
+    }
+    // Its tallest building (the apartment block) with room to spare.
+    pts.push([hx, lift + 0.32, hz]);
   }
   const p = pts.map((v) => projectLedger(v));
   const xs = p.map((v) => v[0]);
@@ -407,6 +432,18 @@ export function ledgerScaleNote(model: LedgerModel): string {
   const scale = ledgerScale(model);
   if (!scale) return 'Every analyzed policy nets to $0 a year, so there are no slabs yet; the ring of light rests on the baseline.';
   return `Each slab is as tall as its yearly amount, on one linear scale for savings and costs; each mark on the staff is ${formatUSD(scale.step)} a year. The ring of light marks the net.`;
+}
+
+/** Which of the analyses aren't law (so their amounts are hypothetical), or null when all known ones are. */
+export function ledgerStatusNote(model: LedgerModel): string | null {
+  const n = model.notLaw;
+  if (!n) return null;
+  // Statuses are known only for the listed analyses.
+  const of = model.listed < model.analysed ? 'of your latest analyses' : 'of these policies';
+  if (model.analysed === 1) return 'This policy isn’t law, so its amount is what it would mean if enacted.';
+  return n === 1
+    ? `1 ${of} isn’t law, so its amount is what it would mean if enacted.`
+    : `${n} ${of} aren’t law, so their amounts are what they would mean if enacted.`;
 }
 
 /** Why there's an "Other analyses" slab, or null when there isn't one. */

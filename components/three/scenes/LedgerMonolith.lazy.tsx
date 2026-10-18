@@ -14,8 +14,8 @@ import type { LedgerMonolithProps } from '@/components/three/scenes/LedgerMonoli
  *   <LedgerReadout model={ledger} focus={focus} onFocus={setFocus} />
  *
  * A lazy component, so three.js and the scene load with the stage, never in
- * the page's first-load bundle. It brings its own camera, lights and (tier 2)
- * bloom, and frames itself for any box. The model, its geometry and its
+ * the page's first-load bundle. It brings its own camera and lights, and
+ * frames itself for any box. The model, its geometry and its
  * words live in lib/ledger.ts (three-free), which DOM code imports directly.
  */
 

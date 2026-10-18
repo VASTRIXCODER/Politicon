@@ -1,5 +1,4 @@
 import type { Metadata } from 'next';
-import MotionProvider from '@/components/providers/MotionProvider';
 
 // Private, signed-in pages are kept out of search results.
 export const metadata: Metadata = {
@@ -7,7 +6,8 @@ export const metadata: Metadata = {
   robots: { index: false, follow: false },
 };
 
-// The signed-in pages animate with motion/react (m.* elements); marketing pages don't load it.
+// Onboarding animates with CSS only (components/onboarding/onboarding.module.css),
+// so unlike the other signed-in pages it doesn't load motion/react at all.
 export default function Layout({ children }: { children: React.ReactNode }) {
-  return <MotionProvider>{children}</MotionProvider>;
+  return children;
 }

@@ -1,0 +1,129 @@
+/*
+ * The policy docket (PolicyDocket.tsx, PolicyFeedCard.tsx): each policy is a
+ * bill sheet of paper lying on two more, with a soft shadow, so the feed
+ * reads as a stack of records at a little depth.
+ *
+ *   .card    the card's box (the docket animates it when the list changes).
+ *            Its ::before and ::after are the sheets underneath.
+ *   .sheet   the top sheet, which carries the content. Under a mouse it
+ *            tilts toward the pointer (useSheetTilt: --tx/--ty, -0.5…0.5,
+ *            while [data-tilt] is set) and a light follows the pointer
+ *            (components/ui/Spotlight).
+ *
+ * Nothing here changes opacity, so the text is never transparent, and with
+ * reduced motion or "Pause motion" nothing tilts (the hook never sets
+ * data-tilt) and transitions end at once (app/globals.css).
+ */
+
+.card {
+  position: relative;
+  isolation: isolate;
+  /* Room for the sheets underneath. */
+  margin-bottom: 0.625rem;
+}
+
+.card::before,
+.card::after {
+  content: '';
+  pointer-events: none;
+  position: absolute;
+  z-index: -1;
+  border-radius: 1.25rem;
+  border: 1px solid rgb(var(--c-fg) / 0.08);
+  background-color: rgb(var(--c-surface));
+}
+/* The sheet just under the top one, a hair askew… */
+.card::before {
+  inset: 0.375rem 0.5rem -0.3125rem;
+  transform: rotate(-0.35deg);
+  box-shadow: 0 1px 0 rgb(var(--c-fg) / 0.03);
+}
+/* …and the last, narrower still: the edge of the stack. */
+.card::after {
+  inset: 0.75rem 1.125rem -0.625rem;
+  transform: rotate(0.45deg);
+  background-color: rgb(var(--c-canvas));
+  box-shadow: 0 14px 28px -18px rgb(var(--c-fg) / 0.35);
+}
+:global([data-theme='dark']) .card::after,
+:global([data-night]) .card::after {
+  box-shadow: 0 18px 32px -18px rgb(0 0 0 / 0.7);
+}
+
+.sheet {
+  --tx: 0;
+  --ty: 0;
+  position: relative;
+  isolation: isolate;
+  height: 100%;
+  border-radius: 1.25rem;
+  border: 1px solid rgb(var(--c-fg) / 0.09);
+  background-color: rgb(var(--c-raised));
+  box-shadow:
+    inset 0 1px 0 rgb(255 255 255 / 0.7),
+    var(--shadow-pane);
+  transition:
+    transform 0.6s var(--ease-civic),
+    box-shadow 0.3s var(--ease-civic),
+    border-color 0.3s var(--ease-civic);
+}
+:global([data-theme='dark']) .sheet,
+:global([data-night]) .sheet {
+  background-color: rgb(var(--c-surface));
+  box-shadow:
+    inset 0 1px 0 rgb(255 255 255 / 0.06),
+    var(--shadow-pane);
+}
+/* A hairline of violet light along the top edge. */
+.sheet::before {
+  content: '';
+  pointer-events: none;
+  position: absolute;
+  inset-inline: 2rem;
+  top: -1px;
+  height: 1px;
+  background: linear-gradient(to right, transparent, rgb(var(--c-violet) / 0.4), transparent);
+}
+
+@media (hover: hover) {
+  .sheet:hover {
+    border-color: rgb(var(--c-violet) / 0.28);
+    box-shadow:
+      inset 0 1px 0 rgb(255 255 255 / 0.7),
+      var(--shadow-lift);
+  }
+}
+.sheet[data-tilt] {
+  transform: perspective(1400px) rotateX(calc(var(--ty) * -2.2deg)) rotateY(calc(var(--tx) * 2.8deg)) translateY(-2px);
+}
+
+/* Keyboard focus on any control, or on the title (focus lands there when a
+   neighbouring card is dismissed), rims the whole sheet. */
+.sheet:focus-within {
+  border-color: rgb(var(--c-violet) / 0.45);
+}
+.sheet:has([data-feed-card-title]:focus-visible) {
+  box-shadow:
+    0 0 0 2px rgb(var(--c-focus)),
+    var(--shadow-pane);
+}
+
+/* The record header's seal: a point of archive gold, for official records only. */
+.seal {
+  width: 0.5rem;
+  height: 0.5rem;
+  flex-shrink: 0;
+  border-radius: 9999px;
+  background: rgb(var(--c-gold));
+  box-shadow:
+    0 0 0 3px rgb(var(--c-gold) / 0.16),
+    0 0 10px rgb(var(--c-gold) / 0.55);
+}
+
+/* The record pane inside a card: where the bill stands and where that comes from. */
+.record {
+  border-radius: 0.875rem;
+  border: 1px solid rgb(var(--c-fg) / 0.07);
+  background:
+    linear-gradient(to bottom, rgb(var(--c-fg) / 0.025), rgb(var(--c-fg) / 0.01));
+}

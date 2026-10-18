@@ -9,7 +9,6 @@ import {
   CustomBlending,
   CylinderGeometry,
   DoubleSide,
-  ExtrudeGeometry,
   MeshBasicMaterial,
   MeshPhysicalMaterial,
   MeshStandardMaterial,
@@ -18,8 +17,6 @@ import {
   OneMinusSrcAlphaFactor,
   PlaneGeometry,
   ShaderMaterial,
-  Shape,
-  SphereGeometry,
   Vector2,
   type InstancedMesh,
   type Mesh,
@@ -33,10 +30,10 @@ import { LEDGER_VIEW, LEDGER_WORLD, ledgerGeometry, ledgerViewBounds, unprojectL
 import type { HouseholdModel } from '@/lib/household';
 import { useViewState } from '@/components/three/runtime';
 import GlassMaterial from '@/components/three/kit/GlassMaterial';
+import HouseholdDiorama from '@/components/three/kit/HouseholdDiorama';
 import Plinth, { ContactBlob } from '@/components/three/kit/Plinth';
-import PostFX from '@/components/three/kit/PostFX';
 import StudioLights from '@/components/three/kit/StudioLights';
-import { useAnimated, useKitTier, useScenePalette } from '@/components/three/kit/hooks';
+import { useAnimated, useScenePalette } from '@/components/three/kit/hooks';
 
 /*
  * "Your Ledger" (the dashboard): a tall glass monolith on the porcelain
@@ -48,7 +45,8 @@ import { useAnimated, useKitTier, useScenePalette } from '@/components/three/kit
  * light belts the column at the net's height; a slim staff beside it carries
  * a mark per scale step (the page says what a step is worth). Empty, it is a
  * clear column with a dashed baseline. The user's household, when known,
- * stands small at its foot.
+ * stands at its foot as their diorama in miniature (the kit's
+ * HouseholdDiorama, the same model as their avatar).
  *
  * Pointing at a slab (or tapping it) slides it out a little and lights it,
  * and reports its id through `onFocus`, so the page's readout can light the
@@ -281,8 +279,9 @@ function Slabs({ geo, focus, onFocus, animated }: SlabsProps) {
   // raycasting this view, so no pointer-out arrives): let go of the hover.
   useEffect(() => {
     if (!element) return;
-    const leave = () => {
-      if (hovered.current === null) return;
+    const leave = (e: PointerEvent) => {
+      // A finger lifting "leaves" too; a tap's highlight is the click's to set.
+      if (e.pointerType === 'touch' || hovered.current === null) return;
       hovered.current = null;
       element.style.cursor = '';
       onFocus?.(null);
@@ -314,10 +313,11 @@ function Slabs({ geo, focus, onFocus, animated }: SlabsProps) {
             setCursor('');
             onFocus?.(null);
           }}
-          // A tap on a touch screen lights it too (and the next tap elsewhere lets go).
+          // A tap on a touch screen lights it (and a second tap lets go).
           onClick={(e: ThreeEvent<MouseEvent>) => {
             e.stopPropagation();
-            onFocus?.(s.id);
+            const touch = (e.nativeEvent as PointerEvent).pointerType === 'touch';
+            onFocus?.(touch && focus === s.id ? null : s.id);
           }}
         />
       ))}
@@ -391,9 +391,9 @@ function Column({ geo, animated }: { geo: LedgerGeometry; animated: boolean }) {
     mats.porcelain.emissive.set(base);
     mats.porcelain.emissiveIntensity = p.night ? 0.03 : 0.12;
     // The baseline: porcelain lit from within by violet (a lit plate, never a neon line).
-    mats.plate.color.set(mixHex(base, p.violet, p.night ? 0.3 : 0.22));
+    mats.plate.color.set(mixHex(base, p.violet, p.night ? 0.22 : 0.14));
     mats.plate.emissive.set(p.night ? p.violetLight : p.violet);
-    mats.plate.emissiveIntensity = p.night ? 0.55 : 0.32;
+    mats.plate.emissiveIntensity = p.night ? 0.45 : 0.26;
     mats.dash.color.set(mixHex(base, p.ink, p.night ? 0.45 : 0.4));
     mats.tick.color.set(mixHex(base, p.ink, p.night ? 0.35 : 0.45));
     mats.belt.color.set(p.night ? p.violetLight : p.violet);
@@ -485,100 +485,20 @@ const DASHES = 40;
 const TICKS = 12;
 
 // ---------------------------------------------------------------------------
-// The household at the foot: its dwelling and its people, from the profile
-// (lib/household.ts). Nothing more is drawn than the model says.
-
-function gableShape(width: number, wall: number, gable: number) {
-  const w = width / 2;
-  const s = new Shape();
-  s.moveTo(-w, 0);
-  s.lineTo(w, 0);
-  s.lineTo(w, wall);
-  s.lineTo(0, wall + gable);
-  s.lineTo(-w, wall);
-  s.lineTo(-w, 0);
-  return s;
-}
-
-function Household({ model }: { model: HouseholdModel }) {
-  const p = useScenePalette();
-  const dwelling = model.dwelling;
-  const tall = dwelling === 'apartment';
-  const wide = dwelling === 'campus' || dwelling === 'family-home';
-  const width = wide ? 0.36 : tall ? 0.24 : 0.3;
-  const depth = 0.22;
-  const wall = tall ? 0.4 : dwelling === 'campus' ? 0.26 : 0.17;
-  const gable = tall || dwelling === 'campus' ? 0 : 0.11;
-
-  const shapes = useMemo(() => {
-    const body = gable
-      ? new ExtrudeGeometry(gableShape(width, wall, gable), { depth, bevelEnabled: true, bevelSize: 0.004, bevelThickness: 0.004, bevelSegments: 1 })
-      : new RoundedBoxGeometry(width, wall, depth, 2, 0.008);
-    if (gable) body.translate(0, 0, -depth / 2);
-    else body.translate(0, wall / 2, 0);
-    const door = new BoxGeometry(0.05, 0.085, 0.01);
-    const torso = new CylinderGeometry(0.6, 1, 1, 12);
-    const head = new SphereGeometry(1, 14, 10);
-    return { body, door, torso, head };
-  }, [width, wall, gable]);
-  useEffect(() => () => Object.values(shapes).forEach((g) => g.dispose()), [shapes]);
-
-  const mats = useMemo(
-    () => ({
-      porcelain: new MeshStandardMaterial({ roughness: 0.8, metalness: 0, emissive: new Color() }),
-      door: new MeshStandardMaterial({ roughness: 0.45, metalness: 0.05 }),
-    }),
-    []
-  );
-  useEffect(() => () => Object.values(mats).forEach((m) => m.dispose()), [mats]);
-  useEffect(() => {
-    const base = p.night ? p.paper : p.porcelain;
-    mats.porcelain.color.set(base);
-    mats.porcelain.emissive.set(base);
-    mats.porcelain.emissiveIntensity = p.night ? 0.04 : 0.18;
-    mats.door.color.set(p.violet);
-  }, [mats, p]);
-
-  // Grown-ups first, then the dependents (children shorter), in a row in front.
-  const people = useMemo(() => {
-    const list: number[] = [];
-    for (let i = 0; i < model.adults; i++) list.push(0.15);
-    for (let i = 0; i < model.figures; i++) list.push(model.youngDependents ? 0.1 : 0.14);
-    return list;
-  }, [model.adults, model.figures, model.youngDependents]);
-
-  const [hx, hy, hz] = W.household.position;
-  const spread = 0.075;
-  return (
-    <group position={[hx, hy, hz]} rotation={[0, W.household.rotationY, 0]}>
-      <ContactBlob width={width * 1.9} depth={depth * 2} strength={1.1} />
-      <mesh geometry={shapes.body} material={mats.porcelain} />
-      <mesh geometry={shapes.door} material={mats.door} position={[0, 0.0425, depth / 2 + 0.006]} />
-      {people.map((height, i) => {
-        const r = height * 0.16;
-        const body = height * 0.66;
-        const x = (i - (people.length - 1) / 2) * spread;
-        return (
-          <group key={i} position={[x, 0, depth / 2 + 0.13]}>
-            <mesh geometry={shapes.torso} material={mats.porcelain} position={[0, body / 2, 0]} scale={[r, body, r]} />
-            <mesh geometry={shapes.head} material={mats.porcelain} position={[0, height - r, 0]} scale={r} />
-          </group>
-        );
-      })}
-    </group>
-  );
-}
-
-// ---------------------------------------------------------------------------
 
 export default function LedgerMonolith({ model, focus = null, onFocus, household }: LedgerMonolithProps) {
-  const tier = useKitTier();
-  const animated = useAnimated(tier === 2 ? 60 : 30);
+  // 30 fps on every tier: the motion is slow, and the dashboard is a page people stay on.
+  const animated = useAnimated(30);
+  const palette = useScenePalette();
   const invalidate = useThree((s) => s.invalidate);
-  const geo = useMemo(() => ledgerGeometry(model), [model]);
+  // Keyed on the ledger's content, so a page that rebuilds an equal model each render doesn't rebuild the slabs.
+  const key = `${model.net}|${model.analysed}|${model.slabs.map((s) => `${s.id}:${s.value}`).join(',')}`;
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  const geo = useMemo(() => ledgerGeometry(model), [key]);
   const home = household?.dwelling ? household : null;
-  // Without the animation clock (reduced motion), a new focus still needs a frame.
-  useEffect(() => invalidate(), [focus, geo, invalidate]);
+  const [hx, , hz] = W.household.position;
+  // Without the animation clock (reduced motion), a new focus, ledger or theme still needs a frame.
+  useEffect(() => invalidate(), [focus, geo, palette, invalidate]);
 
   return (
     <>
@@ -587,8 +507,17 @@ export default function LedgerMonolith({ model, focus = null, onFocus, household
       <Plinth radius={W.plinth.radius} height={W.plinth.height} />
       <Column geo={geo} animated={animated} />
       <Slabs geo={geo} focus={focus} onFocus={onFocus} animated={animated} />
-      {home && <Household model={home} />}
-      <PostFX />
+      {home && (
+        // The user's diorama (their avatar) in miniature on its own plinth, mounted once the household is known.
+        <HouseholdDiorama
+          household={home}
+          position={[hx, W.household.plinth.height * W.household.scale, hz]}
+          rotationY={W.household.rotationY}
+          scale={W.household.scale}
+        />
+      )}
+      {/* No tier-2 effect pass: scissored to this box inside the vitrine, the stage's pass shifts the
+          night field's colour behind the column, which shows as an inner rectangle. The ring is emissive. */}
     </>
   );
 }

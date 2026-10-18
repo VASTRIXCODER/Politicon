@@ -1,0 +1,159 @@
+/*
+ * The dashboard's own CSS: the sections' entrance, the Chamber the ledger
+ * stands in, and the receipt of recent analyses. Everything moving here is
+ * a CSS animation or transition, so reduced motion and "Pause motion"
+ * (app/globals.css) land it at its end state at once; nothing is ever left
+ * transparent.
+ */
+
+/* A section rises a few pixels into place as the dashboard's data arrives.
+   --rise-delay staggers them (the header first, then the ledger, then the rest). */
+.rise {
+  animation: rise 640ms cubic-bezier(0.2, 0.7, 0.2, 1) both;
+  animation-delay: var(--rise-delay, 0ms);
+}
+
+@keyframes rise {
+  from {
+    opacity: 0;
+    translate: 0 14px;
+  }
+  to {
+    opacity: 1;
+    translate: 0 0;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .rise {
+    animation: none;
+  }
+}
+
+:global(html[data-motion='paused']) .rise {
+  animation: none;
+}
+
+/* ---------------------------------------------------------------------------
+   The ledger's vitrine is a small Chamber (a night section on the day page,
+   as beside the sign-in form): night canvas, aurora curtains from the top
+   and a low glow where the plinth stands, until the stage's light field
+   takes it over (data-scene-night-live, which also clears the canvas, so
+   the model shows through). A hairline of light along its inner edge. */
+
+.chamber {
+  box-shadow:
+    inset 0 0 0 1px rgb(var(--c-fg) / 0.08),
+    inset 0 1px 0 rgb(var(--c-fg) / 0.1),
+    0 32px 64px -36px rgb(0 0 0 / 0.55);
+}
+
+.aurora {
+  background:
+    radial-gradient(ellipse 60% 48% at 22% -6%, rgb(var(--c-violet) / 0.32), rgb(var(--c-violet) / 0.09) 50%, transparent 78%),
+    radial-gradient(ellipse 44% 40% at 82% -8%, rgb(var(--c-glow) / 0.14), rgb(var(--c-glow) / 0.04) 52%, transparent 80%),
+    radial-gradient(ellipse 80% 30% at 50% 86%, rgb(var(--c-violet) / 0.2), rgb(var(--c-violet) / 0.05) 55%, transparent 82%);
+  transition: opacity 0.7s cubic-bezier(0.2, 0.7, 0.2, 1);
+}
+
+:global([data-scene-night-live]) .aurora {
+  opacity: 0;
+}
+
+/* ---------------------------------------------------------------------------
+   The receipt: a strip of porcelain paper with perforated ends, the sheet
+   under it peeking out (the earlier receipts), lines set in the mono face
+   and a ruled foot with the net. */
+
+.receipt {
+  --tooth: 12px;
+  --notch: 4.5px;
+  position: relative;
+  /* Room for the perforations drawn outside the paper. */
+  margin-block: 7px 16px;
+  background-color: rgb(var(--c-surface));
+  box-shadow: var(--shadow-pane);
+}
+
+/* The perforated ends: a row of half-circle notches out of the paper's edge. */
+.receipt::before,
+.receipt::after {
+  content: '';
+  pointer-events: none;
+  position: absolute;
+  left: 0;
+  right: 0;
+  height: 7px;
+  background-repeat: repeat-x;
+  background-size: var(--tooth) 7px;
+}
+
+.receipt::before {
+  top: -7px;
+  background-image: radial-gradient(circle at 50% 0, transparent var(--notch), rgb(var(--c-surface)) calc(var(--notch) + 0.5px));
+}
+
+.receipt::after {
+  bottom: -7px;
+  background-image: radial-gradient(circle at 50% 100%, transparent var(--notch), rgb(var(--c-surface)) calc(var(--notch) + 0.5px));
+}
+
+/* The sheet under it: the same paper, a shade deeper, offset down and in. */
+.under {
+  pointer-events: none;
+  position: absolute;
+  inset: 10px 10px -14px;
+  z-index: -1;
+  border-radius: 2px;
+  background-color: rgb(var(--c-surface));
+  box-shadow: var(--shadow-pane);
+}
+
+.under::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  border-radius: inherit;
+  /* A shade deeper in both themes (a white tint would lighten it at night). */
+  background-color: rgb(0 0 0 / 0.06);
+}
+
+.stack {
+  position: relative;
+  isolation: isolate;
+}
+
+/* A dotted rule between lines, as a till prints them. */
+.line + .line {
+  background-image: linear-gradient(90deg, rgb(var(--c-fg) / 0.16) 50%, transparent 0);
+  background-size: 6px 1px;
+  background-repeat: repeat-x;
+  background-position: 0 0;
+}
+
+.line {
+  transition: background-color 200ms cubic-bezier(0.2, 0.7, 0.2, 1);
+}
+
+@media (hover: hover) {
+  .line:hover {
+    background-color: rgb(var(--c-violet) / 0.04);
+  }
+}
+
+.line:focus-within {
+  background-color: rgb(var(--c-violet) / 0.05);
+}
+
+/* The foot: a double rule, then the net. */
+.foot {
+  border-top: 3px double rgb(var(--c-fg) / 0.22);
+}
+
+@media print {
+  .receipt::before,
+  .receipt::after,
+  .under {
+    display: none;
+  }
+}

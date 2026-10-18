@@ -71,9 +71,9 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
       </head>
       <body>
         <a href="#main" className="skip-link">Skip to main content</a>
-        {/* Motion (motion/react) is set up by the signed-in app's own layouts
-            (components/providers/MotionProvider), the only pages that animate
-            with it, so marketing pages never load it. */}
+        {/* Motion (motion/react) is set up by the layouts of the signed-in
+            pages that animate with it (components/providers/MotionProvider:
+            impact, guide, settings), so other pages never load it. */}
         <LenisProvider>
           <ReadingModeProvider>
             {children}

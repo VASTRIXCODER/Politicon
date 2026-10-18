@@ -2,7 +2,8 @@
  * Where things stand on the household diorama, and how a ledger column is
  * stacked: plain numbers with no three.js, so the landing film's timeline
  * (components/three/scenes/filmShots.ts) can aim light at the house and the
- * ledger, and tests can check the arithmetic.
+ * ledger, the household posters can draw what the 3D scene shows (they ship
+ * in pages' first load), and tests can check the arithmetic.
  *
  * Diorama units: the plinth's top is y = 0, its centre the origin, and the
  * house faces +z. A ledger column stands on y = 0 of its own position.
@@ -135,7 +136,7 @@ export type DwellingSpec =
 /** The building for each kind of home. `house` is the landing film's house. */
 export const DWELLINGS = {
   house: { kind: 'gabled', width: DIORAMA.house.width, depth: DIORAMA.house.depth, wall: DIORAMA.house.wall, gable: DIORAMA.house.gable, storeys: 1 },
-  cottage: { kind: 'gabled', width: 0.46, depth: 0.4, wall: 0.25, gable: 0.25, storeys: 1 },
+  cottage: { kind: 'gabled', width: 0.46, depth: 0.4, wall: 0.22, gable: 0.3, storeys: 1 },
   'family-home': { kind: 'gabled', width: 0.72, depth: 0.52, wall: 0.5, gable: 0.27, storeys: 2 },
   apartment: { kind: 'block', width: 0.5, depth: 0.44, height: 0.84, floors: 4, bays: 3 },
   campus: { kind: 'hall', width: 0.88, depth: 0.4, height: 0.4, bays: 6 },
@@ -144,7 +145,7 @@ export const DWELLINGS = {
 /** The building's footprint half-extents (x, z) around DIORAMA.house.center, porch included. */
 export function dwellingFootprint(d: Dwelling): { halfWidth: number; front: number; back: number } {
   const s: DwellingSpec = DWELLINGS[d];
-  return { halfWidth: s.width / 2, front: s.depth / 2 + (s.kind === 'hall' ? 0.1 : 0), back: s.depth / 2 };
+  return { halfWidth: s.width / 2, front: s.depth / 2 + (s.kind === 'hall' ? 0.14 : 0.03), back: s.depth / 2 };
 }
 
 /** The building's highest point (roof, parapet or lantern). */
@@ -153,6 +154,60 @@ export function dwellingTop(d: Dwelling): number {
   if (s.kind === 'gabled') return s.wall + s.gable;
   if (s.kind === 'block') return s.height + 0.1;
   return s.height + 0.16;
+}
+
+/** Anything set on a wall (a window, a door) stands this far proud of it. */
+export const WALL_FACE = 0.006;
+
+/** A window: [x, y, z, rotationY, width, height] in building-local units (centre at ground). */
+export type DwellingWindow = [number, number, number, number, number, number];
+
+/** The film's house windows: two at the front either side of the door, two on the left, one on the right. */
+const HOUSE_WINDOWS: DwellingWindow[] = [
+  [-0.19, 0.2, DIORAMA.house.depth / 2 + WALL_FACE, 0, 0.1, 0.11],
+  [0.19, 0.2, DIORAMA.house.depth / 2 + WALL_FACE, 0, 0.1, 0.11],
+  [-DIORAMA.house.width / 2 - WALL_FACE, 0.2, 0.11, -Math.PI / 2, 0.11, 0.11],
+  [-DIORAMA.house.width / 2 - WALL_FACE, 0.2, -0.11, -Math.PI / 2, 0.11, 0.11],
+  [DIORAMA.house.width / 2 + WALL_FACE, 0.2, 0, Math.PI / 2, 0.13, 0.11],
+];
+
+/** Rows of windows across the front (`xs`) and down both sides (`zs`) of a flat-sided building. */
+function gridWindows(width: number, depth: number, rows: number[], xs: number[], zs: number[], size: [number, number], skip?: (x: number, row: number) => boolean) {
+  return rows.flatMap((y, row): DwellingWindow[] => [
+    ...xs.filter((x) => !skip?.(x, row)).map((x): DwellingWindow => [x, y, depth / 2 + WALL_FACE, 0, size[0], size[1]]),
+    ...zs.flatMap((z): DwellingWindow[] => [
+      [-width / 2 - WALL_FACE, y, z, -Math.PI / 2, size[0], size[1]],
+      [width / 2 + WALL_FACE, y, z, Math.PI / 2, size[0], size[1]],
+    ]),
+  ]);
+}
+
+/**
+ * Every window of a building. Gabled homes follow the house (a second storey
+ * adds a row of three); the block stacks floors × bays with the door's slot
+ * left open; the hall has tall windows either side of its porch.
+ */
+export function dwellingWindows(d: Dwelling): DwellingWindow[] {
+  const s: DwellingSpec = DWELLINGS[d];
+  if (d === 'house') return HOUSE_WINDOWS;
+  if (s.kind === 'gabled') {
+    const fx = s.width * 0.306;
+    const rows = s.storeys === 2 ? [s.wall * 0.3, s.wall * 0.72] : [s.wall * 0.59];
+    return rows.flatMap((y, i): DwellingWindow[] => [
+      ...(i === 0 ? [-fx, fx] : [-fx, 0, fx]).map((x): DwellingWindow => [x, y, s.depth / 2 + WALL_FACE, 0, 0.1, 0.11]),
+      [-s.width / 2 - WALL_FACE, y, s.depth * 0.22, -Math.PI / 2, 0.11, 0.11],
+      [-s.width / 2 - WALL_FACE, y, -s.depth * 0.22, -Math.PI / 2, 0.11, 0.11],
+      [s.width / 2 + WALL_FACE, y, 0, Math.PI / 2, 0.13, 0.11],
+    ]);
+  }
+  if (s.kind === 'block') {
+    const rows = Array.from({ length: s.floors }, (_, f) => (f + 0.55) * (s.height / s.floors));
+    const xs = Array.from({ length: s.bays }, (_, b) => (b - (s.bays - 1) / 2) * s.width * 0.3);
+    return gridWindows(s.width, s.depth, rows, xs, [s.depth * 0.22, -s.depth * 0.22], [0.085, 0.1], (x, row) => row === 0 && Math.abs(x) < 0.01);
+  }
+  const side = s.bays / 2;
+  const xs = Array.from({ length: s.bays }, (_, i) => (i < side ? -1 : 1) * (0.24 + (i < side ? i : i - side) * 0.08));
+  return gridWindows(s.width, s.depth, [s.height * 0.47], xs, [s.depth * 0.2, -s.depth * 0.2], [0.05, 0.16]);
 }
 
 /** Where the grown-ups stand (by the front path), then the dependents, in front of them. */
@@ -166,7 +221,7 @@ const FIGURE_SLOTS: { position: Vec3; rotationY: number }[] = [
 ];
 
 /** Heights: a grown-up, a grown-up dependent, a child. */
-export const FIGURE_HEIGHTS = { adult: 0.19, partner: 0.18, adultDependent: 0.17, child: 0.125 } as const;
+export const FIGURE_HEIGHTS = { adult: 0.19, partner: 0.18, adultDependent: 0.17, dependent: 0.15, child: 0.125 } as const;
 
 /**
  * Where each debt stands. The key lies at the doorstep, the car keeps the
@@ -174,14 +229,17 @@ export const FIGURE_HEIGHTS = { adult: 0.19, partner: 0.18, adultDependent: 0.17
  * turned toward the camera.
  */
 export const PROP_SPOTS: Record<HouseholdProp, { position: Vec3; rotationY: number }> = {
-  'mortgage-key': { position: [-0.42, 0, 0.3], rotationY: 0.65 },
+  'mortgage-key': { position: [-0.46, 0, 0.34], rotationY: 0.65 },
   car: { position: DIORAMA.car.position, rotationY: DIORAMA.car.rotationY },
-  medical: { position: [0.74, 0, -0.6], rotationY: -0.9 },
-  card: { position: [0.96, 0, -0.2], rotationY: -1.05 },
-  'grad-cap': { position: [0.92, 0, 0.24], rotationY: -0.7 },
-  ledger: { position: [0.7, 0, 0.6], rotationY: -0.35 },
-  briefcase: { position: [0.44, 0, 0.86], rotationY: -0.5 },
+  ledger: { position: [-0.42, 0, 0.78], rotationY: -0.25 },
+  briefcase: { position: [0.36, 0, 0.88], rotationY: -0.45 },
+  'grad-cap': { position: [0.71, 0, 0.55], rotationY: -0.6 },
+  card: { position: [0.91, 0, 0.18], rotationY: -0.85 },
+  medical: { position: [0.92, 0, -0.32], rotationY: -1.05 },
 };
+
+/** The debts' objects are drawn this much larger than life (next to the people), so they read at a glance. */
+export const PROP_SCALE = 1.3;
 
 export interface PlacedFigure {
   /** A piece id (see householdPieces). */
@@ -226,19 +284,22 @@ export function householdLayout(m: HouseholdModel): HouseholdLayout {
     }
     for (let i = 0; i < Math.min(m.figures, FIGURE_SLOTS.length - 2); i++) {
       const slot = FIGURE_SLOTS[i + 2];
-      const young = m.youngDependents;
+      // Ages unknown: a figure between a child and a grown-up, so the drawing claims neither.
+      const age = !m.agesKnown ? 'dependent' : m.youngDependents ? 'child' : 'adult';
       figures.push({
-        id: `dependent-${i + 1}${young ? ':child' : ':adult'}`,
+        id: `dependent-${i + 1}:${age}`,
         ...slot,
-        height: young ? FIGURE_HEIGHTS.child : FIGURE_HEIGHTS.adultDependent,
+        height: age === 'child' ? FIGURE_HEIGHTS.child : age === 'adult' ? FIGURE_HEIGHTS.adultDependent : FIGURE_HEIGHTS.dependent,
         adult: false,
       });
     }
   }
+  // Only pieces the kit can draw (a model built from untrusted input can't break the drawing).
+  const own = (o: object, k: unknown) => typeof k === 'string' && Object.prototype.hasOwnProperty.call(o, k);
   return {
-    dwelling: m.dwelling,
+    dwelling: own(DWELLINGS, m.dwelling) ? m.dwelling : null,
     figures,
-    props: m.props.map((kind) => ({ id: `prop:${kind}`, kind, ...PROP_SPOTS[kind] })),
+    props: m.props.filter((kind) => own(PROP_SPOTS, kind)).map((kind) => ({ id: `prop:${kind}`, kind, ...PROP_SPOTS[kind] })),
     state: m.state,
   };
 }
@@ -267,9 +328,12 @@ export const PLAQUE: Vec3 = (() => {
   return [Math.sin(a) * r, -DIORAMA.plinth.height * 0.5, Math.cos(a) * r] as const;
 })();
 
+/** On the plinth's top, just inside its edge above the plaque. */
+const STATE_SPOT: Vec3 = [PLAQUE[0] * 0.88, 0, PLAQUE[2] * 0.88];
+
 /** The ground point a piece stands on (for a pulse of light under it), or null if the model has no such piece. */
 export function piecePosition(layout: HouseholdLayout, id: string): Vec3 | null {
-  if (id === 'state') return layout.state ? [PLAQUE[0] * 0.93, 0, PLAQUE[2] * 0.93] : null;
+  if (id === 'state') return layout.state ? STATE_SPOT : null;
   if (id.startsWith('dwelling:')) return layout.dwelling ? DIORAMA.house.center : null;
   return layout.figures.find((f) => f.id === id)?.position ?? layout.props.find((p) => p.id === id)?.position ?? null;
 }
@@ -298,9 +362,9 @@ const unit = (x: number, y: number, z: number): Vec3 => {
  */
 export const HOUSEHOLD_CAMERA = {
   fov: 30,
-  build: { direction: unit(-0.5, 0.4, 0.86), target: [-0.1, 0.2, 0.06] as Vec3, frame: [2.95, 2.1] as const },
+  build: { direction: unit(-0.5, 0.4, 0.86), target: [-0.03, 0.1, 0.04] as Vec3, frame: [2.95, 2.3] as const },
   // The avatar turns on its plinth, so it frames the whole drum from a little higher.
-  avatar: { direction: unit(-0.5, 0.56, 0.86), target: [0, 0.2, 0] as Vec3, frame: [2.85, 2.5] as const },
+  avatar: { direction: unit(-0.5, 0.56, 0.86), target: [0, 0.16, 0] as Vec3, frame: [3.0, 2.6] as const },
 } as const;
 
 /** How far the reveal pulls back (a share of the distance) and swings round toward the front (radians). */
@@ -317,13 +381,16 @@ export function householdShot(mode: 'build' | 'avatar', aspect: number, reveal =
   const k = Math.min(1, Math.max(0, reveal));
   const half = Math.tan((HOUSEHOLD_CAMERA.fov * Math.PI) / 360);
   const a = Number.isFinite(aspect) && aspect > 0 ? aspect : 1;
-  const distance = Math.max(c.frame[1] / (2 * half), c.frame[0] / (2 * half * a)) * (1 + REVEAL_PULL * k);
+  // A wide, short band (the diorama above a phone's form) frames the household a little closer, the whole drum still in view.
+  const band = mode === 'build' ? Math.min(1, Math.max(0, (a - 1.5) / 0.7)) : 0;
+  const frameHeight = c.frame[1] - 0.15 * band;
+  const distance = Math.max(frameHeight / (2 * half), c.frame[0] / (2 * half * a)) * (1 + REVEAL_PULL * k);
   const swing = REVEAL_SWING * k;
   const [dx, dy, dz] = c.direction;
   const [cs, sn] = [Math.cos(swing), Math.sin(swing)];
   const dir = unit(dx * cs + dz * sn, dy + 0.05 * k, -dx * sn + dz * cs);
-  const [tx, ty, tz] = c.target;
-  return { position: [tx + dir[0] * distance, ty + dir[1] * distance, tz + dir[2] * distance], target: c.target, fov: HOUSEHOLD_CAMERA.fov };
+  const [tx, ty, tz] = [c.target[0], c.target[1], c.target[2] - 0.04 * band];
+  return { position: [tx + dir[0] * distance, ty + dir[1] * distance, tz + dir[2] * distance], target: [tx, ty, tz], fov: HOUSEHOLD_CAMERA.fov };
 }
 
 /**

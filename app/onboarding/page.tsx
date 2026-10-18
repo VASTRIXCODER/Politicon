@@ -1,24 +1,32 @@
 'use client';
 
-import { useState, useEffect, useCallback, useRef, useId, createContext, useContext } from 'react';
-import { m, AnimatePresence } from 'motion/react';
+import { useState, useEffect, useCallback, useMemo, useRef, useId, createContext, useContext, type ReactNode } from 'react';
 import { useRouter } from 'next/navigation';
-import { ChevronRight, ChevronLeft, Check, MapPin, User, Briefcase, Home } from 'lucide-react';
+import { ChevronRight, ChevronLeft, Check } from 'lucide-react';
 import { createClient } from '@/lib/supabase/client';
 import { apiFetch } from '@/lib/api';
 import AmbientBackground from '@/components/landing/AmbientBackground';
 import FullPageLoader from '@/components/auth/FullPageLoader';
 import Button from '@/components/ui/Button';
 import Logo from '@/components/ui/Logo';
+import MotionToggle from '@/components/ui/MotionToggle';
+import Surface from '@/components/ui/Surface';
 import RadioCards from '@/components/forms/RadioGroup';
+import HouseholdStage from '@/components/onboarding/HouseholdStage';
+import StageRail from '@/components/onboarding/StageRail';
+import { TileBody, tileClass } from '@/components/onboarding/ChoiceTile';
+import styles from '@/components/onboarding/onboarding.module.css';
 import {
   AGE_RANGES, CONCERNS, DEBT_TYPES, DEPENDENT_AGE_BANDS, EDUCATION_LEVELS, EMPLOYMENT_STATUSES,
   FILING_STATUSES, HOME_VALUE_BANDS, HOUSING_SITUATIONS, INCOME_RANGES, INVESTMENT_TYPES, MAX_CONCERNS,
   MAX_DEPENDENTS, OCCUPATIONS, US_STATES, isHomeowner, validOnly as keepAll, validOrEmpty as keep,
+  type FilingStatus, type HousingSituation,
 } from '@/lib/profileOptions';
 import { FinancialProfileSchema } from '@/lib/profileSchema';
+import { householdFromProfile } from '@/lib/household';
 import { afterOnboardingPath } from '@/lib/safeNext';
 import { track } from '@/lib/track';
+import { cn } from '@/lib/utils';
 
 interface Draft {
   state: string;
@@ -46,11 +54,11 @@ const EMPTY: Draft = {
 };
 
 const STAGES = [
-  { label: 'Location', icon: MapPin, steps: [0, 1] },
-  { label: 'About you', icon: User, steps: [2, 3, 4, 5] },
-  { label: 'Finances', icon: Briefcase, steps: [6, 7, 8, 9] },
-  { label: 'Household', icon: Home, steps: [10, 11, 12] },
-];
+  { label: 'Location', steps: [0, 1] },
+  { label: 'About you', steps: [2, 3, 4, 5] },
+  { label: 'Finances', steps: [6, 7, 8, 9] },
+  { label: 'Household', steps: [10, 11, 12] },
+] as const;
 const TOTAL_STEPS = 13;
 
 const draftKey = (userId: string) => `politicon:onboarding-draft:${userId}`;
@@ -64,7 +72,7 @@ const QuestionContext = createContext<{ titleId?: string; hintId?: string }>({})
 /** True once the user has moved between steps; each new question then takes focus. */
 const StepFocusContext = createContext(false);
 
-/** Single-answer cards, named by the current question unless told otherwise. */
+/** Single-answer tiles, named by the current question unless told otherwise. */
 function RadioGroup({ labelledBy, describedBy, ...props }: {
   options: readonly Option[]; value: string; onChange: (_v: string) => void; allowDeselect?: boolean;
   labelledBy?: string; describedBy?: string; className?: string;
@@ -75,15 +83,8 @@ function RadioGroup({ labelledBy, describedBy, ...props }: {
       {...props}
       labelledBy={labelledBy ?? titleId}
       describedBy={describedBy ?? hintId}
-      optionClassName={selected => `w-full px-5 py-4 rounded-2xl border text-sm ${
-        selected ? 'bg-primary/15 border-primary/40 text-text-primary' : 'glass backdrop-filter-none border-fg/10 text-text-muted hover:text-text-primary hover:border-fg/20'
-      }`}
-      renderOption={(o, selected) => (
-        <span className="flex items-center justify-between gap-3">
-          <span>{o.label}</span>
-          {selected && <Check className="w-4 h-4 text-primary-300 flex-shrink-0" aria-hidden="true" />}
-        </span>
-      )}
+      optionClassName={selected => tileClass(selected)}
+      renderOption={(o, selected) => <TileBody label={o.label} on={selected} />}
     />
   );
 }
@@ -91,22 +92,15 @@ function RadioGroup({ labelledBy, describedBy, ...props }: {
 /** One choice in a pick-several group: a toggle button (aria-pressed). */
 function MultiOptionButton({ label, selected, disabled, onClick }: { label: string; selected: boolean; disabled?: boolean; onClick: () => void }) {
   return (
-    <button type="button" onClick={onClick} aria-pressed={selected} disabled={disabled} className={`text-left px-4 py-3 rounded-xl border text-sm transition-all disabled:opacity-40 disabled:cursor-not-allowed ${
-      selected ? 'bg-primary/15 border-primary/40 text-text-primary' : 'glass backdrop-filter-none border-fg/10 text-text-muted hover:text-text-primary hover:border-fg/20'
-    }`}>
-      <div className="flex items-center gap-2">
-        <div aria-hidden="true" className={`w-4 h-4 rounded border flex items-center justify-center flex-shrink-0 ${
-          selected ? 'bg-primary-fill border-primary-fill' : 'border-fg/20'
-        }`}>{selected && <Check className="w-2.5 h-2.5 text-white" />}</div>
-        <span>{label}</span>
-      </div>
+    <button type="button" onClick={onClick} aria-pressed={selected} disabled={disabled} className={tileClass(selected)}>
+      <TileBody label={label} on={selected} multiple />
     </button>
   );
 }
 
 /** A labelled group of toggle buttons (pick several). */
 function MultiGroup({ labelledBy, describedBy, className, children }: {
-  labelledBy?: string; describedBy?: string; className?: string; children: React.ReactNode;
+  labelledBy?: string; describedBy?: string; className?: string; children: ReactNode;
 }) {
   const { titleId, hintId } = useContext(QuestionContext);
   return (
@@ -116,21 +110,25 @@ function MultiGroup({ labelledBy, describedBy, className, children }: {
   );
 }
 
+// 16px text: iOS zooms into smaller fields on focus.
+const FIELD = 'input-glass w-full rounded-tile px-4 py-3.5 text-base';
+
 /** The optional city field, described by its question's hint. */
 function CityInput({ id, value, onChange }: { id: string; value: string; onChange: (_v: string) => void }) {
   const { hintId } = useContext(QuestionContext);
   return (
     <input id={id} type="text" maxLength={100} placeholder="e.g. Columbus, Cook County…" value={value}
       onChange={e => onChange(e.target.value)} aria-describedby={hintId} autoComplete="address-level2"
-      className="input-glass w-full px-4 py-4 text-sm" autoFocus />
+      className={FIELD} autoFocus />
   );
 }
 
 /**
  * One onboarding step. The heading names the step's controls; with `fieldId`
- * it is also the <label> of that single field.
+ * it is also the <label> of that single field. Its key words are set in the
+ * display face's italic accent.
  */
-function Question({ title, hint, fieldId, children }: { title: string; hint?: string; fieldId?: string; children: React.ReactNode }) {
+function Question({ title, hint, fieldId, children }: { title: ReactNode; hint?: string; fieldId?: string; children: ReactNode }) {
   const id = useId();
   const titleId = `${id}-title`;
   const hintId = hint ? `${id}-hint` : undefined;
@@ -147,13 +145,14 @@ function Question({ title, hint, fieldId, children }: { title: string; hint?: st
 
   return (
     <QuestionContext.Provider value={{ titleId, hintId }}>
-      <m.div ref={boxRef} initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: -20 }} transition={{ duration: 0.25 }}>
-        <h1 ref={titleRef} id={titleId} tabIndex={-1} className={`font-display text-2xl sm:text-3xl font-medium text-text-primary outline-none ${hint ? 'mb-2' : 'mb-8'}`}>
+      <div ref={boxRef} className={styles.enter}>
+        <h1 ref={titleRef} id={titleId} tabIndex={-1}
+          className={cn('font-display text-[clamp(1.75rem,1.35rem+1.6vw,2.5rem)] font-medium leading-[1.1] text-ink outline-none', hint ? 'mb-3' : 'mb-7')}>
           {fieldId ? <label htmlFor={fieldId}>{title}</label> : title}
         </h1>
-        {hint && <p id={hintId} className="text-sm text-text-muted mb-6">{hint}</p>}
+        {hint && <p id={hintId} className="mb-7 max-w-[34rem] text-sm leading-relaxed text-muted">{hint}</p>}
         {children}
-      </m.div>
+      </div>
     </QuestionContext.Provider>
   );
 }
@@ -231,6 +230,25 @@ export default function OnboardingPage() {
       localStorage.setItem(draftKey(userId), JSON.stringify({ savedAt: new Date().toISOString(), answers: p }));
     } catch { /* storage unavailable */ }
   }, [p, userId]);
+
+  // The household the answers so far describe, for the diorama. Only the
+  // answers it draws are read, so typing a city doesn't rebuild it; only
+  // values from the vocabulary go in (a saved draft is the browser's, and
+  // could hold anything); the dependents count only counts once the person
+  // has said they have some.
+  const { housingSituation, filingStatus, hasDependents, dependentsCount, dependentAgeBands, debtTypes, state } = p;
+  const household = useMemo(
+    () => householdFromProfile({
+      housingSituation: keep(HOUSING_SITUATIONS, housingSituation) as HousingSituation | '',
+      filingStatus: keep(FILING_STATUSES, filingStatus) as FilingStatus | '',
+      hasDependents: hasDependents === true,
+      dependentsCount: hasDependents === true ? Math.min(MAX_DEPENDENTS, Math.max(0, Number(dependentsCount) || 0)) : 0,
+      dependentAgeBands: hasDependents === true ? keepAll(DEPENDENT_AGE_BANDS, dependentAgeBands) : [],
+      debtTypes: keepAll(DEBT_TYPES, debtTypes),
+      state: US_STATES.includes(state as (typeof US_STATES)[number]) ? state : '',
+    }),
+    [housingSituation, filingStatus, hasDependents, dependentsCount, dependentAgeBands, debtTypes, state],
+  );
 
   const set = <K extends keyof Draft>(key: K, value: Draft[K]) => {
     dirty.current = true;
@@ -328,76 +346,75 @@ export default function OnboardingPage() {
   };
 
   const questions = [
-    <Question key="state" title="What state do you live in?" fieldId={ids.state}>
-      <select id={ids.state} value={p.state} onChange={e => set('state', e.target.value)} autoComplete="address-level1"
-        className="input-glass w-full px-4 py-4 text-sm">
+    <Question key="state" title={<>What <em>state</em> do you live in?</>} fieldId={ids.state}>
+      <select id={ids.state} value={p.state} onChange={e => set('state', e.target.value)} autoComplete="address-level1" className={FIELD}>
         <option value="">Select your state…</option>
         {US_STATES.map(s => <option key={s} value={s}>{s}</option>)}
       </select>
     </Question>,
 
-    <Question key="city" title="What city or county?" hint="Optional. Helps with local taxes and cost of living." fieldId={ids.city}>
+    <Question key="city" title={<>What <em>city or county</em>?</>} hint="Optional. Helps with local taxes and cost of living." fieldId={ids.city}>
       <CityInput id={ids.city} value={p.city} onChange={v => set('city', v)} />
     </Question>,
 
-    <Question key="age" title="Which age range are you in?">
-      <RadioGroup options={AGE_RANGES} value={p.ageRange} onChange={v => set('ageRange', v)} className="grid grid-cols-2 sm:grid-cols-3 gap-3" />
+    <Question key="age" title={<>Which <em>age range</em> are you in?</>}>
+      <RadioGroup options={AGE_RANGES} value={p.ageRange} onChange={v => set('ageRange', v)} className="grid grid-cols-2 gap-2.5 sm:grid-cols-3" />
     </Question>,
 
-    <Question key="edu" title="Highest education completed?">
-      <RadioGroup options={EDUCATION_LEVELS} value={p.educationStage} onChange={v => set('educationStage', v)} className="space-y-2" />
+    <Question key="edu" title={<>Highest <em>education</em> completed?</>}>
+      <RadioGroup options={EDUCATION_LEVELS} value={p.educationStage} onChange={v => set('educationStage', v)} className="grid gap-2.5" />
     </Question>,
 
-    <Question key="emp" title="What's your work situation?">
-      <RadioGroup options={EMPLOYMENT_STATUSES} value={p.employmentStatus} onChange={v => set('employmentStatus', v)} className="grid grid-cols-1 sm:grid-cols-2 gap-3" />
+    <Question key="emp" title={<>What&apos;s your <em>work situation</em>?</>}>
+      <RadioGroup options={EMPLOYMENT_STATUSES} value={p.employmentStatus} onChange={v => set('employmentStatus', v)} className="grid grid-cols-1 gap-2.5 sm:grid-cols-2" />
     </Question>,
 
-    <Question key="occ" title="What field do you work in?" hint="If you're not working, pick the field you last worked in, or “Not working right now”.">
-      <RadioGroup options={OCCUPATIONS} value={p.occupationCategory} onChange={v => set('occupationCategory', v)} className="grid grid-cols-1 sm:grid-cols-2 gap-3" />
+    <Question key="occ" title={<>What <em>field</em> do you work in?</>} hint="If you're not working, pick the field you last worked in, or “Not working right now”.">
+      <RadioGroup options={OCCUPATIONS} value={p.occupationCategory} onChange={v => set('occupationCategory', v)} className="grid grid-cols-1 gap-2.5 sm:grid-cols-2" />
     </Question>,
 
-    <Question key="income" title="Approximate household income?" hint="We only ever use the range, never an exact number.">
-      <RadioGroup options={INCOME_RANGES} value={p.incomeRange} onChange={v => set('incomeRange', v)} className="space-y-2" />
+    <Question key="income" title={<>Approximate <em>household income</em>?</>} hint="We only ever use the range, never an exact number.">
+      <RadioGroup options={INCOME_RANGES} value={p.incomeRange} onChange={v => set('incomeRange', v)} className="grid gap-2.5 sm:grid-cols-2" />
     </Question>,
 
-    <Question key="filing" title="How do you file taxes?">
-      <RadioGroup options={FILING_STATUSES} value={p.filingStatus} onChange={v => set('filingStatus', v)} className="space-y-2" />
+    <Question key="filing" title={<>How do you <em>file taxes</em>?</>}>
+      <RadioGroup options={FILING_STATUSES} value={p.filingStatus} onChange={v => set('filingStatus', v)} className="grid gap-2.5" />
     </Question>,
 
-    <Question key="housing" title="What's your housing situation?">
-      <RadioGroup options={HOUSING_SITUATIONS} value={p.housingSituation} onChange={v => set('housingSituation', v)} className="grid grid-cols-1 sm:grid-cols-2 gap-3" />
+    <Question key="housing" title={<>What&apos;s your <em>housing situation</em>?</>}>
+      <RadioGroup options={HOUSING_SITUATIONS} value={p.housingSituation} onChange={v => set('housingSituation', v)} className="grid grid-cols-1 gap-2.5 sm:grid-cols-2" />
       {isHomeowner(p.housingSituation) && (
-        <div className="mt-8">
-          <p id={ids.homeValue} className="text-sm font-medium text-text-primary mb-1">Roughly what is your home worth?</p>
-          <p id={ids.homeValueHint} className="text-xs text-text-muted mb-3">Optional. Used for property-value effects.</p>
+        <div className={cn('mt-8', styles.enter)}>
+          <p id={ids.homeValue} className="mb-1 text-sm font-medium text-ink">Roughly what is your home worth?</p>
+          <p id={ids.homeValueHint} className="mb-3 text-meta text-muted">Optional. Used for property-value effects.</p>
           <RadioGroup options={HOME_VALUE_BANDS} value={p.homeValueBand} onChange={v => set('homeValueBand', v)} allowDeselect
-            labelledBy={ids.homeValue} describedBy={ids.homeValueHint} className="grid grid-cols-2 gap-3" />
+            labelledBy={ids.homeValue} describedBy={ids.homeValueHint} className="grid grid-cols-2 gap-2.5" />
         </div>
       )}
     </Question>,
 
-    <Question key="debts" title="What kinds of debt do you have?" hint="Select all that apply.">
-      <MultiGroup className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+    <Question key="debts" title={<>What kinds of <em>debt</em> do you have?</>} hint="Select all that apply.">
+      <MultiGroup className="grid grid-cols-1 gap-2.5 sm:grid-cols-2">
         {DEBT_TYPES.map(o => <MultiOptionButton key={o.value} label={o.label} selected={p.debtTypes.includes(o.value)} onClick={() => toggle('debtTypes', o.value)} />)}
       </MultiGroup>
     </Question>,
 
-    <Question key="dependents" title="Do you have children or other dependents?" hint="Dependents change tax credits, childcare and education costs.">
+    <Question key="dependents" title={<>Do you have <em>children or other dependents</em>?</>} hint="Dependents change tax credits, childcare and education costs.">
       <RadioGroup options={YES_NO} value={p.hasDependents === null ? '' : p.hasDependents ? 'yes' : 'no'}
-        onChange={v => set('hasDependents', v === 'yes')} className="grid grid-cols-2 gap-3" />
+        onChange={v => set('hasDependents', v === 'yes')} className="grid grid-cols-2 gap-2.5" />
       {p.hasDependents && (
-        <div className="mt-8 space-y-6">
+        <div className={cn('mt-8 space-y-6', styles.enter)}>
           <div>
-            <label htmlFor={ids.dependentsCount} className="block text-sm font-medium text-text-primary mb-2">How many?</label>
+            <label htmlFor={ids.dependentsCount} className="mb-2 block text-sm font-medium text-ink">How many?</label>
             <select id={ids.dependentsCount} value={p.dependentsCount} onChange={e => set('dependentsCount', Number(e.target.value))}
-              className="input-glass w-full sm:w-40 px-4 py-3 text-sm">
+              className={cn(FIELD, 'sm:w-40')}>
               {Array.from({ length: MAX_DEPENDENTS }, (_, i) => i + 1).map(n => <option key={n} value={n}>{n}{n === MAX_DEPENDENTS ? '+' : ''}</option>)}
             </select>
           </div>
           <div>
-            <p id={ids.dependentAges} className="text-sm font-medium text-text-primary mb-1">Their ages</p>
-            <p id={ids.dependentAgesHint} className="text-xs text-text-muted mb-3">Optional. Select all that apply.</p>
-            <MultiGroup labelledBy={ids.dependentAges} describedBy={ids.dependentAgesHint} className="grid grid-cols-2 gap-3">
+            <p id={ids.dependentAges} className="mb-1 text-sm font-medium text-ink">Their ages</p>
+            <p id={ids.dependentAgesHint} className="mb-3 text-meta text-muted">Optional. Select all that apply.</p>
+            <MultiGroup labelledBy={ids.dependentAges} describedBy={ids.dependentAgesHint} className="grid grid-cols-2 gap-2.5">
               {DEPENDENT_AGE_BANDS.map(o => <MultiOptionButton key={o.value} label={o.label} selected={p.dependentAgeBands.includes(o.value)} onClick={() => toggle('dependentAgeBands', o.value)} />)}
             </MultiGroup>
           </div>
@@ -405,8 +422,8 @@ export default function OnboardingPage() {
       )}
     </Question>,
 
-    <Question key="concerns" title="What are your top financial concerns?" hint={`Pick up to ${MAX_CONCERNS}.`}>
-      <MultiGroup className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+    <Question key="concerns" title={<>What are your top <em>financial concerns</em>?</>} hint={`Pick up to ${MAX_CONCERNS}.`}>
+      <MultiGroup className="grid grid-cols-1 gap-2.5 sm:grid-cols-2">
         {CONCERNS.map(o => {
           const selected = p.topFinancialConcerns.includes(o.value);
           return (
@@ -418,87 +435,74 @@ export default function OnboardingPage() {
       </MultiGroup>
     </Question>,
 
-    <Question key="investments" title="Do you have investments?" hint="Optional. Helps estimate how market moves affect you. You can skip this.">
-      <RadioGroup options={INVESTMENT_TYPES} value={p.investments} onChange={v => set('investments', v)} allowDeselect className="space-y-2" />
+    <Question key="investments" title={<>Do you have <em>investments</em>?</>} hint="Optional. Helps estimate how market moves affect you. You can skip this.">
+      <RadioGroup options={INVESTMENT_TYPES} value={p.investments} onChange={v => set('investments', v)} allowDeselect className="grid gap-2.5" />
     </Question>,
   ];
 
   if (!userId) return <FullPageLoader label="Loading your profile…" />;
 
-  const currentStage = STAGES.findIndex(s => s.steps.includes(step));
-  const progress = ((step + 1) / TOTAL_STEPS) * 100;
+  const currentStage = STAGES.findIndex(s => (s.steps as readonly number[]).includes(step));
   const isLast = step === TOTAL_STEPS - 1;
 
   return (
-    <div className="min-h-screen relative flex flex-col" onKeyDown={onKeyDown}>
+    <div className="relative min-h-screen" onKeyDown={onKeyDown}>
       <AmbientBackground />
-      <main id="main" tabIndex={-1} className="relative z-10 flex-1 flex flex-col max-w-2xl mx-auto w-full px-4 py-8">
-        <Logo href={null} className="mb-10 flex" />
+      <div className="relative z-content mx-auto flex min-h-screen w-full max-w-[88rem] flex-col lg:grid lg:grid-cols-[minmax(0,1fr)_minmax(0,1.08fr)] lg:grid-rows-[auto_1fr] lg:gap-x-10 lg:px-8 xl:gap-x-16 xl:px-12">
+        <header className="flex items-center justify-between gap-4 px-4 pb-1 pt-4 sm:px-6 lg:col-start-1 lg:row-start-1 lg:mx-auto lg:w-full lg:max-w-[38rem] lg:px-0 lg:pt-8">
+          <Logo href={null} />
+          {/* The diorama's pieces rise in as you answer: this stops that (and every other motion on the site). */}
+          <MotionToggle className="-mr-2" />
+        </header>
 
-        <div className="mb-10">
-          <div className="flex items-center justify-between mb-3">
-            <ol aria-label="Sections" className="flex items-center gap-3 sm:gap-4">
-              {STAGES.map((stage, i) => {
-                const Icon = stage.icon;
-                const isActive = i === currentStage;
-                const isDone = i < currentStage;
-                return (
-                  <li key={stage.label} className="flex items-center gap-2" aria-current={isActive ? 'step' : undefined}>
-                    <div aria-hidden="true" className={`w-7 h-7 rounded-full border flex items-center justify-center transition-all ${
-                      isDone ? 'bg-primary-fill border-primary-fill' : isActive ? 'border-primary bg-primary/20' : 'border-fg/20 bg-fg/5'
-                    }`}>
-                      {isDone ? <Check className="w-3.5 h-3.5 text-white" /> : <Icon className={`w-3.5 h-3.5 ${isActive ? 'text-primary-300' : 'text-text-muted'}`} />}
-                    </div>
-                    <span className={`text-xs font-medium sr-only sm:not-sr-only ${isActive ? 'text-text-primary' : isDone ? 'text-primary-300' : 'text-text-muted'}`}>
-                      {stage.label}
-                      <span className="sr-only">{isDone ? ' (done)' : isActive ? ' (current)' : ''}</span>
-                    </span>
-                  </li>
-                );
-              })}
-            </ol>
-            <span className="text-xs text-text-muted font-mono-data" aria-hidden="true">Step {step + 1} of {TOTAL_STEPS}</span>
-          </div>
-          <div className="h-1.5 bg-fg/5 rounded-full overflow-hidden" role="progressbar" aria-label="Profile setup progress"
-            aria-valuemin={1} aria-valuemax={TOTAL_STEPS} aria-valuenow={step + 1} aria-valuetext={`Step ${step + 1} of ${TOTAL_STEPS}`}>
-            <m.div className="h-full rounded-full bg-primary" animate={{ width: `${progress}%` }} transition={{ duration: 0.4, ease: 'easeOut' }} />
-          </div>
-        </div>
+        <main id="main" tabIndex={-1}
+          className="order-2 flex flex-1 flex-col px-4 pb-12 pt-5 sm:px-6 lg:order-none lg:col-start-1 lg:row-start-2 lg:mx-auto lg:w-full lg:max-w-[38rem] lg:justify-center lg:px-0 lg:pb-16 lg:pt-6">
+          <StageRail stages={STAGES} step={step} total={TOTAL_STEPS} />
 
-        <div className="flex-1">
-          <StepFocusContext.Provider value={navigated}>
-            <AnimatePresence mode="wait">{questions[step]}</AnimatePresence>
-          </StepFocusContext.Provider>
-        </div>
+          <Surface pad="none" className="mt-5 overflow-hidden p-5 sm:p-8 lg:mt-6">
+            {/* A rim of violet light along the card's top edge. */}
+            <span aria-hidden="true" className="pointer-events-none absolute inset-x-10 top-0 h-px bg-gradient-to-r from-transparent via-primary/50 to-transparent" />
+            <div inert={showDone || undefined} className={cn('transition-opacity duration-300 ease-civic', showDone && 'opacity-0')}>
+              <p aria-hidden="true" className="mb-4 font-mono-data text-meta font-medium uppercase tracking-[0.16em] text-primary-300">
+                {String(step + 1).padStart(2, '0')}<span className="text-muted"> / {TOTAL_STEPS} · {STAGES[currentStage]?.label}</span>
+              </p>
 
-        <div className="flex items-center justify-between mt-10 pt-6 border-t border-fg/10">
-          <button type="button" onClick={back} disabled={step === 0}
-            className="flex items-center gap-2 text-sm text-text-muted hover:text-text-primary transition-colors disabled:opacity-30 disabled:cursor-not-allowed rounded-lg">
-            <ChevronLeft className="w-4 h-4" aria-hidden="true" /> Back
-          </button>
-          <Button onClick={next} disabled={!canAdvance() || saving} icon={<ChevronRight className="w-4 h-4" />} iconPosition="end"
-            aria-describedby={saveError ? ids.saveError : undefined}>
-            {isLast ? (saving ? 'Saving…' : p.investments ? 'See my impact' : 'Skip and see my impact') : step === 1 && !p.city ? 'Skip' : 'Continue'}
-          </Button>
-        </div>
-        {saveError && <p id={ids.saveError} role="alert" className="mt-4 text-sm text-danger text-center">{saveError}</p>}
-      </main>
+              <StepFocusContext.Provider value={navigated}>{questions[step]}</StepFocusContext.Provider>
 
-      <AnimatePresence>
-        {showDone && (
-          <m.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}
-            className="fixed inset-0 z-50 flex items-center justify-center bg-base/80 backdrop-blur-sm px-4" role="status">
-            <m.div initial={{ scale: 0.9, opacity: 0 }} animate={{ scale: 1, opacity: 1 }} transition={{ type: 'spring', stiffness: 300, damping: 22 }}
-              className="glass-strong rounded-3xl p-10 sm:p-12 text-center">
-              <div aria-hidden="true" className="w-14 h-14 rounded-2xl bg-primary/20 border border-primary/30 flex items-center justify-center mx-auto mb-5">
-                <Check className="w-7 h-7 text-primary" />
+              <div className="mt-9 flex items-center justify-between gap-4 border-t border-fg/8 pt-5">
+                <button type="button" onClick={back} disabled={step === 0}
+                  className="-ml-1 flex items-center gap-1.5 rounded-lg px-1 py-2 text-sm text-muted transition-colors hover:text-ink disabled:cursor-not-allowed disabled:opacity-30">
+                  <ChevronLeft className="h-4 w-4" aria-hidden="true" /> Back
+                </button>
+                <Button onClick={next} disabled={!canAdvance() || saving} icon={<ChevronRight className="h-4 w-4" />} iconPosition="end"
+                  aria-describedby={saveError ? ids.saveError : undefined}>
+                  {isLast ? (saving ? 'Saving…' : p.investments ? 'See my impact' : 'Skip and see my impact') : step === 1 && !p.city ? 'Skip' : 'Continue'}
+                </Button>
               </div>
-              <h2 className="font-display text-3xl font-medium text-text-primary mb-2">Profile saved</h2>
-              <p className="text-text-muted">Building your personalized policy feed…</p>
-            </m.div>
-          </m.div>
-        )}
-      </AnimatePresence>
+            </div>
+
+            {/* Present from the start, so the saved message is announced when it arrives. */}
+            <div role="status" className="pointer-events-none absolute inset-0 flex items-center justify-center p-6">
+              {showDone && (
+                <div className={cn(styles.saved, 'text-center')}>
+                  <span aria-hidden="true" className="mx-auto mb-5 flex h-14 w-14 items-center justify-center rounded-2xl border border-primary/30 bg-primary/12 shadow-glow">
+                    <Check className="h-7 w-7 text-primary-300" />
+                  </span>
+                  <h2 className="font-display text-3xl font-medium text-ink">Profile <em>saved</em></h2>
+                  <p className="mt-2 text-muted">Building your personalized policy feed…</p>
+                </div>
+              )}
+            </div>
+          </Surface>
+          {saveError && <p id={ids.saveError} role="alert" className="mt-4 text-center text-sm text-danger">{saveError}</p>}
+        </main>
+
+        <aside aria-label="Your household" className="order-1 px-4 pt-2 sm:px-6 lg:order-none lg:col-start-2 lg:row-span-2 lg:row-start-1 lg:px-0">
+          <div className="lg:sticky lg:top-0 lg:flex lg:h-screen lg:flex-col lg:justify-center lg:py-8">
+            <HouseholdStage model={household} reveal={isLast || showDone} />
+          </div>
+        </aside>
+      </div>
     </div>
   );
 }

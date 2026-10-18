@@ -1,4 +1,5 @@
 import { ExternalLink, ShieldAlert, ShieldCheck } from 'lucide-react';
+import { formatRecordDate } from '@/lib/recordDate';
 import type { PolicyRecord } from '@/types';
 
 const SOURCE_LABEL: Record<string, string> = {
@@ -6,17 +7,13 @@ const SOURCE_LABEL: Record<string, string> = {
   openstates: 'Open States',
 };
 
-function formatDate(d: string | null | undefined): string | null {
-  if (!d) return null;
-  const date = new Date(`${d.slice(0, 10)}T12:00:00Z`);
-  return Number.isNaN(date.getTime()) ? null : date.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' });
-}
-
 /**
  * Where a policy's facts come from: the official record (with its latest
  * action, when it was captured and a link), or a clear note that it wasn't
  * verified. With snapshotLabel the latest action is labelled as the status
  * when the analysis was made, since an analysis keeps the record it was based on.
+ * The record's shield is archive gold, the colour kept for official records.
+ * Dates print the same on the server and in any time zone.
  */
 export default function PolicyProvenance({ record, compact = false, snapshotLabel = false }: {
   record?: PolicyRecord; compact?: boolean; snapshotLabel?: boolean;
@@ -29,27 +26,27 @@ export default function PolicyProvenance({ record, compact = false, snapshotLabe
       </p>
     );
   }
-  const date = formatDate(record.latestActionDate);
-  const asOf = compact ? null : formatDate(record.asOf);
+  const date = formatRecordDate(record.latestActionDate);
+  const asOf = compact ? null : formatRecordDate(record.asOf);
   const source = SOURCE_LABEL[record.source] || record.source;
   // Only link to https pages; anything else is shown as plain text.
   const href = record.sourceUrl?.startsWith('https://') ? record.sourceUrl : null;
   return (
-    <div className="text-meta text-text-muted space-y-1">
+    <div className="text-meta text-muted space-y-1">
       {record.latestAction && (
-        <p className={compact ? 'line-clamp-1' : ''}>
+        <p className={compact ? 'line-clamp-2' : ''}>
           {snapshotLabel ? (
-            <><span className="text-text-primary/80">Status when analyzed:</span> {record.latestAction}{date ? ` (${date})` : ''}</>
+            <><span className="text-ink/80">Status when analyzed:</span> {record.latestAction}{date ? ` (${date})` : ''}</>
           ) : (
-            <><span className="text-text-primary/80">Latest action{date ? ` (${date})` : ''}:</span> {record.latestAction}</>
+            <><span className="text-ink/80">Latest action{date ? ` (${date})` : ''}:</span> {record.latestAction}</>
           )}
         </p>
       )}
       <p className="flex flex-wrap items-center gap-1.5">
-        <ShieldCheck className="w-3.5 h-3.5 text-gain flex-shrink-0" aria-hidden />
+        <ShieldCheck className="w-3.5 h-3.5 text-gold flex-shrink-0" aria-hidden />
         <span>Official record:</span>
         {href ? (
-          <a href={href} target="_blank" rel="noreferrer" className="inline-flex items-center gap-1 text-primary-300 hover:underline underline-offset-2">
+          <a href={href} target="_blank" rel="noreferrer" className="inline-flex items-center gap-1 text-primary-300 underline decoration-primary/30 underline-offset-2 hover:decoration-primary">
             {source} <ExternalLink className="w-3 h-3" aria-hidden /><span className="sr-only">(opens in a new tab)</span>
           </a>
         ) : (

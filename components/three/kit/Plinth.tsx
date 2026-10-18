@@ -22,6 +22,12 @@ export interface PlinthProps {
   position?: [number, number, number];
   /** Shadow strength under the plinth, 0..1 of the palette's. */
   shadow?: number;
+  /**
+   * The shadow's footprint across, in plinth radii (default 3.1: a wide,
+   * soft pool for scenes with room around the plinth). A view framed tight
+   * on the plinth wants a smaller one, or its box's edge cuts the pool.
+   */
+  shadowSpread?: number;
 }
 
 /** Darkens a geometry toward its base (y0 → y1) through vertex colours: cheap ambient occlusion. */
@@ -111,7 +117,7 @@ function plinthProfile(radius: number, height: number): Vector2[] {
   return pts;
 }
 
-export default function Plinth({ radius = 1.2, height = 0.2, position = [0, 0, 0], shadow = 1 }: PlinthProps) {
+export default function Plinth({ radius = 1.2, height = 0.2, position = [0, 0, 0], shadow = 1, shadowSpread = 3.1 }: PlinthProps) {
   const palette = useScenePalette();
 
   const geo = useMemo(() => {
@@ -131,7 +137,7 @@ export default function Plinth({ radius = 1.2, height = 0.2, position = [0, 0, 0
 
   return (
     <group position={position}>
-      <ContactBlob width={radius * 3.1} depth={radius * 3.1} position={[0, -height - 0.004, 0]} strength={shadow} />
+      <ContactBlob width={radius * shadowSpread} depth={radius * shadowSpread} position={[0, -height - 0.004, 0]} strength={shadow} />
       <mesh geometry={geo.drum} material={paper} />
       <mesh rotation={[-Math.PI / 2, 0, 0]} position={[0, 0.0015, 0]}>
         <ringGeometry args={[radius - 0.11, radius - 0.1, 160]} />

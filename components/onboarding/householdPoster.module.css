@@ -1,0 +1,147 @@
+/*
+ * The household poster's palette: a porcelain model on a paper plinth, in
+ * tones of the same violet-white the 3D materials use. By night the model
+ * stays a pale object in a dim room (as the 3D one does), so the poster and
+ * the scene cross-fade without a jump.
+ */
+.art {
+  --hp-plinth: #ece7df;
+  --hp-drum-top: #e3ddd2;
+  --hp-drum-bottom: #cdc4b7;
+  --hp-inlay: rgb(109 74 255 / 0.32);
+  --hp-p0: #ffffff;
+  --hp-p1: #f6f3fa;
+  --hp-p2: #e4def0;
+  --hp-p3: #d2cae4;
+  --hp-r0: #eee8f8;
+  --hp-r1: #d8cfec;
+  --hp-ink0: #4a4268;
+  --hp-ink1: #342d50;
+  --hp-violet: #6d4aff;
+  --hp-pane: #d6cdf6;
+  --hp-lamp: #ffe1a0;
+  --hp-crown0: #ebe6f4;
+  --hp-crown1: #dad2ea;
+  --hp-line: rgb(21 18 31 / 0.13);
+  --hp-shadow: 64 56 92;
+  --hp-shadow-strength: 0.26;
+  --hp-halo: 143 117 255;
+  --hp-halo-strength: 0.3;
+}
+
+:global([data-theme='dark']) .art,
+:global([data-night]) .art {
+  --hp-plinth: #a49cbd;
+  --hp-drum-top: #8c84a8;
+  --hp-drum-bottom: #5d5579;
+  --hp-inlay: rgb(185 168 255 / 0.55);
+  --hp-p0: #ebe6f6;
+  --hp-p1: #d5cde8;
+  --hp-p2: #b0a5cf;
+  --hp-p3: #9286b9;
+  --hp-r0: #c7bde1;
+  --hp-r1: #a699c8;
+  --hp-ink0: #3a3156;
+  --hp-ink1: #2a2342;
+  --hp-violet: #8f75ff;
+  --hp-pane: #7b6ac4;
+  --hp-lamp: #ffd98a;
+  --hp-crown0: #d0c7e6;
+  --hp-crown1: #b3a8d2;
+  --hp-line: rgb(14 10 28 / 0.32);
+  --hp-shadow: 0 0 0;
+  --hp-shadow-strength: 0.5;
+  --hp-halo: 143 117 255;
+  --hp-halo-strength: 0.42;
+}
+
+.art path {
+  stroke: var(--hp-line);
+  stroke-width: 1.2;
+  stroke-linejoin: round;
+}
+
+.art .flat {
+  stroke: none;
+}
+
+.p0 { fill: var(--hp-p0); }
+.p1 { fill: var(--hp-p1); }
+.p2 { fill: var(--hp-p2); }
+.p3 { fill: var(--hp-p3); }
+.r0 { fill: var(--hp-r0); }
+.r1 { fill: var(--hp-r1); }
+.ink0 { fill: var(--hp-ink0); }
+.ink1 { fill: var(--hp-ink1); }
+.violet { fill: var(--hp-violet); }
+.crown0 { fill: var(--hp-crown0); }
+.crown1 { fill: var(--hp-crown1); }
+.plinthTop { fill: var(--hp-plinth); }
+.art .inlay {
+  fill: none;
+  stroke: var(--hp-inlay);
+  stroke-width: 2;
+}
+
+/* Day glass; lamplight once the household is complete (the reveal). */
+.pane {
+  fill: var(--hp-pane);
+  transition: fill 1.2s var(--ease-civic);
+}
+.lit .pane {
+  fill: var(--hp-lamp);
+}
+.instant .pane {
+  transition: none;
+}
+
+.stopDrumTop { stop-color: var(--hp-drum-top); }
+.stopDrumBottom { stop-color: var(--hp-drum-bottom); }
+.stopShadow { stop-color: rgb(var(--hp-shadow)); stop-opacity: var(--hp-shadow-strength); }
+.stopShadowEdge { stop-color: rgb(var(--hp-shadow)); stop-opacity: 0; }
+.stopHalo { stop-color: rgb(var(--hp-halo)); stop-opacity: var(--hp-halo-strength); }
+.stopHaloMid { stop-color: rgb(var(--hp-halo)); stop-opacity: calc(var(--hp-halo-strength) * 0.35); }
+.stopHaloEdge { stop-color: rgb(var(--hp-halo)); stop-opacity: 0; }
+.lit .stopHalo { stop-color: rgb(255 214 140); }
+
+/* The newest piece rises out of the plinth; a ring of light runs out under it. */
+.rise {
+  animation: hp-rise 0.75s var(--ease-civic) both;
+  transform-box: fill-box;
+  transform-origin: 50% 100%;
+}
+
+@keyframes hp-rise {
+  from {
+    opacity: 0;
+    transform: translateY(6%) scale(0.7);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+
+.pulse {
+  fill: none;
+  stroke: rgb(var(--c-glow));
+  stroke-width: 3;
+  opacity: 0;
+  animation: hp-pulse 1.3s var(--ease-civic) both;
+  transform-box: fill-box;
+  transform-origin: center;
+}
+
+@keyframes hp-pulse {
+  0% {
+    opacity: 0;
+    transform: scale(0.3);
+  }
+  25% {
+    opacity: 0.85;
+  }
+  100% {
+    opacity: 0;
+    transform: scale(1.35);
+  }
+}

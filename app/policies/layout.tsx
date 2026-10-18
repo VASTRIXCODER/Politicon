@@ -1,5 +1,4 @@
 import type { Metadata } from 'next';
-import MotionProvider from '@/components/providers/MotionProvider';
 
 // Private, signed-in pages are kept out of search results.
 export const metadata: Metadata = {
@@ -7,7 +6,8 @@ export const metadata: Metadata = {
   robots: { index: false, follow: false },
 };
 
-// The signed-in pages animate with motion/react (m.* elements); marketing pages don't load it.
+// The docket animates with CSS and the Web Animations API (components/feed),
+// and its toasts with CSS (components/ui/Toast), so this page doesn't load motion/react.
 export default function Layout({ children }: { children: React.ReactNode }) {
-  return <MotionProvider>{children}</MotionProvider>;
+  return children;
 }

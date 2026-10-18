@@ -1,0 +1,81 @@
+/*
+ * Onboarding motion and the state's plaque. Every animation here ends on
+ * its final frame (fill-mode both) and is cut to nothing under reduced
+ * motion and "Pause motion" (app/globals.css), so nothing is ever left
+ * hidden or half-drawn.
+ */
+
+/* A new question rises in (a short, soft entrance; there is no exit to wait for). */
+.enter {
+  animation: ob-enter 0.42s var(--ease-civic) both;
+}
+
+@keyframes ob-enter {
+  from {
+    opacity: 0;
+    transform: translateY(10px);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+
+/* The saved card, over the question. */
+.saved {
+  animation: ob-saved 0.5s var(--ease-civic) both;
+}
+
+@keyframes ob-saved {
+  from {
+    opacity: 0;
+    transform: translateY(8px) scale(0.98);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+
+/*
+ * The state's name on a small paper plate set into the plinth's drum. It
+ * sits where the scene (or, before it, the poster) says the drum faces the
+ * camera: --plaque-x/--plaque-y from the 3D view, else the poster's spot.
+ */
+.plaque {
+  position: absolute;
+  left: var(--plaque-x, var(--plaque-poster-x, 50%));
+  top: var(--plaque-y, var(--plaque-poster-y, 86%));
+  translate: -50% -50%;
+  max-width: 46%;
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+  border-radius: 4px;
+  padding: 3px 10px 2px;
+  background: linear-gradient(180deg, #f8f4ec, #ebe4d8);
+  color: #3a3448;
+  box-shadow:
+    inset 0 1px 0 rgb(255 255 255 / 0.8),
+    inset 0 -1px 0 rgb(21 18 31 / 0.08),
+    0 0 0 1px rgb(21 18 31 / 0.12),
+    0 2px 6px -2px rgb(21 18 31 / 0.35);
+  /* Letters pressed into the plate. */
+  text-shadow: 0 1px 0 rgb(255 255 255 / 0.85);
+  pointer-events: none;
+}
+
+.plaqueIn {
+  animation: ob-plaque 0.6s var(--ease-civic) both;
+}
+
+@keyframes ob-plaque {
+  from {
+    opacity: 0;
+    transform: translateY(6px);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
