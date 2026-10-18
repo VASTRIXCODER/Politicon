@@ -1,7 +1,7 @@
 'use client';
 
 import { useState, useRef, useEffect, useLayoutEffect, Suspense, useCallback, useId } from 'react';
-import { m, AnimatePresence } from 'framer-motion';
+import { m, AnimatePresence } from 'motion/react';
 import { useSearchParams } from 'next/navigation';
 import {
   Send, Zap, DollarSign, Home, Heart, GraduationCap, Briefcase, Plus, MessageSquare,
@@ -110,9 +110,10 @@ function MessageBubble({ message, sessionId, onRetry }: {
           <>
             <p className="whitespace-pre-wrap text-sm leading-relaxed text-text-muted">{message.summary || message.content}</p>
             {message.dollarLine && (
-              <div className="mt-3 flex items-start gap-2.5 rounded-xl bg-gold/10 border border-gold/20 px-4 py-3">
-                <DollarSign className="w-4 h-4 text-gold flex-shrink-0 mt-0.5" aria-hidden="true" />
-                <p className="text-sm font-medium text-gold font-mono-data leading-snug">{message.dollarLine}</p>
+              // A free-text, hedged estimate with no known direction: violet, not gain/loss (or the record's gold).
+              <div className="mt-3 flex items-start gap-2.5 rounded-xl bg-primary/10 border border-primary/20 px-4 py-3">
+                <DollarSign className="w-4 h-4 text-primary-300 flex-shrink-0 mt-0.5" aria-hidden="true" />
+                <p className="text-sm font-medium text-primary-300 font-mono-data leading-snug">{message.dollarLine}</p>
               </div>
             )}
             {message.compiling && (
@@ -142,7 +143,7 @@ function MessageBubble({ message, sessionId, onRetry }: {
             Try again
           </button>
         )}
-        <p className={`text-meta mt-2 ${isUser ? 'text-white/70' : 'text-text-muted'}`}>
+        <p className={`text-meta mt-2 ${isUser ? 'text-fg/70' : 'text-text-muted'}`}>
           {new Date(message.timestamp).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
         </p>
         {/* Rated replies are tied to a saved conversation, with a copy of the reply's start. */}
@@ -159,15 +160,16 @@ function MessageBubble({ message, sessionId, onRetry }: {
   );
 }
 
+// The same relevance colours as the feed cards: never the gain/loss pair.
 const RELEVANCE_BADGE = (score: number) =>
-  score >= 70 ? 'text-emerald-400 bg-emerald-400/10 border-emerald-400/20'
-    : score >= 40 ? 'text-yellow-400 bg-yellow-400/10 border-yellow-400/20'
-    : 'text-text-muted bg-white/5 border-white/10';
+  score >= 70 ? 'text-primary-300 bg-primary/10 border-primary/20'
+    : score >= 40 ? 'text-accent bg-accent/10 border-accent/20'
+    : 'text-text-muted bg-fg/5 border-fg/10';
 
 function DirDot({ d }: { d: string }) {
   const [Icon, color, label] =
-    d === 'positive' ? [TrendingUp, 'text-emerald-400', 'Likely helps you']
-      : d === 'negative' ? [TrendingDown, 'text-red-400', 'Likely costs you']
+    d === 'positive' ? [TrendingUp, 'text-gain', 'Likely helps you']
+      : d === 'negative' ? [TrendingDown, 'text-loss', 'Likely costs you']
       : [Minus, 'text-text-muted', 'Mixed or neutral effect'];
   return (
     <>
@@ -187,7 +189,7 @@ function FeedPolicyCard({ policy, onPick }: { policy: DiscoveredPolicy; onPick: 
       }}
       onClick={() => onPick(policy)}
       // Repeated inside an already-blurred panel, so no backdrop blur of its own.
-      className="w-full flex flex-col text-left glass backdrop-filter-none hover:border-primary/30 hover:bg-white/[0.065] rounded-xl p-3 mb-2 transition-all cursor-pointer group"
+      className="w-full flex flex-col text-left glass backdrop-filter-none hover:border-primary/30 hover:bg-fg/[0.065] rounded-xl p-3 mb-2 transition-all cursor-pointer group"
     >
       {/* The title comes first for screen readers; the badges still show above it. */}
       <span className="sr-only">Ask about: </span>
@@ -196,7 +198,7 @@ function FeedPolicyCard({ policy, onPick }: { policy: DiscoveredPolicy; onPick: 
         <span className={`text-meta font-mono-data px-1.5 rounded-full border ${RELEVANCE_BADGE(policy.relevanceScore)}`}>
           <span className="sr-only">Relevance </span>{policy.relevanceScore}<span className="sr-only"> out of 100.</span>
         </span>
-        <span className="text-meta text-text-muted px-1.5 rounded-full bg-white/5 border border-white/10 capitalize">{policy.category}</span>
+        <span className="text-meta text-text-muted px-1.5 rounded-full bg-fg/5 border border-fg/10 capitalize">{policy.category}</span>
         <DirDot d={policy.direction} />
       </span>
       {policy.estimatedImpact && <span className="block text-meta font-mono-data text-text-muted mt-1">{policy.estimatedImpact}</span>}
@@ -562,7 +564,7 @@ function AdvisorInner() {
               <m.div
                 key="history-backdrop"
                 initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}
-                className="md:hidden absolute inset-x-0 top-20 bottom-0 z-30 bg-black/50"
+                className="md:hidden absolute inset-x-0 top-20 bottom-0 z-30 bg-night/50"
                 onClick={closeHistory}
                 aria-hidden
               />
@@ -580,15 +582,15 @@ function AdvisorInner() {
                 tabIndex={-1}
                 initial={{ width: 0, opacity: 0 }} animate={{ width: 260, opacity: 1 }} exit={{ width: 0, opacity: 0 }}
                 transition={{ duration: 0.2 }}
-                className="h-full glass-strong border-0 border-r border-white/8 flex flex-col overflow-hidden flex-shrink-0 max-md:absolute max-md:top-20 max-md:bottom-0 max-md:left-0 max-md:h-auto max-md:z-40 focus:outline-none"
+                className="h-full glass-strong border-0 border-r border-fg/8 flex flex-col overflow-hidden flex-shrink-0 max-md:absolute max-md:top-20 max-md:bottom-0 max-md:left-0 max-md:h-auto max-md:z-40 focus:outline-none"
               >
-                <div className="p-4 border-b border-white/8 flex items-center justify-between gap-2">
+                <div className="p-4 border-b border-fg/8 flex items-center justify-between gap-2">
                   <h2 id={historyTitleId} className="text-sm font-semibold text-text-primary flex-1">Chat History</h2>
                   <button type="button" onClick={newChat}
                     className="flex items-center gap-1.5 bg-primary/20 hover:bg-primary/30 border border-primary/20 text-primary-300 px-3 py-1.5 rounded-xl text-xs font-medium transition-all">
                     <Plus className="w-3 h-3" aria-hidden="true" /> New<span className="sr-only"> conversation</span>
                   </button>
-                  <button type="button" onClick={closeHistory} aria-label="Close chat history" className="md:hidden p-1.5 rounded-lg hover:bg-white/5">
+                  <button type="button" onClick={closeHistory} aria-label="Close chat history" className="md:hidden p-1.5 rounded-lg hover:bg-fg/5">
                     <X className="w-4 h-4 text-text-muted" aria-hidden="true" />
                   </button>
                 </div>
@@ -596,7 +598,7 @@ function AdvisorInner() {
                   {sessionsLoading ? (
                     <div className="space-y-2 p-2">
                       <span className="sr-only">Loading conversations…</span>
-                      {[...Array(4)].map((_, i) => <div key={i} aria-hidden="true" className="h-14 bg-white/5 rounded-xl animate-pulse" />)}
+                      {[...Array(4)].map((_, i) => <div key={i} aria-hidden="true" className="h-14 bg-fg/5 rounded-xl animate-pulse" />)}
                     </div>
                   ) : sessions.length === 0 ? (
                     <div className="p-4 text-center">
@@ -607,7 +609,7 @@ function AdvisorInner() {
                     <ul>
                       {sessions.map(session => (
                         <li key={session.id} className={`group relative mb-1 rounded-xl transition-all ${
-                          activeSessionId === session.id ? 'bg-primary/15 border border-primary/20' : 'hover:bg-white/5 border border-transparent'
+                          activeSessionId === session.id ? 'bg-primary/15 border border-primary/20' : 'hover:bg-fg/5 border border-transparent'
                         }`}>
                           <button type="button" onClick={() => loadSession(session)} aria-current={activeSessionId === session.id || undefined}
                             className="w-full text-left p-3 pr-9 rounded-xl">
@@ -621,7 +623,7 @@ function AdvisorInner() {
                             type="button"
                             onClick={() => deleteSession(session.id)}
                             aria-label={`Delete conversation “${session.title}”`}
-                            className="absolute right-2 top-1/2 -translate-y-1/2 p-1.5 rounded-lg text-text-muted opacity-60 sm:opacity-0 group-hover:opacity-100 focus:opacity-100 hover:text-red-300 hover:bg-red-500/10 transition-all"
+                            className="absolute right-2 top-1/2 -translate-y-1/2 p-1.5 rounded-lg text-text-muted opacity-60 sm:opacity-0 group-hover:opacity-100 focus:opacity-100 hover:text-danger hover:bg-danger/10 transition-all"
                           >
                             <Trash2 className="w-3.5 h-3.5" aria-hidden="true" />
                           </button>
@@ -640,21 +642,21 @@ function AdvisorInner() {
 
               {/* Header */}
               <div className="mb-4 flex items-center gap-3">
-                <button ref={historyToggleRef} type="button" onClick={() => setSidebarOpen(o => !o)} aria-label="Chat history" aria-expanded={sidebarOpen} className="p-2 rounded-xl glass hover:border-white/16 transition-all">
+                <button ref={historyToggleRef} type="button" onClick={() => setSidebarOpen(o => !o)} aria-label="Chat history" aria-expanded={sidebarOpen} className="p-2 rounded-xl glass hover:border-fg/16 transition-all">
                   {sidebarOpen ? <ChevronLeft className="w-4 h-4 text-text-muted" aria-hidden="true" /> : <ChevronRight className="w-4 h-4 text-text-muted" aria-hidden="true" />}
                 </button>
                 <div aria-hidden="true" className="w-10 h-10 rounded-2xl bg-primary/20 border border-primary/20 flex items-center justify-center">
                   <Zap className="w-5 h-5 text-primary" />
                 </div>
                 <div className="flex-1 min-w-0">
-                  <h1 className="font-display text-xl font-bold text-text-primary">AI Policy Guide</h1>
+                  <h1 className="font-display text-xl font-semibold text-text-primary">AI Policy Guide</h1>
                   <div className="flex items-center gap-1.5">
-                    <span aria-hidden="true" className="w-2 h-2 rounded-full bg-emerald-400 animate-pulse" />
+                    <span aria-hidden="true" className="w-2 h-2 rounded-full bg-gain-fill animate-pulse" />
                     <p className="text-xs text-text-muted">Profile loaded • Non-partisan • Dollar-specific answers</p>
                   </div>
                 </div>
                 <ReadingModeToggle className="hidden sm:inline-flex" />
-                <button type="button" onClick={() => setFeedOpen(o => !o)} className="p-2 rounded-xl glass hover:border-white/16 transition-all hidden lg:flex" aria-label="Policy feed" aria-expanded={feedOpen}>
+                <button type="button" onClick={() => setFeedOpen(o => !o)} className="p-2 rounded-xl glass hover:border-fg/16 transition-all hidden lg:flex" aria-label="Policy feed" aria-expanded={feedOpen}>
                   <Sparkles className="w-4 h-4 text-primary" aria-hidden="true" />
                 </button>
                 <button ref={feedButtonRef} type="button" onClick={() => setMobileFeedOpen(true)} aria-haspopup="dialog" aria-expanded={mobileFeedOpen}
@@ -669,7 +671,7 @@ function AdvisorInner() {
                   const Icon = p.icon;
                   return (
                     <button key={p.label} type="button" onClick={() => sendMessage(p.text)} disabled={isTyping}
-                      className="disabled:opacity-50 disabled:cursor-not-allowed flex-shrink-0 flex items-center gap-2 glass backdrop-filter-none border-white/8 hover:border-primary/30 px-4 py-2.5 rounded-xl text-xs text-text-muted hover:text-text-primary transition-all">
+                      className="disabled:opacity-50 disabled:cursor-not-allowed flex-shrink-0 flex items-center gap-2 glass backdrop-filter-none border-fg/8 hover:border-primary/30 px-4 py-2.5 rounded-xl text-xs text-text-muted hover:text-text-primary transition-all">
                       <Icon className="w-3.5 h-3.5" aria-hidden="true" />{p.label}<span className="sr-only">: ask “{p.text}”</span>
                     </button>
                   );
@@ -740,7 +742,7 @@ function AdvisorInner() {
                 <m.div
                   key="feed-backdrop"
                   initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}
-                  className="lg:hidden fixed inset-0 bg-black/60 z-[110]"
+                  className="lg:hidden fixed inset-0 bg-night/60 z-overlay"
                   onClick={closeMobileFeed}
                   aria-hidden="true"
                 />
@@ -751,11 +753,11 @@ function AdvisorInner() {
                   tabIndex={-1}
                   initial={{ y: '100%' }} animate={{ y: 0 }} exit={{ y: '100%' }}
                   transition={{ type: 'spring', stiffness: 320, damping: 32 }}
-                  className="lg:hidden fixed inset-x-0 bottom-0 z-[120] max-h-[75dvh] glass-strong border-0 border-t border-white/10 rounded-t-3xl flex flex-col focus:outline-none"
+                  className="lg:hidden fixed inset-x-0 bottom-0 z-modal max-h-[75dvh] glass-strong border-0 border-t border-fg/10 rounded-t-3xl flex flex-col focus:outline-none"
                 >
-                  <div className="p-4 border-b border-white/8 flex items-center justify-between">
+                  <div className="p-4 border-b border-fg/8 flex items-center justify-between">
                     <h2 id={sheetTitleId} className="text-sm font-semibold text-text-primary">Your Policy Feed</h2>
-                    <button type="button" onClick={closeMobileFeed} aria-label="Close policy feed" className="p-2 rounded-lg hover:bg-white/5">
+                    <button type="button" onClick={closeMobileFeed} aria-label="Close policy feed" className="p-2 rounded-lg hover:bg-fg/5">
                       <X className="w-4 h-4 text-text-muted" aria-hidden="true" />
                     </button>
                   </div>
@@ -763,7 +765,7 @@ function AdvisorInner() {
                     {feedLoading ? (
                       <div className="space-y-2">
                         <span className="sr-only">Loading your policy feed…</span>
-                        {[...Array(4)].map((_, i) => <div key={i} aria-hidden="true" className="h-16 bg-white/5 rounded-xl animate-pulse" />)}
+                        {[...Array(4)].map((_, i) => <div key={i} aria-hidden="true" className="h-16 bg-fg/5 rounded-xl animate-pulse" />)}
                       </div>
                     ) : feed.length === 0 ? (
                       <p className="p-4 text-center text-xs text-text-muted">No policies in your feed yet. Visit your dashboard to generate one.</p>
@@ -783,14 +785,14 @@ function AdvisorInner() {
                 aria-labelledby={feedTitleId}
                 initial={{ width: 0, opacity: 0 }} animate={{ width: 300, opacity: 1 }} exit={{ width: 0, opacity: 0 }}
                 transition={{ duration: 0.2 }}
-                className="h-full glass-strong border-0 border-l border-white/8 flex-col overflow-hidden flex-shrink-0 hidden lg:flex"
+                className="h-full glass-strong border-0 border-l border-fg/8 flex-col overflow-hidden flex-shrink-0 hidden lg:flex"
               >
-                <div className="p-4 border-b border-white/8 flex items-center justify-between">
+                <div className="p-4 border-b border-fg/8 flex items-center justify-between">
                   <div className="flex items-center gap-2">
                     <Sparkles className="w-4 h-4 text-primary" aria-hidden="true" />
                     <h2 id={feedTitleId} className="text-sm font-semibold text-text-primary">Your Policy Feed</h2>
                   </div>
-                  <button type="button" onClick={() => setFeedOpen(false)} aria-label="Close policy feed" className="p-1 rounded-lg hover:bg-white/5 transition-all">
+                  <button type="button" onClick={() => setFeedOpen(false)} aria-label="Close policy feed" className="p-1 rounded-lg hover:bg-fg/5 transition-all">
                     <X className="w-3.5 h-3.5 text-text-muted" aria-hidden="true" />
                   </button>
                 </div>
@@ -799,7 +801,7 @@ function AdvisorInner() {
                   {feedLoading ? (
                     <div className="space-y-2">
                       <span className="sr-only">Loading your policy feed…</span>
-                      {[...Array(6)].map((_, i) => <div key={i} aria-hidden="true" className="h-16 bg-white/5 rounded-xl animate-pulse" />)}
+                      {[...Array(6)].map((_, i) => <div key={i} aria-hidden="true" className="h-16 bg-fg/5 rounded-xl animate-pulse" />)}
                     </div>
                   ) : feed.length === 0 ? (
                     <div className="p-4 text-center">

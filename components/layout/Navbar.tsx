@@ -1,14 +1,17 @@
 'use client';
 
 import { useState, useEffect, useRef, useId, useCallback } from 'react';
-import { m, AnimatePresence } from 'framer-motion';
+import { m, AnimatePresence } from 'motion/react';
 import Link from 'next/link';
 import { usePathname, useRouter } from 'next/navigation';
-import { Menu, X, LogOut, LayoutDashboard, Settings, ChevronDown } from 'lucide-react';
+import { Menu, X, LogOut, LayoutDashboard, Settings, ChevronDown, ArrowUpRight } from 'lucide-react';
 import { createClient } from '@/lib/supabase/client';
 import Button from '@/components/ui/Button';
 import Logo from '@/components/ui/Logo';
+import SoundToggle from '@/components/ui/SoundToggle';
+import ThemeToggle from '@/components/ui/ThemeToggle';
 import { useModalDialog } from '@/components/layout/useModalDialog';
+import { cn } from '@/lib/utils';
 import type { User as SupabaseUser } from '@supabase/supabase-js';
 
 const PUBLIC_LINKS = [
@@ -23,7 +26,25 @@ const APP_LINKS = [
   { label: 'Policy Guide', href: '/advisor' },
 ];
 
-const MENU_ITEM = 'w-full flex items-center gap-3 px-4 py-2.5 rounded-xl text-sm transition-all';
+/** The product's one easing curve (CSS: ease-civic). */
+const EASE = [0.2, 0.7, 0.2, 1] as const;
+
+const MENU_ITEM =
+  'w-full flex items-center gap-3 px-3.5 py-2.5 rounded-xl text-sm transition-colors duration-200 ease-civic';
+
+/*
+ * A desktop link: a quiet pill whose underline is a short bar of violet light.
+ * Hover lights it halfway; the current page keeps it lit, with a faint tint.
+ */
+const DESKTOP_LINK = cn(
+  // Tighter at md, where the bar is narrowest with every link showing.
+  'relative rounded-full px-2.5 py-2 text-sm font-body transition-colors duration-200 ease-civic lg:px-3.5',
+  "after:pointer-events-none after:absolute after:bottom-[5px] after:left-1/2 after:h-[2px] after:w-5 after:-translate-x-1/2 after:rounded-full after:content-['']",
+  'after:bg-primary after:shadow-[0_0_10px_1px_rgb(var(--c-violet)/0.6)]',
+  'after:origin-center after:scale-x-0 after:opacity-0 after:transition-[transform,opacity] after:duration-300 after:ease-civic',
+  'hover:after:scale-x-100 hover:after:opacity-50 focus-visible:after:scale-x-100 focus-visible:after:opacity-50'
+);
+const DESKTOP_LINK_ACTIVE = 'bg-primary/8 text-ink after:!scale-x-100 after:!opacity-100';
 
 const menuItems = (menu: HTMLElement | null) =>
   Array.from(menu?.querySelectorAll<HTMLElement>('[role="menuitem"]') ?? []);
@@ -96,13 +117,28 @@ function UserDropdown({ user, onSignOut }: { user: SupabaseUser; onSignOut: () =
         aria-controls={open ? menuId : undefined}
         onClick={() => (open ? setOpen(false) : openWith('first'))}
         onKeyDown={onTriggerKeyDown}
-        className="flex items-center gap-2 glass border-white/10 hover:border-white/20 rounded-xl px-3 py-2 transition-all"
+        className={cn(
+          'flex h-10 items-center gap-2 rounded-full border border-fg/10 bg-raised/70 pl-1 pr-2.5 transition-colors duration-200 ease-civic',
+          'hover:border-primary/30 hover:bg-raised',
+          open && 'border-primary/30 bg-raised'
+        )}
       >
-        <span aria-hidden="true" className="w-7 h-7 rounded-full bg-primary/20 border border-primary/30 flex items-center justify-center">
-          <span className="text-xs font-bold text-primary-300">{initials}</span>
+        {/* Initials on a disc lit from above by violet light. */}
+        <span
+          aria-hidden="true"
+          className="flex h-8 w-8 items-center justify-center rounded-full border border-primary/25 bg-[radial-gradient(circle_at_50%_0%,rgb(var(--c-violet)/0.22),rgb(var(--c-violet)/0.08)_70%)]"
+        >
+          <span className="font-mono-data text-[0.6875rem] font-semibold tracking-wide text-primary-300">{initials}</span>
         </span>
-        <span className="text-sm text-text-primary hidden sm:block"><span className="sr-only">Account: </span>{firstName}</span>
-        <ChevronDown aria-hidden="true" className={`w-3.5 h-3.5 text-text-muted transition-transform ${open ? 'rotate-180' : ''}`} />
+        {/* The name is always part of the button's name; it's shown on wide screens only. */}
+        <span className="text-sm text-ink">
+          <span className="sr-only">Account: </span>
+          <span className="sr-only lg:not-sr-only lg:inline-block lg:max-w-[9rem] lg:truncate lg:align-bottom">{firstName}</span>
+        </span>
+        <ChevronDown
+          aria-hidden="true"
+          className={cn('h-3.5 w-3.5 text-muted transition-transform duration-200 ease-civic', open && 'rotate-180')}
+        />
       </button>
 
       <AnimatePresence>
@@ -113,39 +149,39 @@ function UserDropdown({ user, onSignOut }: { user: SupabaseUser; onSignOut: () =
             role="menu"
             aria-labelledby={triggerId}
             onKeyDown={onMenuKeyDown}
-            initial={{ opacity: 0, y: 6, scale: 0.97 }}
+            initial={{ opacity: 0, y: 6, scale: 0.98 }}
             animate={{ opacity: 1, y: 0, scale: 1 }}
-            exit={{ opacity: 0, y: 6, scale: 0.97 }}
-            transition={{ duration: 0.15 }}
-            className="absolute right-0 mt-2 w-52 glass-strong border-white/10 rounded-2xl p-1.5 shadow-xl z-50"
+            exit={{ opacity: 0, y: 6, scale: 0.98 }}
+            transition={{ duration: 0.18, ease: EASE }}
+            className="absolute right-0 z-50 mt-2.5 w-56 origin-top-right rounded-2xl border border-fg/10 bg-raised p-1.5 shadow-lift"
           >
             <Link
               href="/dashboard"
               role="menuitem"
               tabIndex={-1}
               onClick={() => setOpen(false)}
-              className={`${MENU_ITEM} text-text-muted hover:text-text-primary hover:bg-white/5 focus:text-text-primary focus:bg-white/5`}
+              className={`${MENU_ITEM} text-muted hover:text-ink hover:bg-fg/5 focus:text-ink focus:bg-primary/8`}
             >
-              <LayoutDashboard className="w-4 h-4" aria-hidden="true" /> Dashboard
+              <LayoutDashboard className="h-4 w-4" aria-hidden="true" /> Dashboard
             </Link>
             <Link
               href="/settings"
               role="menuitem"
               tabIndex={-1}
               onClick={() => setOpen(false)}
-              className={`${MENU_ITEM} text-text-muted hover:text-text-primary hover:bg-white/5 focus:text-text-primary focus:bg-white/5`}
+              className={`${MENU_ITEM} text-muted hover:text-ink hover:bg-fg/5 focus:text-ink focus:bg-primary/8`}
             >
-              <Settings className="w-4 h-4" aria-hidden="true" /> Settings
+              <Settings className="h-4 w-4" aria-hidden="true" /> Settings
             </Link>
-            <div role="separator" className="my-1 h-px bg-white/8" />
+            <div role="separator" className="mx-2 my-1 h-px bg-fg/8" />
             <button
               type="button"
               role="menuitem"
               tabIndex={-1}
               onClick={() => { close(true); onSignOut(); }}
-              className={`${MENU_ITEM} text-red-400 hover:bg-red-500/10 focus:bg-red-500/10`}
+              className={`${MENU_ITEM} text-danger hover:bg-danger/10 focus:bg-danger/10`}
             >
-              <LogOut className="w-4 h-4" aria-hidden="true" /> Sign Out
+              <LogOut className="h-4 w-4" aria-hidden="true" /> Sign Out
             </button>
           </m.div>
         )}
@@ -170,7 +206,7 @@ export default function Navbar() {
   const drawerTitleId = useId();
 
   useEffect(() => {
-    const handler = () => setScrolled(window.scrollY > 80);
+    const handler = () => setScrolled(window.scrollY > 24);
     // A restored scroll position (refresh, back button) needs the solid bar straight away.
     handler();
     window.addEventListener('scroll', handler, { passive: true });
@@ -223,62 +259,83 @@ export default function Navbar() {
 
   return (
     <>
-      {/* No entrance animation: the bar is server-rendered visible, so it paints before hydration. */}
+      {/*
+        A floating bar of frosted glass (glass is for navigation and controls).
+        No entrance animation: it is server-rendered visible, so it paints
+        before hydration. At the top of the page it rests lighter and lower;
+        once the page scrolls it rises a little and turns more opaque.
+      */}
       <nav
         aria-label="Main"
-        className={`fixed top-0 left-0 right-0 z-[100] transition-all duration-300 ${
-          scrolled
-            ? 'glass-nav py-3'
-            : 'bg-transparent py-5'
-        }`}
+        className={cn(
+          'fixed inset-x-0 top-0 z-nav px-3 transition-[padding] duration-300 ease-civic sm:px-5',
+          scrolled ? 'pt-2 sm:pt-3' : 'pt-3 sm:pt-4'
+        )}
       >
-        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 flex items-center justify-between">
-          <Logo />
+        <div
+          className={cn(
+            'glass-nav relative mx-auto flex h-14 max-w-6xl items-center justify-between gap-2 rounded-full border border-fg/10 pl-4 pr-2 sm:pl-5 lg:gap-3',
+            'transition-[background-color,border-color,box-shadow] duration-300 ease-civic',
+            // Opaque when less transparency is asked for (beats the theme tints below).
+            '[@media(prefers-reduced-transparency:reduce)]:!bg-surface',
+            // A thin rim of violet light along the top edge.
+            'before:pointer-events-none before:absolute before:inset-x-10 before:top-0 before:h-px before:bg-gradient-to-r before:from-transparent before:via-primary/45 before:to-transparent',
+            scrolled
+              ? 'border-fg/12 shadow-[inset_0_1px_0_rgb(255_255_255/0.55),0_14px_36px_-18px_rgb(var(--c-fg)/0.32)] dark:shadow-[inset_0_1px_0_rgb(255_255_255/0.07),0_18px_40px_-18px_rgb(0_0_0/0.75)]'
+              : 'bg-canvas/55 shadow-[inset_0_1px_0_rgb(255_255_255/0.5)] dark:bg-canvas/45 dark:shadow-[inset_0_1px_0_rgb(255_255_255/0.05)]'
+          )}
+        >
+          <Logo className="flex-shrink-0" />
 
           {/* Desktop links */}
-          <div className="hidden md:flex items-center gap-8">
+          <div className="hidden items-center gap-0.5 md:flex">
             {!authLoading && navLinks.map(link => (
               <Link
                 key={link.label}
                 href={link.href}
                 aria-current={isActive(link.href) ? 'page' : undefined}
-                className={`nav-underline text-sm transition-colors duration-200 font-body ${isActive(link.href) ? 'text-text-primary' : 'text-text-muted hover:text-text-primary'}`}
+                className={cn(DESKTOP_LINK, isActive(link.href) ? DESKTOP_LINK_ACTIVE : 'text-muted hover:text-ink')}
               >
                 {link.label}
               </Link>
             ))}
           </div>
 
-          {/* Desktop CTA / User */}
-          <div className="hidden md:flex items-center gap-3">
-            {authLoading ? (
-              <div className="w-24 h-9 rounded-xl bg-white/5 animate-pulse" aria-hidden="true" />
-            ) : user ? (
-              <UserDropdown user={user} onSignOut={handleSignOut} />
-            ) : (
-              <>
-                <Button href="/auth/signin" variant="ghost" size="sm">Sign In</Button>
-                <Button href="/auth/signup" variant="primary" size="sm">Get Started</Button>
-              </>
-            )}
-          </div>
+          {/* Preferences, then the CTA or the account menu (desktop) / the menu button (mobile) */}
+          <div className="flex items-center gap-0.5 sm:gap-1">
+            <SoundToggle />
+            <ThemeToggle />
+            <span aria-hidden="true" className="mx-1.5 hidden h-5 w-px bg-fg/12 md:block" />
+            <div className="hidden items-center gap-2 md:flex">
+              {authLoading ? (
+                <div className="h-9 w-40 rounded-full bg-fg/5 animate-pulse" aria-hidden="true" />
+              ) : user ? (
+                <UserDropdown user={user} onSignOut={handleSignOut} />
+              ) : (
+                <>
+                  <Button href="/auth/signin" variant="ghost" size="sm" className="border-transparent bg-transparent px-3 hover:border-fg/10">Sign In</Button>
+                  <Button href="/auth/signup" variant="primary" size="sm">Get Started</Button>
+                </>
+              )}
+            </div>
 
-          {/* Mobile hamburger */}
-          <button
-            ref={menuButtonRef}
-            type="button"
-            className="md:hidden text-text-muted hover:text-text-primary transition-colors p-2 rounded-lg"
-            onClick={() => setMobileOpen(true)}
-            aria-label="Open menu"
-            aria-haspopup="dialog"
-            aria-expanded={mobileOpen}
-          >
-            <Menu className="w-5 h-5" aria-hidden="true" />
-          </button>
+            {/* Mobile menu button */}
+            <button
+              ref={menuButtonRef}
+              type="button"
+              className="ml-0.5 inline-flex h-10 w-10 items-center justify-center rounded-full border border-fg/10 bg-raised/70 text-ink transition-colors duration-200 ease-civic hover:border-primary/30 hover:bg-raised md:hidden"
+              onClick={() => setMobileOpen(true)}
+              aria-label="Open menu"
+              aria-haspopup="dialog"
+              aria-expanded={mobileOpen}
+            >
+              <Menu className="h-[1.125rem] w-[1.125rem]" aria-hidden="true" />
+            </button>
+          </div>
         </div>
       </nav>
 
-      {/* Mobile Drawer */}
+      {/* Mobile menu: a full-height sheet of paper (night in the dark theme) with large editorial links. */}
       <AnimatePresence>
         {mobileOpen && (
           <>
@@ -287,7 +344,8 @@ export default function Navbar() {
               initial={{ opacity: 0 }}
               animate={{ opacity: 1 }}
               exit={{ opacity: 0 }}
-              className="fixed inset-0 bg-black/60 z-[110] backdrop-blur-sm"
+              transition={{ duration: 0.3, ease: EASE }}
+              className="fixed inset-0 z-overlay bg-ink/40 backdrop-blur-sm dark:bg-black/60"
               onClick={closeMobile}
               aria-hidden="true"
               // Wheel/touch over the backdrop must not reach Lenis (the page is scroll-locked).
@@ -304,62 +362,98 @@ export default function Navbar() {
               initial={{ x: '100%' }}
               animate={{ x: 0 }}
               exit={{ x: '100%' }}
-              transition={{ type: 'spring', stiffness: 300, damping: 30 }}
-              className="fixed top-0 right-0 bottom-0 w-80 max-w-[85vw] glass-strong border-0 border-l border-white/8 z-[120] flex flex-col p-8 overflow-y-auto overscroll-contain focus:outline-none"
+              transition={{ duration: 0.45, ease: EASE }}
+              className={cn(
+                'fixed inset-y-0 right-0 z-modal flex w-full flex-col overflow-y-auto overscroll-contain bg-canvas focus:outline-none sm:max-w-sm sm:border-l sm:border-fg/10',
+                'shadow-[-24px_0_60px_-30px_rgb(var(--c-fg)/0.35)] dark:shadow-[-24px_0_60px_-24px_rgb(0_0_0/0.8)]'
+              )}
             >
-              <div className="flex items-center justify-between mb-10">
+              {/* Light falling into the sheet from its top corner. */}
+              <div
+                aria-hidden="true"
+                className="pointer-events-none absolute inset-x-0 top-0 h-80 bg-[radial-gradient(ellipse_80%_70%_at_85%_-10%,rgb(var(--c-violet)/0.16),transparent_70%)]"
+              />
+
+              <div className="relative flex items-center justify-between px-5 pb-4 pt-5">
                 <h2 id={drawerTitleId} className="sr-only">Menu</h2>
                 <Logo variant="wordmark" href={null} />
                 <button
                   type="button"
                   onClick={closeMobile}
                   aria-label="Close menu"
-                  className="text-text-muted hover:text-text-primary transition-colors p-2 rounded-lg"
+                  className="inline-flex h-11 w-11 items-center justify-center rounded-full border border-fg/10 bg-raised/70 text-ink transition-colors duration-200 ease-civic hover:border-primary/30 hover:bg-raised"
                 >
-                  <X className="w-5 h-5" aria-hidden="true" />
+                  <X className="h-5 w-5" aria-hidden="true" />
                 </button>
               </div>
-              <nav aria-label="Main" className="flex flex-col gap-2 flex-1">
-                {navLinks.map((link, i) => (
-                  <m.div
-                    key={link.label}
-                    initial={{ x: 20, opacity: 0 }}
-                    animate={{ x: 0, opacity: 1 }}
-                    transition={{ delay: i * 0.07, duration: 0.3 }}
-                  >
-                    <Link
-                      href={link.href}
-                      aria-current={isActive(link.href) ? 'page' : undefined}
-                      className={`block py-3 px-4 hover:text-text-primary hover:bg-white/5 rounded-xl transition-all duration-200 font-body ${isActive(link.href) ? 'text-text-primary bg-white/5' : 'text-text-muted'}`}
-                      onClick={closeMobile}
-                    >
-                      {link.label}
-                    </Link>
-                  </m.div>
-                ))}
+
+              <nav aria-label="Main" className="relative flex flex-1 flex-col px-5 pt-6">
+                <ol className="flex flex-col">
+                  {navLinks.map((link, i) => {
+                    const active = isActive(link.href);
+                    return (
+                      <m.li
+                        key={link.label}
+                        initial={{ y: 14, opacity: 0 }}
+                        animate={{ y: 0, opacity: 1 }}
+                        transition={{ delay: 0.08 + i * 0.05, duration: 0.45, ease: EASE }}
+                        className="border-b border-fg/8"
+                      >
+                        <Link
+                          href={link.href}
+                          aria-current={active ? 'page' : undefined}
+                          className={cn(
+                            'group flex items-baseline gap-4 rounded-lg py-4 font-display text-[2rem] leading-none tracking-[-0.02em] transition-colors duration-200 ease-civic',
+                            active ? 'text-ink' : 'text-ink/80 hover:text-ink'
+                          )}
+                          onClick={closeMobile}
+                        >
+                          <span aria-hidden="true" className="w-6 font-mono-data text-meta text-muted">
+                            {String(i + 1).padStart(2, '0')}
+                          </span>
+                          {/* The current page in the display face's violet italic (.font-display .accent). */}
+                          <span className={active ? 'accent' : undefined}>{link.label}</span>
+                          {active && (
+                            <span
+                              aria-hidden="true"
+                              className="ml-auto h-2 w-2 self-center rounded-full bg-primary shadow-[0_0_10px_2px_rgb(var(--c-violet)/0.55)]"
+                            />
+                          )}
+                        </Link>
+                      </m.li>
+                    );
+                  })}
+                </ol>
                 {user && (
-                  <>
-                    <div className="my-2 h-px bg-white/8" aria-hidden="true" />
-                    <Link href="/settings" onClick={closeMobile}
-                      aria-current={isActive('/settings') ? 'page' : undefined}
-                      className="flex items-center gap-3 py-3 px-4 text-text-muted hover:text-text-primary hover:bg-white/5 rounded-xl transition-all">
-                      <Settings className="w-4 h-4" aria-hidden="true" /> Settings
-                    </Link>
-                  </>
+                  <Link
+                    href="/settings"
+                    onClick={closeMobile}
+                    aria-current={isActive('/settings') ? 'page' : undefined}
+                    className="mt-6 flex w-fit items-center gap-2.5 rounded-lg py-2 text-base text-muted transition-colors hover:text-ink"
+                  >
+                    <Settings className="h-4 w-4" aria-hidden="true" /> Settings
+                  </Link>
                 )}
               </nav>
-              <div className="flex flex-col gap-3 pt-6 border-t border-white/8">
+
+              <div className="relative flex flex-col gap-3 px-5 pb-[max(1.5rem,env(safe-area-inset-bottom))] pt-8">
                 {user ? (
-                  <button type="button" onClick={() => { closeMobile(); void handleSignOut(); }}
-                    className="flex items-center justify-center gap-2 w-full py-3 rounded-xl text-sm text-red-400 border border-red-500/20 hover:bg-red-500/10 transition-all">
-                    <LogOut className="w-4 h-4" aria-hidden="true" /> Sign Out
+                  <button
+                    type="button"
+                    onClick={() => { closeMobile(); void handleSignOut(); }}
+                    className="flex min-h-12 w-full items-center justify-center gap-2 rounded-full border border-danger/25 text-sm text-danger transition-colors hover:bg-danger/10"
+                  >
+                    <LogOut className="h-4 w-4" aria-hidden="true" /> Sign Out
                   </button>
                 ) : (
                   <>
-                    <Button href="/auth/signin" variant="ghost" fullWidth onClick={closeMobile}>Sign In</Button>
-                    <Button href="/auth/signup" variant="primary" fullWidth onClick={closeMobile}>Get Started Free</Button>
+                    <Button href="/auth/signin" variant="ghost" size="lg" fullWidth onClick={closeMobile}>Sign In</Button>
+                    <Button href="/auth/signup" variant="primary" size="lg" fullWidth onClick={closeMobile} icon={<ArrowUpRight className="h-4 w-4" />} iconPosition="end">
+                      Get Started Free
+                    </Button>
                   </>
                 )}
+                <p className="pt-2 text-center text-meta text-muted">Non-partisan · Educational estimates, not advice</p>
               </div>
             </m.div>
           </>

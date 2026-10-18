@@ -20,8 +20,8 @@ function ChartLoading() {
   const height = useContext(ChartHeight);
   return (
     <div role="status" className="flex flex-col" style={{ minHeight: height + CAPTION_SPACE }}>
-      <div className="flex-1 rounded-2xl bg-white/4 motion-safe:animate-pulse" />
-      <div className="mt-3 h-6 w-2/3 rounded-lg bg-white/4 motion-safe:animate-pulse" />
+      <div className="flex-1 rounded-2xl bg-fg/4 motion-safe:animate-pulse" />
+      <div className="mt-3 h-6 w-2/3 rounded-lg bg-fg/4 motion-safe:animate-pulse" />
       <span className="sr-only">Loading chart…</span>
     </div>
   );

@@ -23,10 +23,10 @@ function TagList({ hidden = false }: { hidden?: boolean }) {
         // Solid tint, no backdrop-filter: 20 moving chips would re-blur every frame.
         <li
           key={tag.id}
-          className="flex items-center gap-2.5 rounded-full border border-white/8 bg-white/4 px-4 py-2 flex-shrink-0 cursor-default"
+          className="flex items-center gap-2.5 rounded-full border border-fg/8 bg-fg/4 px-4 py-2 flex-shrink-0 cursor-default"
         >
           <span className="text-xs text-text-muted font-mono-data">{tag.category}</span>
-          <span className="w-px h-3 bg-white/10" aria-hidden="true" />
+          <span className="w-px h-3 bg-fg/10" aria-hidden="true" />
           <span className="text-xs text-text-primary font-medium">{tag.label}</span>
           <span className={`text-xs font-mono-data font-semibold ${TONE[impactSign(tag.amount)]}`}>
             {formatAnnual(tag.amount)}
@@ -46,14 +46,14 @@ function TagList({ hidden = false }: { hidden?: boolean }) {
  */
 export default function MarqueeStrip() {
   return (
-    <div className="group/marquee relative py-4 border-y border-white/6 overflow-hidden bg-surface/30">
+    <div className="group/marquee relative py-4 border-y border-fg/6 overflow-hidden bg-surface/30">
       {/* Fade edges */}
       <div className="absolute left-0 top-0 bottom-0 w-24 bg-gradient-to-r from-base to-transparent z-10" aria-hidden="true" />
       <div className="absolute right-0 top-0 bottom-0 w-24 bg-gradient-to-l from-base to-transparent z-10" aria-hidden="true" />
 
       {/* Always visible, so no chip reads as a real estimate. */}
       <p
-        className="absolute left-2 top-1/2 -translate-y-1/2 z-20 rounded-full border border-gold/20 bg-base/90 px-3 py-1.5 text-meta font-mono-data uppercase tracking-wide text-gold"
+        className="absolute left-2 top-1/2 -translate-y-1/2 z-20 rounded-full border border-dashed border-fg/30 bg-base px-3 py-1.5 text-meta font-mono-data uppercase tracking-wide text-muted"
         aria-hidden="true"
       >
         Illustrative
@@ -68,7 +68,7 @@ export default function MarqueeStrip() {
 
       {/* WCAG 2.2.2: moving content needs a pause control. */}
       <label
-        className="absolute right-2 top-1/2 -translate-y-1/2 z-20 flex h-8 w-8 cursor-pointer items-center justify-center rounded-full border border-white/10 bg-base/90 text-text-muted transition-colors hover:text-text-primary has-[:focus-visible]:outline has-[:focus-visible]:outline-2 has-[:focus-visible]:outline-offset-2 has-[:focus-visible]:outline-primary-300 motion-reduce:hidden"
+        className="absolute right-2 top-1/2 -translate-y-1/2 z-20 flex h-8 w-8 cursor-pointer items-center justify-center rounded-full border border-fg/10 bg-base/90 text-text-muted transition-colors hover:text-text-primary has-[:focus-visible]:outline has-[:focus-visible]:outline-2 has-[:focus-visible]:outline-offset-2 has-[:focus-visible]:outline-primary-300 motion-reduce:hidden"
       >
         <input type="checkbox" className="peer sr-only" aria-label="Pause scrolling ticker" />
         <Pause className="w-3.5 h-3.5 peer-checked:hidden" aria-hidden="true" />

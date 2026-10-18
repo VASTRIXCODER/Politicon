@@ -3,7 +3,7 @@
 import { use, useState, useEffect, useMemo, useCallback, useRef } from 'react';
 import { useRouter } from 'next/navigation';
 import Link from 'next/link';
-import { m } from 'framer-motion';
+import { m } from 'motion/react';
 import {
   TrendingUp, TrendingDown, Minus, Check, ChevronDown, ExternalLink,
   Home, Briefcase, Heart, PiggyBank, GraduationCap, Landmark, Waves, ShieldAlert,
@@ -35,7 +35,7 @@ import {
   CategoryImpactBar, ImpactDonut, MonthlyTimeline, ProjectionBars, BeforeAfterBar, VulnerabilityRadar,
 } from '@/components/charts/LazyCharts';
 import { TransmissionWaterfall, SpendingHeatmap } from '@/components/charts/StaticCharts';
-import { CATEGORY_COLOR } from '@/components/charts/palette';
+import { useChartPalette } from '@/components/charts/palette';
 import { useReadingMode } from '@/components/providers/ReadingModeProvider';
 import ReadingModeToggle from '@/components/ui/ReadingModeToggle';
 import { WhatThisMeans, JargonBuster } from '@/components/ui/SimpleMode';
@@ -53,7 +53,7 @@ const pct = (n: number) => formatPct(n, { digits: 2 });
 const titleCase = (s: string) => s.replace(/[-_]+/g, ' ').replace(/\b\w/g, (c) => c.toUpperCase());
 const signedUSD = (n: number) => formatUSD(n, { signed: true });
 // Flat surface for rows inside a glass card (no nested backdrop blur).
-const INNER_ROW = 'bg-white/4 border border-white/8';
+const INNER_ROW = 'bg-fg/4 border border-fg/8';
 // Violet-tinted action: primary-300 text keeps it at AA contrast on the tint.
 const TINT_BUTTON = 'bg-primary/20 hover:bg-primary/30 border-primary/20 text-primary-300';
 
@@ -118,8 +118,8 @@ function snapshotFromRow(row: Record<string, unknown>): ProfileSnapshot {
 }
 
 function DirIcon({ d, className = 'w-5 h-5' }: { d: ImpactDirection; className?: string }) {
-  if (d === 'positive') return <TrendingUp className={`${className} text-emerald-400`} aria-hidden />;
-  if (d === 'negative') return <TrendingDown className={`${className} text-red-400`} aria-hidden />;
+  if (d === 'positive') return <TrendingUp className={`${className} text-gain`} aria-hidden />;
+  if (d === 'negative') return <TrendingDown className={`${className} text-loss`} aria-hidden />;
   return <Minus className={`${className} text-text-muted`} aria-hidden />;
 }
 
@@ -131,9 +131,9 @@ function DirIcon({ d, className = 'w-5 h-5' }: { d: ImpactDirection; className?:
 function StatRow({ label, value, positive, cue, kind }: { label: string; value: string; positive?: boolean; cue?: number; kind?: 'budget' | 'income' }) {
   const neutral = cue !== undefined && Math.round(cue) === 0;
   return (
-    <div className="flex items-center justify-between gap-4 py-2 border-b border-white/6 last:border-0">
+    <div className="flex items-center justify-between gap-4 py-2 border-b border-fg/6 last:border-0">
       <span className="text-xs text-text-muted">{label}</span>
-      <span className={`font-mono-data text-sm font-semibold text-right ${positive === undefined || neutral ? 'text-text-primary' : positive ? 'text-emerald-400' : 'text-red-400'}`}>
+      <span className={`font-mono-data text-sm font-semibold text-right ${positive === undefined || neutral ? 'text-text-primary' : positive ? 'text-gain' : 'text-loss'}`}>
         {value}
         {cue !== undefined && !neutral && <span className="block text-meta font-normal text-text-muted">{impactWords(cue, kind)}</span>}
       </span>
@@ -282,10 +282,10 @@ export default function PolicyDetailPage({ params }: { params: Promise<{ policyI
           )}
         </div>
         <div aria-hidden>
-          <div className="h-10 w-2/3 bg-white/10 rounded-2xl animate-pulse mb-6" />
-          <div className="h-40 bg-white/10 rounded-3xl animate-pulse mb-6" />
+          <div className="h-10 w-2/3 bg-fg/10 rounded-2xl animate-pulse mb-6" />
+          <div className="h-40 bg-fg/10 rounded-3xl animate-pulse mb-6" />
           <div className="grid sm:grid-cols-2 gap-4">
-            {[...Array(4)].map((_, i) => <div key={i} className="h-32 bg-white/10 rounded-2xl animate-pulse" />)}
+            {[...Array(4)].map((_, i) => <div key={i} className="h-32 bg-fg/10 rounded-2xl animate-pulse" />)}
           </div>
         </div>
       </Shell>
@@ -298,7 +298,7 @@ export default function PolicyDetailPage({ params }: { params: Promise<{ policyI
         <div className="w-14 h-14 rounded-2xl bg-primary/10 border border-primary/20 flex items-center justify-center mx-auto mb-5">
           <Target className="w-7 h-7 text-primary-300" aria-hidden />
         </div>
-        <h1 className="font-display text-2xl font-bold text-text-primary mb-2">{legacy ? 'Update this analysis' : 'No analysis yet'}</h1>
+        <h1 className="font-display text-2xl font-medium text-text-primary mb-2">{legacy ? 'Update this analysis' : 'No analysis yet'}</h1>
         <p role="status" className="text-sm text-text-muted mb-6">
           {generating
             ? 'Compiling your full financial analysis. This can take up to a minute…'
@@ -306,7 +306,7 @@ export default function PolicyDetailPage({ params }: { params: Promise<{ policyI
               ? 'This is a short summary from an earlier version of Politicon. Generate the full breakdown to see every chart and section.'
               : 'Generate a full, personalized analysis of this policy from your feed.'}
         </p>
-        {generateError && <p role="alert" className="text-sm text-red-300 mb-6">{generateError}</p>}
+        {generateError && <p role="alert" className="text-sm text-danger mb-6">{generateError}</p>}
         <div className="flex flex-wrap items-center justify-center gap-3">
           <Button
             onClick={() => generate(legacy)}
@@ -361,13 +361,15 @@ function DetailView({
   policyId: string;
 }) {
   const { simple } = useReadingMode();
+  // Category colours for the theme on the page (charts need concrete colours).
+  const { category: categoryColors } = useChartPalette();
   const income = useMemo(() => incomeMidpoint({ incomeRange: profile?.incomeRange || '' } as Parameters<typeof incomeMidpoint>[0]), [profile]);
 
   const categoryBars = useMemo(
     () => Object.entries(a.categoryImpacts)
-      .map(([k, v]) => ({ name: titleCase(k), value: v, color: CATEGORY_COLOR[k] || '#6B7280' }))
+      .map(([k, v]) => ({ name: titleCase(k), value: v, color: categoryColors[k] || categoryColors.other }))
       .filter((d) => d.value !== 0),
-    [a.categoryImpacts]
+    [a.categoryImpacts, categoryColors]
   );
 
   const confidence = confidenceLabel(a.confidenceScore);
@@ -403,7 +405,7 @@ function DetailView({
             type="button"
             onClick={onDelete}
             aria-label="Delete this analysis"
-            className="p-2 rounded-xl text-text-muted hover:text-red-300 hover:bg-red-500/10 border border-transparent hover:border-red-500/20 transition-all"
+            className="p-2 rounded-xl text-text-muted hover:text-danger hover:bg-danger/10 border border-transparent hover:border-danger/20 transition-all"
           >
             <Trash2 className="w-4 h-4" aria-hidden />
           </button>
@@ -422,7 +424,7 @@ function DetailView({
             {a.confidenceScore ? <> · {a.confidenceScore}/100<span className="sr-only"> (model-rated)</span></> : null}
           </span>
         </div>
-        <h1 className="font-display text-3xl sm:text-4xl font-bold text-text-primary leading-tight">{a.policyTitle}</h1>
+        <h1 className="font-display text-3xl sm:text-4xl font-medium text-text-primary leading-tight">{a.policyTitle}</h1>
         {analyzedAt && (
           <p className="text-xs text-text-muted mt-2">Last analyzed {new Date(analyzedAt).toLocaleString()}</p>
         )}
@@ -433,13 +435,13 @@ function DetailView({
       </m.div>
 
       {stale && (
-        <div role="status" className="mb-6 flex flex-col sm:flex-row sm:items-center justify-between gap-3 rounded-2xl border border-gold/30 bg-gold/10 px-5 py-4">
+        <div role="status" className="mb-6 flex flex-col sm:flex-row sm:items-center justify-between gap-3 rounded-2xl border border-caution/30 bg-caution/10 px-5 py-4">
           <p className="text-sm text-text-primary">
             Your financial profile changed after this analysis was made, so these numbers may be out of date.
-            {reanalyzeError && <span className="block text-red-300 mt-1">{reanalyzeError}</span>}
+            {reanalyzeError && <span className="block text-danger mt-1">{reanalyzeError}</span>}
           </p>
           <button type="button" onClick={onReanalyze} disabled={reanalyzing} aria-busy={reanalyzing || undefined}
-            className="inline-flex items-center justify-center gap-2 whitespace-nowrap bg-gold/20 hover:bg-gold/30 border border-gold/30 text-gold px-4 py-2 rounded-xl text-sm font-medium transition-all disabled:opacity-60">
+            className="inline-flex items-center justify-center gap-2 whitespace-nowrap bg-raised hover:bg-surface border border-caution/30 hover:border-caution/50 text-caution px-4 py-2 rounded-xl text-sm font-medium transition-all disabled:opacity-60">
             {reanalyzing && <Loader2 className="w-4 h-4 animate-spin" aria-hidden />}
             {reanalyzing ? 'Re-analyzing…' : 'Re-analyze with my current profile'}
           </button>
@@ -449,11 +451,11 @@ function DetailView({
       {/* Hero impact card */}
       <m.div initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.5, delay: 0.05 }}
         className="glass-strong rounded-3xl p-8 mb-8 relative overflow-hidden">
-        <div className={`absolute inset-0 ${a.direction === 'negative' ? 'bg-gradient-to-br from-red-500/10' : 'bg-gradient-to-br from-gold/10'} via-transparent to-primary/5`} />
+        <div className={`absolute inset-0 ${a.direction === 'negative' ? 'bg-gradient-to-br from-loss-fill/10' : 'bg-gradient-to-br from-gain-fill/10'} via-transparent to-primary/5`} />
         <div className="relative z-10 grid md:grid-cols-[1.2fr_1fr] gap-8 items-center">
           <div>
             <p className="text-xs font-mono-data text-text-muted uppercase tracking-widest mb-3">Net Annual Impact</p>
-            <div className={`font-mono-data text-5xl sm:text-6xl font-bold ${a.netAnnualImpact >= 0 ? 'gradient-text-gold' : 'text-red-400'}`}>
+            <div className={`font-mono-data text-5xl sm:text-6xl font-bold ${a.netAnnualImpact >= 0 ? 'text-gain' : 'text-loss'}`}>
               <CountUp value={Math.round(a.netAnnualImpact)} format={signedUSD} srLabel={`${signedUSD(a.netAnnualImpact)} per year`} />
             </div>
             <div className="flex items-center gap-4 mt-3">
@@ -471,7 +473,7 @@ function DetailView({
             {profileChips.length > 0 ? (
               <ul aria-labelledby="profile-drivers" className="flex flex-wrap gap-2">
                 {profileChips.map((c) => (
-                  <li key={c} className="text-meta px-2.5 py-1 rounded-full bg-white/5 border border-white/10 text-text-muted">{c}</li>
+                  <li key={c} className="text-meta px-2.5 py-1 rounded-full bg-fg/5 border border-fg/10 text-text-muted">{c}</li>
                 ))}
               </ul>
             ) : <p className="text-xs text-text-muted">Complete your profile for a sharper analysis.</p>}
@@ -482,7 +484,7 @@ function DetailView({
       <Tabs value={tab} onValueChange={setTab}>
         <TabList label="Analysis sections" className="glass rounded-2xl p-1 mb-8 w-full sm:w-fit">
           {TABS.map((t) => (
-            <Tab key={t} value={t} className="py-2.5 border border-transparent aria-selected:bg-primary/20 aria-selected:border-primary/20">
+            <Tab key={t} value={t} className="py-2.5">
               {TAB_LABELS[t]}
             </Tab>
           ))}
@@ -502,7 +504,7 @@ function DetailView({
         ))}
       </Tabs>
 
-      <div className="mt-10 pt-6 border-t border-white/5">
+      <div className="mt-10 pt-6 border-t border-fg/5">
         <FeedbackControls
           key={analyzedAt || 'analysis'}
           targetType="analysis"
@@ -517,7 +519,7 @@ function DetailView({
               <Loader2 className="w-3.5 h-3.5 animate-spin text-primary" aria-hidden /> Re-analyzing with your current profile…
             </span>
           ) : reanalyzeError && !stale ? (
-            <span className="text-red-300">{reanalyzeError}</span>
+            <span className="text-danger">{reanalyzeError}</span>
           ) : null}
         </div>
       </div>
@@ -543,7 +545,7 @@ function OverviewTab({ a, categoryBars, simple, income, applies }: {
         <h2 className="font-display text-lg font-semibold text-text-primary mb-3">What this means for you</h2>
         <p className="text-sm text-text-muted leading-relaxed">{a.plainEnglishSummary}</p>
         {a.assumptions.length > 0 && (
-          <div className="mt-5 pt-5 border-t border-white/8">
+          <div className="mt-5 pt-5 border-t border-fg/8">
             <h3 className="text-xs font-mono-data uppercase tracking-widest text-text-muted mb-2">Assumptions behind these numbers</h3>
             <ul className="space-y-1.5 list-disc pl-5 marker:text-text-muted">
               {a.assumptions.map((x, i) => <li key={i} className="text-sm text-text-muted leading-relaxed">{x}</li>)}
@@ -581,30 +583,30 @@ function OverviewTab({ a, categoryBars, simple, income, applies }: {
         <h3 className="font-display text-base font-semibold text-text-primary mb-4">Trade-offs</h3>
         <div className="grid md:grid-cols-2 gap-6">
           <div>
-            <p className="text-xs font-mono-data uppercase tracking-widest text-emerald-400 mb-3">You gain</p>
+            <p className="text-xs font-mono-data uppercase tracking-widest text-gain mb-3">You gain</p>
             <div className="space-y-2">
               {a.tradeoffs.gains.length ? a.tradeoffs.gains.map((g, i) => (
                 <div key={i} className={`flex items-center justify-between gap-3 rounded-xl px-4 py-2.5 ${INNER_ROW}`}>
                   <span className="text-sm text-text-primary">{g.label}</span>
-                  <span className="font-mono-data text-sm font-semibold text-emerald-400">{money(Math.abs(g.value))}</span>
+                  <span className="font-mono-data text-sm font-semibold text-gain">{money(Math.abs(g.value))}</span>
                 </div>
               )) : <p className="text-xs text-text-muted">No notable gains identified.</p>}
             </div>
           </div>
           <div>
-            <p className="text-xs font-mono-data uppercase tracking-widest text-red-400 mb-3">You lose</p>
+            <p className="text-xs font-mono-data uppercase tracking-widest text-loss mb-3">You lose</p>
             <div className="space-y-2">
               {a.tradeoffs.losses.length ? a.tradeoffs.losses.map((l, i) => (
                 <div key={i} className={`flex items-center justify-between gap-3 rounded-xl px-4 py-2.5 ${INNER_ROW}`}>
                   <span className="text-sm text-text-primary">{l.label}</span>
-                  <span className="font-mono-data text-sm font-semibold text-red-400">{money(-Math.abs(l.value))}</span>
+                  <span className="font-mono-data text-sm font-semibold text-loss">{money(-Math.abs(l.value))}</span>
                 </div>
               )) : <p className="text-xs text-text-muted">No notable losses identified.</p>}
             </div>
           </div>
         </div>
         {a.tradeoffs.netAssessment && (
-          <p className="text-sm text-text-muted leading-relaxed mt-5 pt-5 border-t border-white/8">{a.tradeoffs.netAssessment}</p>
+          <p className="text-sm text-text-muted leading-relaxed mt-5 pt-5 border-t border-fg/8">{a.tradeoffs.netAssessment}</p>
         )}
       </GlassCard>
 
@@ -628,7 +630,8 @@ function OverviewTab({ a, categoryBars, simple, income, applies }: {
 
 // ----- Tab 2: Financial Breakdown -----
 function BreakdownTab({ a, categoryBars, simple }: { a: FullAnalysis; categoryBars: { name: string; value: number; color?: string }[]; simple: boolean }) {
-  const donutData = categoryBars.map((c) => ({ name: c.name, value: c.value, color: c.color || '#6B7280' }));
+  // ImpactDonut picks a palette colour for any slice without one.
+  const donutData = categoryBars.map((c) => ({ name: c.name, value: c.value, color: c.color || '' }));
   const beforeAfter = [{ label: 'Effective Tax Rate', before: a.tax.effectiveRateBefore, after: a.tax.effectiveRateAfter }];
   return (
     <div className="space-y-6">
@@ -688,11 +691,11 @@ function TimelineTab({ a, simple }: { a: FullAnalysis; simple: boolean }) {
         <GlassCard className="rounded-3xl p-7" animate={false}>
           <h3 className="font-display text-base font-semibold text-text-primary mb-5">Milestones</h3>
           <div className="relative pl-6">
-            <div className="absolute left-[7px] top-1 bottom-1 w-px bg-white/10" aria-hidden />
+            <div className="absolute left-[7px] top-1 bottom-1 w-px bg-fg/10" aria-hidden />
             <ol>
               {milestones.map((ms, i) => (
                 <li key={i} className="relative mb-5 last:mb-0">
-                  <div className={`absolute -left-[22px] top-0.5 w-3.5 h-3.5 rounded-full border-2 ${ms.value >= 0 ? 'border-emerald-400 bg-emerald-400/20' : 'border-red-400 bg-red-400/20'}`} aria-hidden />
+                  <div className={`absolute -left-[22px] top-0.5 w-3.5 h-3.5 rounded-full border-2 ${ms.value >= 0 ? 'border-gain-fill bg-gain-fill/20' : 'border-loss-fill bg-loss-fill/20'}`} aria-hidden />
                   <div className="flex items-center justify-between gap-3">
                     <span className="text-sm text-text-primary font-medium">{ms.label}</span>
                     <span className={`font-mono-data text-sm font-semibold ${impactTone(ms.value)}`}>{money(ms.value)}</span>
@@ -725,7 +728,7 @@ const PROFIT_LABEL: Record<string, { text: string; dir: ImpactDirection }> = {
 };
 
 function SectorIndicator({ label, value, dir }: { label: string; value: string; dir: ImpactDirection }) {
-  const color = dir === 'positive' ? 'text-emerald-400' : dir === 'negative' ? 'text-red-400' : 'text-text-muted';
+  const color = dir === 'positive' ? 'text-gain' : dir === 'negative' ? 'text-loss' : 'text-text-muted';
   return (
     <div className={`flex items-center justify-between gap-3 rounded-xl px-4 py-3 ${INNER_ROW}`}>
       <span className="text-xs text-text-muted">{label}</span>
@@ -827,7 +830,7 @@ function EconomicContextTab({ a, simple, income, applies }: { a: FullAnalysis; s
       {/* Spending heatmap */}
       <GlassCard className="rounded-3xl p-7" animate={false}>
         <h3 className="font-display text-base font-semibold text-text-primary mb-1">{simple ? 'What gets cheaper or pricier' : 'Spending Category Pressure'}</h3>
-        <p className="text-xs text-text-muted mb-4">{simple ? CHART_DESCRIPTIONS.heatmap : 'Monthly dollar pressure per spending category — green saves you money, red costs more.'}</p>
+        <p className="text-xs text-text-muted mb-4">{simple ? CHART_DESCRIPTIONS.heatmap : 'Monthly dollar pressure per spending category — teal saves you money, amber costs more.'}</p>
         <SpendingHeatmap items={a.spendingVelocity} />
       </GlassCard>
 
@@ -855,13 +858,13 @@ function EconomicContextTab({ a, simple, income, applies }: { a: FullAnalysis; s
         </div>
         {personal.savingsRateExplanation && <p className="text-xs text-text-muted leading-relaxed mt-4">{personal.savingsRateExplanation}</p>}
         {/* Precautionary index */}
-        <div className="mt-5 pt-5 border-t border-white/8">
+        <div className="mt-5 pt-5 border-t border-fg/8">
           <div className="flex items-center justify-between mb-2">
             <span className="text-sm text-text-primary font-medium">{simple ? 'Should you build up emergency savings?' : 'Precautionary behavior index'}</span>
-            <span className="font-mono-data text-sm font-bold text-gold">{personal.precautionaryIndex}/100</span>
+            <span className="font-mono-data text-sm font-bold text-text-primary">{personal.precautionaryIndex}/100</span>
           </div>
-          <div className="h-2 rounded-full bg-white/5 overflow-hidden" aria-hidden>
-            <div className="h-full rounded-full bg-gradient-to-r from-emerald-500 via-gold to-red-500 transition-all duration-700" style={{ width: `${personal.precautionaryIndex}%` }} />
+          <div className="h-2 rounded-full bg-fg/5 overflow-hidden" aria-hidden>
+            <div className="h-full rounded-full bg-gradient-to-r from-gain-fill to-loss-fill transition-all duration-700" style={{ width: `${personal.precautionaryIndex}%` }} />
           </div>
           {personal.precautionaryExplanation && <p className="text-xs text-text-muted leading-relaxed mt-3">{personal.precautionaryExplanation}</p>}
         </div>
@@ -956,7 +959,7 @@ function DeepDiveTab({ a }: { a: FullAnalysis }) {
             </h3>
             {isOpen && (
               <m.div id={panelId} initial={{ opacity: 0, height: 0 }} animate={{ opacity: 1, height: 'auto' }} className="px-5 pb-5">
-                <div className="border-t border-white/8 pt-2">
+                <div className="border-t border-fg/8 pt-2">
                   {rows(key).map((r, i) => <StatRow key={i} {...r} />)}
                 </div>
               </m.div>
@@ -969,10 +972,11 @@ function DeepDiveTab({ a }: { a: FullAnalysis }) {
 }
 
 // ----- Tab 5: Things to consider -----
+// Danger is kept for errors, so a high priority is a caution note.
 const PRIORITY_STYLES: Record<string, string> = {
-  high: 'bg-red-500/10 border-red-500/20 text-red-400',
-  medium: 'bg-amber-500/10 border-amber-500/20 text-amber-400',
-  low: 'bg-white/5 border-white/10 text-text-muted',
+  high: 'bg-caution/10 border-caution/25 text-caution',
+  medium: 'bg-primary/10 border-primary/20 text-primary-300',
+  low: 'bg-fg/5 border-fg/10 text-text-muted',
 };
 
 function resourceLinks(category: string, billNumber: string) {
@@ -1024,8 +1028,8 @@ function ActionTab({ a }: { a: FullAnalysis }) {
         <div className="space-y-3">
           {a.recommendations.map((r, i) => (
             <button key={i} type="button" onClick={() => toggle(r.step)} role="checkbox" aria-checked={checked[i]}
-              className={`w-full flex items-start gap-3 p-4 rounded-2xl text-left transition-all ${INNER_ROW} hover:border-white/16`}>
-              <span className={`mt-0.5 w-5 h-5 rounded-md border flex items-center justify-center flex-shrink-0 transition-all ${checked[i] ? 'bg-primary-fill border-primary-fill' : 'border-white/20'}`} aria-hidden>
+              className={`w-full flex items-start gap-3 p-4 rounded-2xl text-left transition-all ${INNER_ROW} hover:border-fg/16`}>
+              <span className={`mt-0.5 w-5 h-5 rounded-md border flex items-center justify-center flex-shrink-0 transition-all ${checked[i] ? 'bg-primary-fill border-primary-fill' : 'border-fg/20'}`} aria-hidden>
                 {checked[i] && <Check className="w-3.5 h-3.5 text-white" />}
               </span>
               <span className="flex-1">
@@ -1054,7 +1058,7 @@ function ActionTab({ a }: { a: FullAnalysis }) {
         <div className="flex flex-wrap gap-2">
           {links.map((l) => (
             <a key={l.url} href={l.url} target="_blank" rel="noopener noreferrer"
-              className={`flex items-center gap-1.5 ${INNER_ROW} hover:border-white/16 text-text-muted hover:text-text-primary px-3 py-2 rounded-xl text-xs transition-all`}>
+              className={`flex items-center gap-1.5 ${INNER_ROW} hover:border-fg/16 text-text-muted hover:text-text-primary px-3 py-2 rounded-xl text-xs transition-all`}>
               <ExternalLink className="w-3 h-3" aria-hidden /> {l.label}<span className="sr-only"> (opens in a new tab)</span>
             </a>
           ))}

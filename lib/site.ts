@@ -5,6 +5,8 @@
  * the name, copy and brand constants are safe anywhere.
  */
 
+import { BRAND_COLORS, THEMES } from '@/lib/design/tokens';
+
 export const SITE_NAME = 'Politicon';
 
 type Env = Readonly<Record<string, string | undefined>>;
@@ -80,17 +82,20 @@ export const SITE_TAGLINE = 'See what real bills could mean for your money.';
 export const SITE_DESCRIPTION =
   'An educational, non-partisan AI Policy Guide. Politicon reads official bill records, starting with Congress.gov, and estimates how each bill could affect your household budget, with its assumptions shown.';
 
-/** Brand colours for generated images (mirrors tailwind.config.ts). */
+/**
+ * Brand colours for generated images (the OG and apple icons), which can't use
+ * CSS variables. Read from lib/design/tokens.ts so they never drift.
+ */
 export const BRAND = {
-  base: '#07050F',
-  violet: '#7B61FF',
-  violetFill: '#6A4FF0',
-  violetText: '#A996FF',
-  cyan: '#00D4FF',
-  text: '#F0EEF8',
-  muted: '#8B87A8',
+  paper: BRAND_COLORS.paper,
+  porcelain: BRAND_COLORS.porcelain,
+  ink: BRAND_COLORS.ink,
+  /** Secondary text on paper (AA). */
+  muted: THEMES.light.muted,
+  violet: BRAND_COLORS.violet,
+  /** Violet for text on paper (AA). */
+  violetText: THEMES.light.violetText,
+  violetLight: BRAND_COLORS.violetLight,
+  violetGlow: BRAND_COLORS.violetGlow,
+  night: BRAND_COLORS.night,
 } as const;
-
-/** The lucide "Zap" bolt used in <Logo>, on a 24×24 grid. */
-export const ZAP_PATH =
-  'M4 14a1 1 0 0 1-.78-1.63l9.9-10.2a.5.5 0 0 1 .86.46l-1.92 6.02A1 1 0 0 0 13 10h7a1 1 0 0 1 .78 1.63l-9.9 10.2a.5.5 0 0 1-.86-.46l1.92-6.02A1 1 0 0 0 11 14z';

@@ -1,25 +1,28 @@
 import type { Metadata, Viewport } from 'next';
-import { JetBrains_Mono } from 'next/font/google';
+import { Fraunces } from 'next/font/google';
+import { GeistSans } from 'geist/font/sans';
+import { GeistMono } from 'geist/font/mono';
+import '@/styles/tokens.css';
 import './globals.css';
 import LenisProvider from '@/components/providers/LenisProvider';
 import MotionProvider from '@/components/providers/MotionProvider';
 import { ReadingModeProvider } from '@/components/providers/ReadingModeProvider';
-import CustomCursor from '@/components/ui/CustomCursor';
 import Analytics from '@/components/Analytics';
+import StageLoader from '@/components/three/StageLoader';
 import { SITE_DESCRIPTION, SITE_NAME, SITE_URL } from '@/lib/site';
+import { THEME_SCRIPT } from '@/lib/theme';
+import { BRAND_COLORS } from '@/lib/design/tokens';
 
-// Self-hosted at build time; exposed as --font-jetbrains (see --font-mono in globals.css).
-const jetbrainsMono = JetBrains_Mono({
+// All type is self-hosted at build time by next/font (no third-party font CSS).
+// Fraunces is the editorial display face; its SOFT and WONK axes give the
+// italic accent words their character.
+const fraunces = Fraunces({
   subsets: ['latin'],
   display: 'swap',
-  variable: '--font-jetbrains',
+  style: ['normal', 'italic'],
+  axes: ['SOFT', 'WONK', 'opsz'],
+  variable: '--font-fraunces',
 });
-
-// Clash Display and Satoshi aren't on Google Fonts, so they still come from
-// Fontshare (display=swap). Move them to next/font/local once the woff2 files
-// are committed under app/fonts.
-const FONTSHARE_CSS =
-  'https://api.fontshare.com/v2/css?f[]=clash-display@400,500,600,700&f[]=satoshi@400,500,700&display=swap';
 
 export const metadata: Metadata = {
   metadataBase: new URL(SITE_URL),
@@ -46,28 +49,36 @@ export const metadata: Metadata = {
 export const viewport: Viewport = {
   width: 'device-width',
   initialScale: 1,
-  themeColor: '#07050F',
-  colorScheme: 'dark',
+  themeColor: [
+    { media: '(prefers-color-scheme: light)', color: BRAND_COLORS.paper },
+    { media: '(prefers-color-scheme: dark)', color: BRAND_COLORS.night },
+  ],
+  colorScheme: 'light dark',
 };
 
 export default function RootLayout({ children }: { children: React.ReactNode }) {
   return (
-    <html lang="en" className={jetbrainsMono.variable} suppressHydrationWarning>
+    <html
+      lang="en"
+      data-theme="light"
+      className={`${fraunces.variable} ${GeistSans.variable} ${GeistMono.variable}`}
+      suppressHydrationWarning
+    >
       <head>
-        <link rel="preconnect" href="https://api.fontshare.com" />
-        <link rel="preconnect" href="https://cdn.fontshare.com" crossOrigin="anonymous" />
-        <link rel="stylesheet" href={FONTSHARE_CSS} />
+        {/* Applies the saved theme before first paint (see lib/theme.ts). */}
+        <script dangerouslySetInnerHTML={{ __html: THEME_SCRIPT }} />
       </head>
       <body>
         <a href="#main" className="skip-link">Skip to main content</a>
         <MotionProvider>
           <LenisProvider>
             <ReadingModeProvider>
-              <CustomCursor />
               {children}
             </ReadingModeProvider>
           </LenisProvider>
         </MotionProvider>
+        {/* The shared WebGL stage behind every page (loads at idle, tier 1+ only). */}
+        <StageLoader />
         {/* Vercel Web Analytics + Speed Insights (Vercel deployments only). */}
         <Analytics />
       </body>

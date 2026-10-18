@@ -1,11 +1,13 @@
 'use client';
 
-import { m } from 'framer-motion';
+import { m, useReducedMotion } from 'motion/react';
 import type { ComponentPropsWithRef, ReactNode } from 'react';
+import Spotlight from '@/components/ui/Spotlight';
+import { EASE_CIVIC } from '@/components/providers/MotionProvider';
 import { cn } from '@/lib/utils';
 
-// Plain div props. Drag/animation event handlers are left out because Framer
-// Motion uses the same names with different signatures.
+// Plain div props. Drag/animation event handlers are left out because Motion
+// uses the same names with different signatures.
 type DivProps = Omit<
   ComponentPropsWithRef<'div'>,
   'children' | 'onDrag' | 'onDragStart' | 'onDragEnd' | 'onAnimationStart' | 'onAnimationEnd' | 'onAnimationIteration'
@@ -14,9 +16,9 @@ type DivProps = Omit<
 export interface GlassCardProps extends DivProps {
   children: ReactNode;
   className?: string;
-  /** Hover lift and highlight. Only for cards that are clickable. */
+  /** Hover lift, violet rim and a cursor spotlight. Only for cards that are clickable. */
   hover?: boolean;
-  /** Stronger violet shadow on hover (needs `hover`). */
+  /** Stronger violet glow on hover (needs `hover`). */
   glow?: boolean;
   /** Entrance delay in seconds. */
   delay?: number;
@@ -24,6 +26,12 @@ export interface GlassCardProps extends DivProps {
   animate?: boolean;
 }
 
+/**
+ * The original card API, kept so existing pages don't change. It now draws a
+ * solid paper pane (the same look as <Surface variant="paper">): cards hold
+ * numbers and charts, which never sit behind glass. New code should use
+ * Surface. Callers set the radius and padding with classes (rounded-2xl p-6).
+ */
 export default function GlassCard({
   children,
   className,
@@ -33,17 +41,32 @@ export default function GlassCard({
   animate = true,
   ...props
 }: GlassCardProps) {
+  const reduceMotion = useReducedMotion();
+
   const classes = cn(
-    'glass relative overflow-hidden',
-    hover && 'glass-interactive',
-    hover && glow && 'hover:shadow-[0_20px_60px_rgba(123,97,255,0.35)]',
+    'relative overflow-hidden rounded-2xl',
+    'bg-surface border border-fg/8 shadow-pane',
+    hover && [
+      'isolate transition-[border-color,box-shadow,background-color,translate] duration-300 ease-civic',
+      'focus-within:border-primary/40',
+      '[@media(hover:hover)]:hover:border-primary/30 [@media(hover:hover)]:hover:shadow-lift',
+      'motion-safe:[@media(hover:hover)]:hover:[translate:0_-2px]',
+    ],
+    hover && glow && '[@media(hover:hover)]:hover:shadow-glow',
     className
+  );
+
+  const content = (
+    <>
+      {hover && <Spotlight />}
+      {children}
+    </>
   );
 
   if (!animate) {
     return (
       <div {...props} className={classes}>
-        {children}
+        {content}
       </div>
     );
   }
@@ -54,10 +77,11 @@ export default function GlassCard({
       initial={{ opacity: 0, y: 20 }}
       whileInView={{ opacity: 1, y: 0 }}
       viewport={{ once: true, margin: '-50px' }}
-      transition={{ duration: 0.5, delay, ease: [0.25, 0.46, 0.45, 0.94] }}
+      // Reduced motion: no slide (MotionConfig skips transforms) and no slow fade either.
+      transition={reduceMotion ? { duration: 0 } : { duration: 0.6, delay, ease: EASE_CIVIC }}
       className={classes}
     >
-      {children}
+      {content}
     </m.div>
   );
 }

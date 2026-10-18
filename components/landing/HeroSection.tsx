@@ -33,12 +33,16 @@ export default function HeroSection({ stateBills }: HeroSectionProps) {
             {/* Pre-headline badge */}
             <div className="inline-flex items-center gap-2 glass border-primary/20 rounded-full px-4 py-2 mb-8">
               <span className="w-2 h-2 rounded-full bg-primary animate-pulse" aria-hidden="true" />
-              <span className="text-xs text-text-muted font-mono-data">AI Policy Guide · Educational, non-partisan</span>
+              {/* One line on a phone too: the short form there, never a hyphen break. */}
+              <span className="whitespace-nowrap text-xs text-text-muted font-mono-data [hyphens:none]">
+                AI Policy Guide · <span className="sm:hidden">Non-partisan</span>
+                <span className="hidden sm:inline">Educational, non-partisan</span>
+              </span>
             </div>
 
-            {/* Headline */}
-            <h1 id="hero-heading" className="font-display text-5xl sm:text-6xl lg:text-7xl font-bold leading-[1.05] mb-6 text-text-primary">
-              Your money. Real bills. <span className="gradient-text">Crystal clear.</span>
+            {/* Headline: the accent words in italic violet, as in every headline. */}
+            <h1 id="hero-heading" className="font-display text-5xl sm:text-6xl lg:text-7xl font-medium leading-[1.05] mb-6 text-text-primary">
+              Your money. Real bills. <em>Crystal clear.</em>
             </h1>
 
             {/* Subheadline */}

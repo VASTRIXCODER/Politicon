@@ -64,13 +64,13 @@ export default function FeedbackControls({
         <>
           <div className="flex items-center gap-1">
             <span className="mr-1">Was this helpful?</span>
-            <button type="button" onClick={() => send('up')} disabled={pending} aria-label="Helpful" className="p-1.5 rounded-lg hover:bg-white/5 hover:text-emerald-400 transition-colors disabled:opacity-50">
+            <button type="button" onClick={() => send('up')} disabled={pending} aria-label="Helpful" className="p-1.5 rounded-lg hover:bg-fg/5 hover:text-gain transition-colors disabled:opacity-50">
               <ThumbsUp className="w-3.5 h-3.5" aria-hidden />
             </button>
-            <button type="button" onClick={() => send('down')} disabled={pending} aria-label="Not helpful" className="p-1.5 rounded-lg hover:bg-white/5 hover:text-red-300 transition-colors disabled:opacity-50">
+            <button type="button" onClick={() => send('down')} disabled={pending} aria-label="Not helpful" className="p-1.5 rounded-lg hover:bg-fg/5 hover:text-danger transition-colors disabled:opacity-50">
               <ThumbsDown className="w-3.5 h-3.5" aria-hidden />
             </button>
-            <button type="button" onClick={() => setReporting(v => !v)} disabled={pending} aria-expanded={reporting} aria-label="Report a problem" className="p-1.5 rounded-lg hover:bg-white/5 hover:text-amber-300 transition-colors disabled:opacity-50">
+            <button type="button" onClick={() => setReporting(v => !v)} disabled={pending} aria-expanded={reporting} aria-label="Report a problem" className="p-1.5 rounded-lg hover:bg-fg/5 hover:text-caution transition-colors disabled:opacity-50">
               <Flag className="w-3.5 h-3.5" aria-hidden />
             </button>
           </div>
@@ -88,7 +88,7 @@ export default function FeedbackControls({
                 placeholder="What's wrong? (e.g. outdated, inaccurate, biased)"
                 className="input-glass flex-1 px-3 py-2 text-base sm:text-xs rounded-lg"
               />
-              <button type="submit" disabled={pending} className="px-3 py-2 rounded-lg bg-white/5 border border-white/10 text-text-primary hover:bg-white/10 disabled:opacity-50">
+              <button type="submit" disabled={pending} className="px-3 py-2 rounded-lg bg-fg/5 border border-fg/10 text-text-primary hover:bg-fg/10 disabled:opacity-50">
                 {pending ? 'Sending…' : 'Send report'}
               </button>
             </form>
@@ -110,7 +110,7 @@ export default function FeedbackControls({
           </>
         )}
       </div>
-      {error && <p role="alert" className="mt-1 text-red-300">{error}</p>}
+      {error && <p role="alert" className="mt-1 text-danger">{error}</p>}
     </div>
   );
 }

@@ -1,6 +1,15 @@
-<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 32 32" width="32" height="32">
-  <rect width="32" height="32" rx="8" fill="#6A4FF0"/>
-  <g transform="translate(5 5) scale(0.9167)">
-    <path d="M4 14a1 1 0 0 1-.78-1.63l9.9-10.2a.5.5 0 0 1 .86.46l-1.92 6.02A1 1 0 0 0 13 10h7a1 1 0 0 1 .78 1.63l-9.9 10.2a.5.5 0 0 1-.86-.46l1.92-6.02A1 1 0 0 0 11 14z" fill="#F0EEF8" stroke="#F0EEF8" stroke-width="1.5" stroke-linejoin="round"/>
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64" width="32" height="32">
+  <!-- Politicon "Aperture Dome", the small drawing (MARK_PATHS_SMALL in lib/brand/mark.ts), in porcelain on a violet tile. -->
+  <defs>
+    <linearGradient id="tile" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#8F75FF"/>
+      <stop offset=".5" stop-color="#6D4AFF"/>
+      <stop offset="1" stop-color="#5434E0"/>
+    </linearGradient>
+  </defs>
+  <rect width="64" height="64" rx="14" fill="url(#tile)"/>
+  <g transform="translate(32 32) scale(.9) translate(-32 -32.45)" fill="#FBFAF7">
+    <path fill-rule="evenodd" d="M13 38.5A19 23 0 0 1 29 15.79V10.4A3 3 0 0 1 35 10.4V15.79A19 23 0 0 1 51 38.5ZM32 20.4L26.28 23.7V30.3L32 33.6L37.72 30.3V23.7Z"/>
+    <path d="M19 42H25V50.5H19ZM29 42H35V50.5H29ZM39 42H45V50.5H39ZM9 53.5H55V57.5H9Z"/>
   </g>
 </svg>

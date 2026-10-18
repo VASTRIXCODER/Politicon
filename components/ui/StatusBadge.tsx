@@ -21,12 +21,14 @@ export default function StatusBadge({ status, size = 'sm', className }: StatusBa
   return (
     <span
       className={cn(
-        'inline-flex items-center rounded-full border font-mono-data font-medium tracking-wide',
+        'inline-flex items-center gap-1.5 whitespace-nowrap rounded-full border font-mono-data font-medium tracking-wide',
         sizes[size],
         getStatusColor(status),
         className
       )}
     >
+      {/* A record lamp in the status colour. */}
+      <span aria-hidden="true" className="h-1.5 w-1.5 flex-shrink-0 rounded-full bg-current opacity-80" />
       <span className="sr-only">Status: </span>
       {label}
     </span>

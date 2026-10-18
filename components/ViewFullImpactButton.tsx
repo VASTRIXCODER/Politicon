@@ -119,7 +119,7 @@ export default function ViewFullImpactButton({
         {loading ? (variant === 'chat' ? 'Preparing analysis...' : 'Loading...') : label}
         <span className="sr-only">: {policyTitle}</span>
       </Button>
-      {error && <span role="alert" className="text-meta text-red-300">{error}</span>}
+      {error && <span role="alert" className="text-meta text-danger">{error}</span>}
     </span>
   );
 }

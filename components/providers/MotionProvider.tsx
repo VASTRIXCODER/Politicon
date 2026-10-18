@@ -1,9 +1,15 @@
 'use client';
 
-import { LazyMotion, MotionConfig, domAnimation } from 'framer-motion';
+import { LazyMotion, MotionConfig, domAnimation } from 'motion/react';
 
 /**
- * App-wide Framer Motion setup.
+ * The product's one easing curve, cubic-bezier(.2,.7,.2,1), for Motion
+ * transitions. CSS uses the same curve as `ease-civic` / var(--ease-civic).
+ */
+export const EASE_CIVIC = [0.2, 0.7, 0.2, 1] as const;
+
+/**
+ * App-wide Motion setup.
  * - reducedMotion="user": when the OS asks for reduced motion, transform and
  *   layout animations jump to their end state (opacity/colour still fade).
  * - LazyMotion + domAnimation: lets components use the lightweight `m.*`

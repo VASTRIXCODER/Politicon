@@ -35,11 +35,11 @@ export default function ExplorerPage() {
           {/* Header */}
           <div className="mb-10">
             <div className="flex items-center gap-2 mb-4">
-              <Badge variant="gold">No login required</Badge>
+              <Badge variant="primary">No login required</Badge>
               <Badge variant="default">Illustrative examples</Badge>
             </div>
-            <h1 className="font-display text-4xl sm:text-5xl font-bold text-text-primary mb-4">
-              Public Impact Explorer
+            <h1 className="font-display text-4xl sm:text-5xl font-medium text-text-primary mb-4">
+              Public Impact <em>Explorer</em>
             </h1>
             <p className="text-text-muted text-lg max-w-2xl mb-6">
               The same policy can help one household and cost another. Explore how {EXAMPLE_COUNT_LABEL} could add up
@@ -53,7 +53,7 @@ export default function ExplorerPage() {
 
           {/* The policies behind the chart */}
           <section aria-labelledby="example-policies-heading" className="mb-12">
-            <h2 id="example-policies-heading" className="font-display text-2xl font-bold text-text-primary mb-2">
+            <h2 id="example-policies-heading" className="font-display text-2xl font-semibold text-text-primary mb-2">
               The {EXAMPLE_POLICIES.length} example policies behind the chart
             </h2>
             <p className="text-sm text-text-muted mb-6">

@@ -1,7 +1,7 @@
 'use client';
 
 import { useState, useEffect, useId, useRef } from 'react';
-import { m, AnimatePresence } from 'framer-motion';
+import { m, AnimatePresence } from 'motion/react';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import { Eye, EyeOff, ArrowLeft, Mail } from 'lucide-react';
@@ -201,11 +201,11 @@ export default function SignUpPage() {
           animate={{ opacity: 1, y: 0 }}
           className="relative z-10 w-full max-w-md text-center"
         >
-          <div className="glass border-white/10 rounded-3xl p-6 sm:p-10">
+          <div className="glass border-fg/10 rounded-3xl p-6 sm:p-10">
             <div aria-hidden="true" className="w-16 h-16 rounded-2xl bg-primary/20 border border-primary/30 flex items-center justify-center mx-auto mb-6">
               <Mail className="w-8 h-8 text-primary" />
             </div>
-            <h1 ref={confirmHeadingRef} tabIndex={-1} className="font-display text-2xl font-bold text-text-primary mb-3 outline-none">Check your inbox</h1>
+            <h1 ref={confirmHeadingRef} tabIndex={-1} className="font-display text-2xl font-medium text-text-primary mb-3 outline-none">Check your inbox</h1>
             <p className="text-text-muted text-sm leading-relaxed mb-2">
               We sent a confirmation link to
             </p>
@@ -258,7 +258,7 @@ export default function SignUpPage() {
 
           <Logo size="lg" href={null} className="mb-8 flex" />
 
-          <h1 className="font-display text-3xl font-bold text-text-primary mb-2">Get your impact report</h1>
+          <h1 className="font-display text-3xl font-medium text-text-primary mb-2">Get your <em>impact report</em></h1>
           <p className="text-text-muted text-sm mb-8">Free. No credit card. Setup takes about two minutes.</p>
 
           <form onSubmit={handleSignUp} className="space-y-4">
@@ -337,7 +337,7 @@ export default function SignUpPage() {
                 {BIRTH_YEARS.map(y => <option key={y} value={y}>{y}</option>)}
               </select>
               {tooYoung && (
-                <p id={ids.ageError} role="alert" className="text-xs text-red-300 mt-2">Politicon is for adults {MIN_AGE} and older. If you turn {MIN_AGE} this year, please come back after your birthday next year.</p>
+                <p id={ids.ageError} role="alert" className="text-xs text-danger mt-2">Politicon is for adults {MIN_AGE} and older. If you turn {MIN_AGE} this year, please come back after your birthday next year.</p>
               )}
             </div>
 
@@ -346,7 +346,7 @@ export default function SignUpPage() {
                 type="checkbox"
                 checked={consent}
                 onChange={e => setConsent(e.target.checked)}
-                className="mt-0.5 h-4 w-4 flex-shrink-0 accent-[#7B61FF]"
+                className="mt-0.5 h-4 w-4 flex-shrink-0 accent-primary"
                 required
               />
               <span>
@@ -365,9 +365,9 @@ export default function SignUpPage() {
                   initial={{ opacity: 0, y: -8 }}
                   animate={{ opacity: 1, y: 0 }}
                   exit={{ opacity: 0 }}
-                  className="bg-red-500/10 border border-red-500/20 rounded-xl px-4 py-3"
+                  className="bg-danger/10 border border-danger/20 rounded-xl px-4 py-3"
                 >
-                  <p className="text-sm text-red-400">{error}</p>
+                  <p className="text-sm text-danger">{error}</p>
                 </m.div>
               )}
             </AnimatePresence>

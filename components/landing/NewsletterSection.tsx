@@ -1,7 +1,7 @@
 'use client';
 
 import { useState } from 'react';
-import { m, AnimatePresence } from 'framer-motion';
+import { m, AnimatePresence } from 'motion/react';
 import { Mail, CheckCircle, ArrowRight } from 'lucide-react';
 import Button from '@/components/ui/Button';
 import { apiFetch, type ApiResult } from '@/lib/api';
@@ -63,8 +63,8 @@ export default function NewsletterSection() {
             <Mail className="w-6 h-6 text-primary" />
           </div>
 
-          <h2 id="newsletter-heading" className="font-display text-4xl font-bold text-text-primary mb-4">
-            Hear when there&apos;s something new
+          <h2 id="newsletter-heading" className="font-display text-4xl font-medium text-text-primary mb-4">
+            Hear when there&apos;s <em>something new</em>
           </h2>
           <p className="text-text-muted text-lg mb-10">
             Leave your email and we&apos;ll let you know when Politicon adds something worth your time. There&apos;s no weekly digest or policy alert email yet.
@@ -121,7 +121,7 @@ export default function NewsletterSection() {
             )}
           </AnimatePresence>
 
-          <p id="newsletter-error" role="alert" className="text-negative text-sm [&:not(:empty)]:mt-3">
+          <p id="newsletter-error" role="alert" className="text-danger text-sm [&:not(:empty)]:mt-3">
             {showError ? failure.message : ''}
           </p>
 

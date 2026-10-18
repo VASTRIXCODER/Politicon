@@ -23,7 +23,7 @@ export default function DisclaimerPage() {
       </Section>
 
       <Section title="Non-partisan">
-        <p>Politicon doesn&apos;t endorse candidates, parties or ballot positions, and it won&apos;t tell you how to vote. For official election information, visit <a className="text-primary hover:underline" href="https://vote.gov" target="_blank" rel="noreferrer">vote.gov</a>.</p>
+        <p>Politicon doesn&apos;t endorse candidates, parties or ballot positions, and it won&apos;t tell you how to vote. For official election information, visit <a className="text-primary-300 underline-offset-2 hover:underline" href="https://vote.gov" target="_blank" rel="noreferrer">vote.gov</a>.</p>
       </Section>
 
       <Section title="If you need help now">

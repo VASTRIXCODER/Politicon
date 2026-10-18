@@ -21,8 +21,9 @@ const exampleCards = [
   household: `${bracket.label} household`,
   direction: annual < 0 ? ('negative' as const) : ('positive' as const),
   category: categoryLabel(policy.category),
-  gradient: annual < 0 ? 'from-red-500/20 to-red-500/5' : 'from-emerald-500/20 to-emerald-500/5',
-  borderColor: annual < 0 ? 'border-red-500/15' : 'border-emerald-500/20',
+  // Fill tones (lighter than the text tones), so the tint reads as light on paper.
+  gradient: annual < 0 ? 'from-loss-fill/20 to-loss-fill/5' : 'from-gain-fill/20 to-gain-fill/5',
+  borderColor: annual < 0 ? 'border-loss/15' : 'border-gain/20',
   tilt,
 }));
 
@@ -32,9 +33,9 @@ export default function ShareableCards() {
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
         <Reveal className="text-center mb-16">
           <Badge variant="secondary" size="md" className="mb-4 uppercase tracking-widest">Coming soon</Badge>
-          <h2 id="share-heading" className="font-display text-4xl sm:text-5xl font-bold text-text-primary mb-4">
-            Your impact,
-            <span className="gradient-text"> as a card you can share</span>
+          <h2 id="share-heading" className="font-display text-4xl sm:text-5xl font-medium text-text-primary mb-4">
+            Your impact,{' '}
+            <em>as a card you can share</em>
           </h2>
           <p className="text-text-muted text-lg max-w-xl mx-auto">
             We&apos;re working on turning an analysis into a branded card you can save or share. It isn&apos;t available yet;
@@ -69,7 +70,7 @@ export default function ShareableCards() {
                   </div>
                   <p className="text-meta text-text-muted">{card.household}</p>
 
-                  <p className="mt-5 pt-4 border-t border-white/6 text-meta font-mono-data text-text-muted uppercase tracking-wide">
+                  <p className="mt-5 pt-4 border-t border-fg/6 text-meta font-mono-data text-text-muted uppercase tracking-wide">
                     Example · illustrative figures
                   </p>
                 </div>

@@ -173,7 +173,7 @@ export default function PoliciesPage() {
         <Navbar />
         <main id="main" tabIndex={-1} className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 pt-28 pb-20">
           <header className="mb-8">
-            <h1 ref={headingRef} tabIndex={-1} className="font-display text-3xl font-bold text-text-primary mb-2 outline-none">Your policies</h1>
+            <h1 ref={headingRef} tabIndex={-1} className="font-display text-3xl font-medium text-text-primary mb-2 outline-none">Your <em>policies</em></h1>
             <p className="text-text-muted max-w-2xl">
               Bills and laws from official records that are most relevant to your profile. Analyze one to see what it could mean for your
               finances. To get newer policies, refresh your feed on the <Link href="/dashboard" className="text-primary-300 hover:underline underline-offset-2">dashboard</Link>.
@@ -225,7 +225,7 @@ export default function PoliciesPage() {
                     aria-pressed={category === cat}
                     onClick={() => setCategory(cat)}
                     className={`flex-shrink-0 inline-flex items-center gap-1.5 px-4 py-2 rounded-full text-xs font-medium border transition-all ${
-                      category === cat ? 'bg-primary/20 border-primary/40 text-primary-300' : 'bg-white/4 border-white/8 text-text-muted hover:text-text-primary hover:border-white/16'
+                      category === cat ? 'bg-primary/20 border-primary/40 text-primary-300' : 'bg-fg/4 border-fg/8 text-text-muted hover:text-text-primary hover:border-fg/16'
                     }`}
                   >
                     {Icon && <Icon className="w-3.5 h-3.5" aria-hidden />}

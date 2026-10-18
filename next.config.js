@@ -19,9 +19,9 @@ const csp = [
   // Vercel Web Analytics and Speed Insights (components/Analytics.tsx) load from
   // /_vercel/* and send their beacons there, so 'self' covers them here and in connect-src.
   `script-src 'self' 'unsafe-inline' https://vercel.live${isDev ? " 'unsafe-eval'" : ''}`,
-  // Fontshare serves Clash Display and Satoshi; JetBrains Mono is self-hosted by next/font.
-  "style-src 'self' 'unsafe-inline' https://api.fontshare.com",
-  "font-src 'self' data: https://api.fontshare.com https://cdn.fontshare.com",
+  // Every font is self-hosted by next/font, so nothing third-party is allowed here.
+  "style-src 'self' 'unsafe-inline'",
+  "font-src 'self' data:",
   "img-src 'self' data: blob:",
   `connect-src 'self' ${supabaseOrigin} ${supabaseWs} https://vercel.live`,
   'frame-src https://vercel.live',
@@ -61,7 +61,7 @@ const nextConfig = {
     ],
   },
   experimental: {
-    optimizePackageImports: ['lucide-react', 'framer-motion'],
+    optimizePackageImports: ['lucide-react', 'motion'],
   },
   async headers() {
     return [{ source: '/:path*', headers: securityHeaders }];

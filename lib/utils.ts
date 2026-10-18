@@ -2,12 +2,19 @@ import { type ClassValue, clsx } from 'clsx';
 import { extendTailwindMerge } from 'tailwind-merge';
 import type { Policy } from '@/types';
 
-// Teach tailwind-merge the custom theme tokens so `text-meta` is treated as a
-// font size (and not dropped as a conflicting text colour).
+// Teach tailwind-merge the custom theme scales (tailwind.config.ts), so a
+// caller's class replaces the component default instead of both staying on
+// the element: `text-meta`/`text-display-*` are font sizes (not text colours),
+// `rounded-pane`/`rounded-tile` radii, `shadow-pane|lift|glow` shadows (not
+// shadow colours), and the named z-index layers.
 const twMerge = extendTailwindMerge({
   extend: {
     classGroups: {
-      'font-size': [{ text: ['meta'] }],
+      'font-size': [{ text: ['meta', 'display-sm', 'display-md', 'display-lg'] }],
+      rounded: [{ rounded: ['pane', 'tile'] }],
+      shadow: [{ shadow: ['pane', 'lift', 'glow'] }],
+      z: [{ z: ['stage', 'content', 'nav', 'overlay', 'modal', 'toast', 'skip'] }],
+      ease: [{ ease: ['civic'] }],
     },
   },
 });
@@ -44,18 +51,20 @@ export type PolicyStatus = Policy['status'];
 
 /**
  * The one colour map for policy status, shared by StatusBadge and
- * getStatusColor: gold proposed, cyan passed, emerald enacted, red for
- * repealed and rejected. Each entry is text + tint + border classes.
+ * getStatusColor. Status is a fact about the record, not good or bad news,
+ * so it never uses the gain/loss colours: violet proposed, orchid passed,
+ * archive gold enacted (it's the law), and a neutral grey for repealed and
+ * rejected. Each entry is text + tint + border classes.
  */
 export const STATUS_STYLES: Record<PolicyStatus, string> = {
-  proposed: 'text-gold bg-gold/10 border-gold/20',
-  passed: 'text-secondary bg-secondary/10 border-secondary/20',
-  enacted: 'text-emerald-400 bg-emerald-400/10 border-emerald-400/20',
-  repealed: 'text-red-400 bg-red-400/10 border-red-400/20',
-  rejected: 'text-red-400 bg-red-400/10 border-red-400/20',
+  proposed: 'text-primary-300 bg-primary/10 border-primary/20',
+  passed: 'text-accent bg-accent/10 border-accent/20',
+  enacted: 'text-gold bg-gold/10 border-gold/25',
+  repealed: 'text-text-muted bg-fg/5 border-fg/15',
+  rejected: 'text-text-muted bg-fg/5 border-fg/15',
 };
 
-const STATUS_FALLBACK = 'text-text-muted bg-white/5 border-white/10';
+const STATUS_FALLBACK = 'text-text-muted bg-fg/5 border-fg/10';
 
 export function isPolicyStatus(status: unknown): status is PolicyStatus {
   return typeof status === 'string' && Object.prototype.hasOwnProperty.call(STATUS_STYLES, status);

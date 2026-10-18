@@ -71,7 +71,7 @@ export default function ForgotPasswordPage() {
             password. It expires in about an hour.
           </p>
           <p className="text-xs text-text-muted">Don&apos;t see it? Check your spam folder.</p>
-          {error && <p role="alert" className="text-sm text-red-400">{error}</p>}
+          {error && <p role="alert" className="text-sm text-danger">{error}</p>}
           <button
             type="button"
             onClick={() => send()}
@@ -101,8 +101,8 @@ export default function ForgotPasswordPage() {
               />
             </div>
             {error && (
-              <div id={errorId} role="alert" className="bg-red-500/10 border border-red-500/20 rounded-xl px-4 py-3">
-                <p className="text-sm text-red-400">{error}</p>
+              <div id={errorId} role="alert" className="bg-danger/10 border border-danger/20 rounded-xl px-4 py-3">
+                <p className="text-sm text-danger">{error}</p>
               </div>
             )}
             <Button type="submit" variant="primary" fullWidth size="lg" disabled={sending}>

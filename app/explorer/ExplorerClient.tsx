@@ -10,7 +10,7 @@ import { CATEGORIES, type CategoryKey } from '@/lib/explorerData';
 
 const PILL = 'flex-shrink-0 px-4 py-2 rounded-full text-xs font-medium border transition-all';
 const PILL_ON = 'bg-primary/20 border-primary/40 text-primary-300';
-const PILL_OFF = 'bg-white/4 border-white/8 text-text-muted hover:text-text-primary';
+const PILL_OFF = 'bg-fg/4 border-fg/8 text-text-muted hover:text-text-primary';
 
 /** The category filter and bracket chart: the interactive part of /explorer. */
 export default function ExplorerClient() {
@@ -89,8 +89,8 @@ export function ExplorerCta({ stateBills = false }: { stateBills?: boolean }) {
     return (
       <>
         <p className="text-xs font-mono-data text-primary-300 uppercase tracking-widest mb-4">Your estimates</p>
-        <h2 className="font-display text-3xl font-bold text-text-primary mb-4">
-          See <span className="gradient-text">real bills</span> for your situation
+        <h2 className="font-display text-3xl font-medium text-text-primary mb-4">
+          See <em>real bills</em> for your situation
         </h2>
         <p className="text-text-muted mb-8 max-w-lg mx-auto">
           Your dashboard lists official bills matched to your profile. Analyze any of them for an estimated dollar
@@ -111,8 +111,8 @@ export function ExplorerCta({ stateBills = false }: { stateBills?: boolean }) {
   return (
     <>
       <p className="text-xs font-mono-data text-primary-300 uppercase tracking-widest mb-4">Go deeper</p>
-      <h2 className="font-display text-3xl font-bold text-text-primary mb-4">
-        See estimates for <span className="gradient-text">your situation</span>
+      <h2 className="font-display text-3xl font-medium text-text-primary mb-4">
+        See estimates for <em>your situation</em>
       </h2>
       <p className="text-text-muted mb-8 max-w-lg mx-auto">
         These are made-up examples. Create a free account, tell us about your household, and get AI estimates of how
