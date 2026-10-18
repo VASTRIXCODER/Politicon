@@ -107,5 +107,5 @@ export function formatAxisUSD(n: number): string {
 /** Tailwind text colour for a signed amount. */
 export function impactTone(n: number): string {
   const s = impactSign(n);
-  return s === 'gain' ? 'text-emerald-400' : s === 'loss' ? 'text-red-400' : 'text-text-muted';
+  return s === 'gain' ? 'text-gain' : s === 'loss' ? 'text-loss' : 'text-text-muted';
 }

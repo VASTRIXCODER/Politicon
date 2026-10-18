@@ -1,7 +1,7 @@
 'use client';
 
 import { useState, useEffect, useCallback, useRef, useId } from 'react';
-import { m, AnimatePresence } from 'framer-motion';
+import { m, AnimatePresence } from 'motion/react';
 import { useRouter } from 'next/navigation';
 import Link from 'next/link';
 import {
@@ -89,7 +89,7 @@ function SelectField({ id, value, onChange, options, disabled, placeholder = '�
       value={value}
       onChange={e => onChange(e.target.value)}
       disabled={disabled}
-      className="input-glass w-full px-4 py-3 text-sm rounded-xl bg-surface/60 border border-white/10 text-text-primary disabled:opacity-50 disabled:cursor-not-allowed"
+      className="input-glass w-full px-4 py-3 text-sm rounded-xl bg-surface/60 border border-fg/10 text-text-primary disabled:opacity-50 disabled:cursor-not-allowed"
     >
       <option value="">{placeholder}</option>
       {options.map(o => <option key={o.value} value={o.value}>{o.label}</option>)}
@@ -126,7 +126,7 @@ function MultiChip({ labelledBy, options, selected, onChange, max }: {
             className={`px-3 py-1.5 rounded-full text-xs font-medium border transition-all disabled:opacity-40 disabled:cursor-not-allowed ${
               active
                 ? 'bg-primary/20 border-primary/50 text-primary-300'
-                : 'border-white/10 text-text-muted hover:border-white/20 hover:text-text-primary'
+                : 'border-fg/10 text-text-muted hover:border-fg/20 hover:text-text-primary'
             }`}
           >
             {active && <Check className="inline w-3 h-3 mr-1" aria-hidden="true" />}
@@ -427,7 +427,7 @@ export default function SettingsPage() {
           <Link
             href="/dashboard"
             aria-label="Back to dashboard"
-            className="w-9 h-9 rounded-xl glass border-white/10 flex items-center justify-center text-text-muted hover:text-text-primary transition-colors"
+            className="w-9 h-9 rounded-xl glass border-fg/10 flex items-center justify-center text-text-muted hover:text-text-primary transition-colors"
           >
             <ArrowLeft className="w-4 h-4" aria-hidden="true" />
           </Link>
@@ -443,7 +443,7 @@ export default function SettingsPage() {
           {/* Sidebar */}
           <div className="lg:w-56 flex-shrink-0">
             {/* Avatar card */}
-            <div className="glass border-white/10 rounded-2xl p-5 mb-4 flex flex-col items-center text-center">
+            <div className="glass border-fg/10 rounded-2xl p-5 mb-4 flex flex-col items-center text-center">
               <div aria-hidden="true" className="w-16 h-16 rounded-2xl bg-gradient-to-br from-primary/30 to-secondary/20 border border-primary/30 flex items-center justify-center mb-3">
                 <span className="font-display font-bold text-xl text-primary-300">{initials}</span>
               </div>
@@ -460,7 +460,7 @@ export default function SettingsPage() {
                     key={tab.id}
                     value={tab.id}
                     icon={<Icon className="w-4 h-4" />}
-                    className="gap-3 py-3 border border-transparent hover:bg-white/5 aria-selected:border-primary/30 aria-selected:hover:bg-primary/15 lg:w-full group"
+                    className="gap-3 py-3 border border-transparent hover:bg-fg/5 aria-selected:border-primary/30 aria-selected:hover:bg-primary/15 lg:w-full group"
                   >
                     <span>{tab.label}</span>
                     <ChevronRight aria-hidden="true" className="w-3.5 h-3.5 ml-auto hidden lg:group-aria-selected:block" />
@@ -537,9 +537,9 @@ export default function SettingsPage() {
             {/* ── FINANCIAL PROFILE TAB ── */}
             <TabPanel value="financial">
               <m.div {...panelMotion} className="space-y-4">
-                <div className="glass border-amber-500/20 bg-amber-500/5 rounded-2xl px-5 py-4 flex gap-3">
-                  <AlertTriangle className="w-4 h-4 text-amber-400 flex-shrink-0 mt-0.5" aria-hidden="true" />
-                  <p className="text-sm text-amber-300/80">Changes here directly affect how the AI calculates your policy impact. Keep this accurate for best results.</p>
+                <div className="glass border-caution/20 bg-caution/5 rounded-2xl px-5 py-4 flex gap-3">
+                  <AlertTriangle className="w-4 h-4 text-caution flex-shrink-0 mt-0.5" aria-hidden="true" />
+                  <p className="text-sm text-caution/80">Changes here directly affect how the AI calculates your policy impact. Keep this accurate for best results.</p>
                 </div>
 
                 <SectionCard title="Location" subtitle="Used to factor in state taxes, cost of living and regional policies">
@@ -629,7 +629,7 @@ export default function SettingsPage() {
                         optionClassName={selected => `flex-1 py-2.5 px-4 rounded-xl text-sm border text-center ${
                           selected
                             ? 'bg-primary/15 border-primary/40 text-primary-300'
-                            : 'border-white/10 text-text-muted hover:border-white/20'
+                            : 'border-fg/10 text-text-muted hover:border-fg/20'
                         }`}
                         renderOption={(o, selected) => (
                           <>
@@ -678,7 +678,7 @@ export default function SettingsPage() {
                     onChange={v => { if (v) setReadingMode(v); }}
                     className="grid grid-cols-1 sm:grid-cols-2 gap-3"
                     optionClassName={selected => `relative p-5 rounded-2xl border ${
-                      selected ? 'bg-primary/10 border-primary/40' : 'border-white/10 hover:border-white/20 hover:bg-white/3'
+                      selected ? 'bg-primary/10 border-primary/40' : 'border-fg/10 hover:border-fg/20 hover:bg-fg/3'
                     }`}
                     renderOption={(o, selected) => {
                       const opt = READING_MODES.find(r => r.value === o.value)!;
@@ -699,7 +699,7 @@ export default function SettingsPage() {
                     }}
                   />
                   <div className="mt-4 flex items-center gap-2 text-xs text-text-muted">
-                    <Check className="w-3.5 h-3.5 text-emerald-400" aria-hidden="true" />
+                    <Check className="w-3.5 h-3.5 text-gain" aria-hidden="true" />
                     Reading mode is saved automatically and synced across devices
                   </div>
                 </SectionCard>
@@ -764,7 +764,7 @@ export default function SettingsPage() {
                         className="input-glass w-full px-4 py-3 text-sm rounded-xl"
                       />
                       {passwordMismatch && (
-                        <p id={ids.passwordMismatch} className="text-xs text-red-400 mt-1.5 flex items-center gap-1">
+                        <p id={ids.passwordMismatch} className="text-xs text-danger mt-1.5 flex items-center gap-1">
                           <AlertTriangle className="w-3 h-3" aria-hidden="true" /> Passwords do not match
                         </p>
                       )}
@@ -785,7 +785,7 @@ export default function SettingsPage() {
                     type="button"
                     onClick={signOutOthers}
                     disabled={signOutOthersLoading}
-                    className="flex items-center gap-2 px-5 py-2.5 rounded-xl bg-white/5 border border-white/10 text-text-primary text-sm font-medium hover:bg-white/10 transition-all disabled:opacity-50"
+                    className="flex items-center gap-2 px-5 py-2.5 rounded-xl bg-fg/5 border border-fg/10 text-text-primary text-sm font-medium hover:bg-fg/10 transition-all disabled:opacity-50"
                   >
                     {signOutOthersLoading && <RefreshCw className="w-4 h-4 animate-spin" aria-hidden="true" />}
                     Sign out all other devices
@@ -797,7 +797,7 @@ export default function SettingsPage() {
                     <a
                       href="/api/account/export"
                       download
-                      className="inline-flex items-center justify-center gap-2 px-5 py-2.5 rounded-xl bg-white/5 border border-white/10 text-text-primary text-sm font-medium hover:bg-white/10 transition-all"
+                      className="inline-flex items-center justify-center gap-2 px-5 py-2.5 rounded-xl bg-fg/5 border border-fg/10 text-text-primary text-sm font-medium hover:bg-fg/10 transition-all"
                     >
                       Download my data (JSON)
                     </a>
@@ -806,23 +806,23 @@ export default function SettingsPage() {
                 </SectionCard>
 
                 {/* Danger Zone */}
-                <div className="glass border-red-500/20 rounded-2xl overflow-hidden">
+                <div className="glass border-danger/20 rounded-2xl overflow-hidden">
                   <h2>
                     <button
                       type="button"
                       onClick={() => setShowDeleteZone(v => !v)}
                       aria-expanded={showDeleteZone}
                       aria-controls={ids.deleteZone}
-                      className="w-full flex items-center justify-between px-6 py-4 hover:bg-red-500/5 transition-colors rounded-2xl"
+                      className="w-full flex items-center justify-between px-6 py-4 hover:bg-danger/5 transition-colors rounded-2xl"
                     >
                       <span className="flex items-center gap-3">
-                        <Trash2 className="w-4 h-4 text-red-400" aria-hidden="true" />
+                        <Trash2 className="w-4 h-4 text-danger" aria-hidden="true" />
                         <span className="text-left">
-                          <span className="block text-sm font-semibold text-red-400">Delete Account</span>
+                          <span className="block text-sm font-semibold text-danger">Delete Account</span>
                           <span className="block text-xs text-text-muted font-normal">Permanently delete your account and all data</span>
                         </span>
                       </span>
-                      <ChevronRight aria-hidden="true" className={`w-4 h-4 text-red-400/60 transition-transform ${showDeleteZone ? 'rotate-90' : ''}`} />
+                      <ChevronRight aria-hidden="true" className={`w-4 h-4 text-danger/60 transition-transform ${showDeleteZone ? 'rotate-90' : ''}`} />
                     </button>
                   </h2>
 
@@ -836,9 +836,9 @@ export default function SettingsPage() {
                         transition={{ duration: 0.2 }}
                         className="overflow-hidden"
                       >
-                        <div className="px-6 pb-6 space-y-4 border-t border-red-500/15 pt-4">
+                        <div className="px-6 pb-6 space-y-4 border-t border-danger/15 pt-4">
                           <p className="text-sm text-text-muted leading-relaxed">
-                            This will permanently delete your account, all analyzed policies, chat history and financial profile. <strong className="text-red-400">This cannot be undone.</strong>
+                            This will permanently delete your account, all analyzed policies, chat history and financial profile. <strong className="text-danger">This cannot be undone.</strong>
                           </p>
                           <div>
                             <FieldLabel htmlFor={ids.deleteConfirm}>Type DELETE to confirm</FieldLabel>
@@ -851,7 +851,7 @@ export default function SettingsPage() {
                               value={deleteConfirm}
                               onChange={e => setDeleteConfirm(e.target.value)}
                               placeholder="DELETE"
-                              className="input-glass w-full px-4 py-3 text-sm rounded-xl border border-red-500/20 focus:border-red-500/50"
+                              className="input-glass w-full px-4 py-3 text-sm rounded-xl border border-danger/20 focus:border-danger/50"
                             />
                           </div>
                           {hasPassword && <div>
@@ -863,14 +863,14 @@ export default function SettingsPage() {
                               value={deletePassword}
                               onChange={e => setDeletePassword(e.target.value)}
                               placeholder="Confirm with your password"
-                              className="input-glass w-full px-4 py-3 text-sm rounded-xl border border-red-500/20 focus:border-red-500/50"
+                              className="input-glass w-full px-4 py-3 text-sm rounded-xl border border-danger/20 focus:border-danger/50"
                             />
                           </div>}
                           <button
                             type="button"
                             onClick={deleteAccount}
                             disabled={deleteConfirm !== 'DELETE' || (hasPassword && !deletePassword) || deleteLoading}
-                            className="flex items-center gap-2 px-5 py-2.5 rounded-xl bg-red-500/15 border border-red-500/30 text-red-400 text-sm font-medium hover:bg-red-500/25 transition-all disabled:opacity-40 disabled:cursor-not-allowed"
+                            className="flex items-center gap-2 px-5 py-2.5 rounded-xl bg-danger/15 border border-danger/30 text-danger text-sm font-medium hover:bg-danger/25 transition-all disabled:opacity-40 disabled:cursor-not-allowed"
                           >
                             {deleteLoading ? <RefreshCw className="w-4 h-4 animate-spin" aria-hidden="true" /> : <Trash2 className="w-4 h-4" aria-hidden="true" />}
                             {deleteLoading ? 'Deleting…' : 'Permanently Delete My Account'}
@@ -895,7 +895,7 @@ export default function SettingsPage() {
 
 function SectionCard({ title, subtitle, children }: { title: string; subtitle: string; children: React.ReactNode }) {
   return (
-    <section className="glass border-white/10 rounded-2xl p-6">
+    <section className="glass border-fg/10 rounded-2xl p-6">
       <div className="mb-5">
         <h2 className="font-display font-semibold text-text-primary text-base">{title}</h2>
         <p className="text-xs text-text-muted mt-1">{subtitle}</p>
@@ -910,7 +910,7 @@ function InfoCard({ icon, title, description, action }: {
   action?: { label: string; onClick: () => void };
 }) {
   return (
-    <div className="glass border-white/8 rounded-2xl p-5 flex gap-4 items-start">
+    <div className="glass border-fg/8 rounded-2xl p-5 flex gap-4 items-start">
       <div aria-hidden="true" className="w-8 h-8 rounded-xl bg-primary/10 border border-primary/20 flex items-center justify-center flex-shrink-0">
         {icon}
       </div>
@@ -955,20 +955,20 @@ function PasswordStrength({ id, password }: { id: string; password: string }) {
     { label: 'Special character', pass: /[^A-Za-z0-9]/.test(password) },
   ];
   const score = checks.filter(c => c.pass).length;
-  const color = score <= 1 ? 'bg-red-500' : score === 2 ? 'bg-amber-500' : score === 3 ? 'bg-yellow-400' : 'bg-emerald-500';
+  const color = score <= 1 ? 'bg-danger' : score === 2 ? 'bg-caution' : score === 3 ? 'bg-caution' : 'bg-gain-fill';
   const label = score <= 1 ? 'Weak' : score === 2 ? 'Fair' : score === 3 ? 'Good' : 'Strong';
   return (
     <div id={id}>
       <div className="flex gap-1 mb-2" aria-hidden="true">
         {[1,2,3,4].map(i => (
-          <div key={i} className={`h-1 flex-1 rounded-full transition-colors ${i <= score ? color : 'bg-white/10'}`} />
+          <div key={i} className={`h-1 flex-1 rounded-full transition-colors ${i <= score ? color : 'bg-fg/10'}`} />
         ))}
       </div>
       <div className="flex flex-wrap items-center justify-between gap-2">
-        <p className="text-xs text-text-muted">Password strength: <span className={score >= 3 ? 'text-emerald-400' : 'text-amber-400'}>{label}</span></p>
+        <p className="text-xs text-text-muted">Password strength: <span className={score >= 3 ? 'text-gain' : 'text-caution'}>{label}</span></p>
         <ul className="flex flex-wrap gap-3">
           {checks.map(c => (
-            <li key={c.label} className={`text-xs ${c.pass ? 'text-emerald-400' : 'text-text-muted'}`}>
+            <li key={c.label} className={`text-xs ${c.pass ? 'text-gain' : 'text-text-muted'}`}>
               <span aria-hidden="true">{c.pass ? '✓' : '·'} </span>
               <span className="sr-only">{c.pass ? 'Has' : 'Missing'}: </span>
               {c.label}

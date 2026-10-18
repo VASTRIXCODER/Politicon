@@ -1,7 +1,7 @@
 'use client';
 
 import { useId, useState, type ReactNode } from 'react';
-import { useReducedMotion } from 'framer-motion';
+import { useReducedMotion } from 'motion/react';
 import { BarChart3, Table2 } from 'lucide-react';
 import {
   BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer,
@@ -74,7 +74,7 @@ function ChartFigure({ title, summary, table, height, children }: {
           type="button"
           onClick={() => setAsTable((v) => !v)}
           aria-controls={viewId}
-          className="inline-flex flex-shrink-0 items-center gap-1.5 rounded-lg px-2 py-1 text-meta font-medium text-primary-300 hover:text-text-primary hover:bg-white/5 transition-colors"
+          className="inline-flex flex-shrink-0 items-center gap-1.5 rounded-lg px-2 py-1 text-meta font-medium text-primary-300 hover:text-text-primary hover:bg-fg/5 transition-colors"
         >
           {asTable ? <BarChart3 className="w-3.5 h-3.5" aria-hidden /> : <Table2 className="w-3.5 h-3.5" aria-hidden />}
           {asTable ? 'View as chart' : 'View as table'}
@@ -88,11 +88,11 @@ function ChartFigure({ title, summary, table, height, children }: {
 function DataTable({ title, table }: { title: string; table: TableData }) {
   return (
     // Focusable so keyboard users can scroll a table wider than the card.
-    <div className="overflow-x-auto rounded-xl border border-white/8" role="region" aria-label={`${title} (table)`} tabIndex={0}>
+    <div className="overflow-x-auto rounded-xl border border-fg/8" role="region" aria-label={`${title} (table)`} tabIndex={0}>
       <table className="w-full text-xs">
         <caption className="sr-only">{title}</caption>
         <thead>
-          <tr className="border-b border-white/8 bg-white/3">
+          <tr className="border-b border-fg/8 bg-fg/3">
             {table.columns.map((c) => (
               <th key={c.label} scope="col" className={`px-3 py-2 font-medium text-text-muted whitespace-nowrap ${c.numeric ? 'text-right' : 'text-left'}`}>
                 {c.label}
@@ -102,7 +102,7 @@ function DataTable({ title, table }: { title: string; table: TableData }) {
         </thead>
         <tbody>
           {table.rows.map((row, ri) => (
-            <tr key={ri} className="border-b border-white/6 last:border-0">
+            <tr key={ri} className="border-b border-fg/6 last:border-0">
               {row.map((cell, ci) => ci === 0 ? (
                 <th key={ci} scope="row" className="px-3 py-2 text-left font-normal text-text-primary">{cell}</th>
               ) : (
@@ -135,7 +135,7 @@ function GlassTooltip({ active, payload, label, format = fmtMoney, accessibility
     <div
       // With the accessibility layer, arrow-key moves are read out from here.
       {...live}
-      className="rounded-xl border border-white/12 bg-[#0E0A1F]/95 px-3.5 py-2.5 shadow-xl backdrop-blur-xl"
+      className="rounded-xl border border-fg/12 bg-[#0E0A1F]/95 px-3.5 py-2.5 shadow-xl backdrop-blur-xl"
     >
       {label !== undefined && label !== '' && (
         <p className="text-meta font-mono-data uppercase tracking-wider text-text-muted mb-1.5">{label}</p>

@@ -13,9 +13,9 @@ import type { DiscoveredPolicy } from '@/types';
 type FeedPolicy = DiscoveredPolicy;
 
 const RELEVANCE_COLORS: Record<string, string> = {
-  High: 'text-emerald-400 bg-emerald-400/10 border-emerald-400/20',
+  High: 'text-gain bg-gain/10 border-gain/20',
   Medium: 'text-gold bg-gold/10 border-gold/20',
-  Low: 'text-text-muted bg-white/5 border-white/10',
+  Low: 'text-text-muted bg-fg/5 border-fg/10',
 };
 
 export default function PolicyFeedCard({ policy, analyzed, impact, onAnalyze, onAskAdvisor, onDismiss, analyzingIds, focusWhenEmptyRef }: {
@@ -66,7 +66,7 @@ export default function PolicyFeedCard({ policy, analyzed, impact, onAnalyze, on
           </span>
           <Badge variant="default">{policy.category}</Badge>
           {analyzed && (
-            <span className="text-meta font-medium px-2 py-0.5 rounded-full border text-emerald-400 bg-emerald-400/10 border-emerald-400/20 flex items-center gap-1">
+            <span className="text-meta font-medium px-2 py-0.5 rounded-full border text-gain bg-gain/10 border-gain/20 flex items-center gap-1">
               <Check className="w-3 h-3" aria-hidden /> Analyzed
             </span>
           )}
@@ -119,14 +119,14 @@ export default function PolicyFeedCard({ policy, analyzed, impact, onAnalyze, on
           aria-describedby={titleId}
           variant="ghost"
           size="sm"
-          className="flex-1 gap-1.5 px-3 py-2 text-xs font-normal text-text-muted hover:text-text-primary hover:border-white/16"
+          className="flex-1 gap-1.5 px-3 py-2 text-xs font-normal text-text-muted hover:text-text-primary hover:border-fg/16"
           icon={<MessageSquare className="w-3 h-3" />}
         >
           Ask the Guide
         </Button>
       </div>
       <div className="mt-3 flex items-center justify-end gap-2 text-meta">
-        {dismissError && <span role="alert" className="text-red-300">{dismissError}</span>}
+        {dismissError && <span role="alert" className="text-danger">{dismissError}</span>}
         <button
           type="button"
           onClick={dismiss}
@@ -146,15 +146,15 @@ export function FeedSkeletonCard() {
   return (
     <div className="glass rounded-2xl p-5 animate-pulse backdrop-filter-none" aria-hidden>
       <div className="flex items-center gap-2 mb-3">
-        <div className="h-5 w-16 bg-white/10 rounded-full" />
-        <div className="h-5 w-12 bg-white/10 rounded-full" />
+        <div className="h-5 w-16 bg-fg/10 rounded-full" />
+        <div className="h-5 w-12 bg-fg/10 rounded-full" />
       </div>
-      <div className="h-4 bg-white/10 rounded w-3/4 mb-2" />
-      <div className="h-3 bg-white/10 rounded w-full mb-1" />
-      <div className="h-3 bg-white/10 rounded w-2/3 mb-4" />
+      <div className="h-4 bg-fg/10 rounded w-3/4 mb-2" />
+      <div className="h-3 bg-fg/10 rounded w-full mb-1" />
+      <div className="h-3 bg-fg/10 rounded w-2/3 mb-4" />
       <div className="flex gap-2">
-        <div className="h-9 bg-white/10 rounded-xl flex-1" />
-        <div className="h-9 bg-white/10 rounded-xl flex-1" />
+        <div className="h-9 bg-fg/10 rounded-xl flex-1" />
+        <div className="h-9 bg-fg/10 rounded-xl flex-1" />
       </div>
     </div>
   );

@@ -1,7 +1,7 @@
 'use client';
 
 import { useState } from 'react';
-import { m, AnimatePresence } from 'framer-motion';
+import { m, AnimatePresence } from 'motion/react';
 import { Mail, CheckCircle, ArrowRight } from 'lucide-react';
 import Button from '@/components/ui/Button';
 import { apiFetch, type ApiResult } from '@/lib/api';

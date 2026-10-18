@@ -1,7 +1,7 @@
 'use client';
 
 import { useState, useEffect, useMemo, useRef } from 'react';
-import { m } from 'framer-motion';
+import { m } from 'motion/react';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import { ArrowRight, Search, MessageSquare, Zap, BookOpen, RefreshCw, BarChart2, Layers } from 'lucide-react';
@@ -52,11 +52,11 @@ function SkeletonCard() {
     <div className="glass rounded-2xl p-5 animate-pulse backdrop-filter-none" aria-hidden>
       <div className="flex items-start justify-between gap-4">
         <div className="flex-1">
-          <div className="h-3 bg-white/10 rounded w-1/4 mb-3" />
-          <div className="h-4 bg-white/10 rounded w-3/4 mb-2" />
-          <div className="h-3 bg-white/10 rounded w-1/2" />
+          <div className="h-3 bg-fg/10 rounded w-1/4 mb-3" />
+          <div className="h-4 bg-fg/10 rounded w-3/4 mb-2" />
+          <div className="h-3 bg-fg/10 rounded w-1/2" />
         </div>
-        <div className="h-6 w-16 bg-white/10 rounded" />
+        <div className="h-6 w-16 bg-fg/10 rounded" />
       </div>
     </div>
   );
@@ -330,8 +330,8 @@ export default function DashboardPage() {
             {loading ? (
               <div className="animate-pulse" role="status">
                 <span className="sr-only">Loading your dashboard…</span>
-                <div className="h-8 bg-white/10 rounded w-64 mb-2" />
-                <div className="h-4 bg-white/10 rounded w-48" />
+                <div className="h-8 bg-fg/10 rounded w-64 mb-2" />
+                <div className="h-4 bg-fg/10 rounded w-48" />
               </div>
             ) : (
               <div>
@@ -351,11 +351,11 @@ export default function DashboardPage() {
                 <div>
                   <p className="text-xs font-mono-data text-text-muted uppercase tracking-widest mb-3">Net Annual Impact — Your Analyzed Policies</p>
                   {loading ? (
-                    <div className="h-14 bg-white/10 rounded animate-pulse w-56" />
+                    <div className="h-14 bg-fg/10 rounded animate-pulse w-56" />
                   ) : analyses.length === 0 ? (
                     <div className="font-mono-data text-4xl font-bold text-text-muted">$0/yr</div>
                   ) : (
-                    <div className={`font-mono-data text-5xl sm:text-6xl font-bold ${netImpact >= 0 ? 'gradient-text-gold' : 'text-red-400'}`}>
+                    <div className={`font-mono-data text-5xl sm:text-6xl font-bold ${netImpact >= 0 ? 'text-gain' : 'text-loss'}`}>
                       <CountUp value={Math.round(netImpact)} duration={2000} format={signedUSD} suffix="/yr" srLabel={`${signedUSD(netImpact)} per year`} />
                     </div>
                   )}
@@ -367,25 +367,25 @@ export default function DashboardPage() {
                   <Button href="/advisor" variant="ghost" className={`justify-start px-5 whitespace-nowrap ${TINT_BUTTON}`} icon={<Search className="w-4 h-4" />}>
                     Analyze a Policy
                   </Button>
-                  <Button href="/advisor" variant="ghost" className="justify-start px-5 whitespace-nowrap font-normal text-text-muted hover:text-text-primary hover:border-white/16" icon={<MessageSquare className="w-4 h-4" />}>
+                  <Button href="/advisor" variant="ghost" className="justify-start px-5 whitespace-nowrap font-normal text-text-muted hover:text-text-primary hover:border-fg/16" icon={<MessageSquare className="w-4 h-4" />}>
                     Ask the Policy Guide
                   </Button>
                 </div>
               </div>
 
               {analyses.length > 0 && (
-                <dl className="grid grid-cols-1 sm:grid-cols-3 gap-4 mt-8 pt-6 border-t border-white/8">
+                <dl className="grid grid-cols-1 sm:grid-cols-3 gap-4 mt-8 pt-6 border-t border-fg/8">
                   {[
                     {
                       label: 'Biggest gain',
                       value: topGain ? formatUSD(topGain.dollar_impact, { signed: true, suffix: '/yr' }) : '—',
-                      tone: topGain ? 'text-emerald-400' : 'text-text-muted',
+                      tone: topGain ? 'text-gain' : 'text-text-muted',
                       sub: topGain?.policy_title || 'None among recent analyses',
                     },
                     {
                       label: 'Biggest cost',
                       value: topCost ? formatUSD(topCost.dollar_impact, { signed: true, suffix: '/yr' }) : '—',
-                      tone: topCost ? 'text-red-400' : 'text-text-muted',
+                      tone: topCost ? 'text-loss' : 'text-text-muted',
                       sub: topCost?.policy_title || 'None among recent analyses',
                     },
                   ].map(s => (
@@ -553,9 +553,9 @@ export default function DashboardPage() {
                         <GlassCard className="rounded-2xl p-5" role="status">
                           <span className="sr-only">Generating your policy snapshot…</span>
                           <div className="space-y-2 animate-pulse" aria-hidden>
-                            <div className="h-3 bg-white/10 rounded w-full" />
-                            <div className="h-3 bg-white/10 rounded w-5/6" />
-                            <div className="h-3 bg-white/10 rounded w-4/6" />
+                            <div className="h-3 bg-fg/10 rounded w-full" />
+                            <div className="h-3 bg-fg/10 rounded w-5/6" />
+                            <div className="h-3 bg-fg/10 rounded w-4/6" />
                           </div>
                         </GlassCard>
                       ) : portfolioInsight ? (
@@ -615,9 +615,9 @@ export default function DashboardPage() {
                                     {formatUSD(val, { signed: true, suffix: '/yr' })}
                                   </span>
                                 </div>
-                                <div className="h-1.5 rounded-full bg-white/5 overflow-hidden" aria-hidden>
+                                <div className="h-1.5 rounded-full bg-fg/5 overflow-hidden" aria-hidden>
                                   <div
-                                    className={`h-full rounded-full transition-all duration-700 ${val >= 0 ? 'bg-emerald-500' : 'bg-red-500'}`}
+                                    className={`h-full rounded-full transition-all duration-700 ${val >= 0 ? 'bg-gain-fill' : 'bg-loss-fill'}`}
                                     style={{ width: `${pct}%` }}
                                   />
                                 </div>
@@ -649,9 +649,9 @@ export default function DashboardPage() {
                                     {formatUSD(val, { signed: true, suffix: '/yr' })}
                                   </span>
                                 </div>
-                                <div className="h-1.5 rounded-full bg-white/5 overflow-hidden" aria-hidden>
+                                <div className="h-1.5 rounded-full bg-fg/5 overflow-hidden" aria-hidden>
                                   <div
-                                    className={`h-full rounded-full transition-all duration-700 ${val >= 0 ? 'bg-cyan-500' : 'bg-orange-500'}`}
+                                    className={`h-full rounded-full transition-all duration-700 ${val >= 0 ? 'bg-primary' : 'bg-loss-fill'}`}
                                     style={{ width: `${Math.abs(val) / max * 100}%` }}
                                   />
                                 </div>
@@ -669,7 +669,7 @@ export default function DashboardPage() {
                         <table className="w-full text-sm">
                           <caption className="sr-only">Cumulative projections per policy over 1, 3 and 5 years</caption>
                           <thead>
-                            <tr className="border-b border-white/8">
+                            <tr className="border-b border-fg/8">
                               <th scope="col" className="text-left text-xs text-text-muted font-normal pb-3">Policy</th>
                               <th scope="col" className="text-right text-xs text-text-muted font-normal pb-3">1 Year</th>
                               <th scope="col" className="text-right text-xs text-text-muted font-normal pb-3">3 Years</th>
@@ -683,7 +683,7 @@ export default function DashboardPage() {
                               const yr5 = yr1 * 5;
                               const fmt = (n: number) => formatUSD(n, { signed: true });
                               return (
-                                <tr key={a.id} className="border-b border-white/4 hover:bg-white/2 transition-colors">
+                                <tr key={a.id} className="border-b border-fg/4 hover:bg-fg/2 transition-colors">
                                   <th scope="row" className="py-3 text-left text-xs font-normal text-text-primary max-w-[200px] truncate">{a.policy_title}</th>
                                   <td className={`py-3 text-right font-mono-data text-xs font-bold ${impactTone(yr1)}`}>{fmt(yr1)}</td>
                                   <td className={`py-3 text-right font-mono-data text-xs font-bold ${impactTone(yr3)}`}>{fmt(yr3)}</td>
@@ -693,7 +693,7 @@ export default function DashboardPage() {
                             })}
                           </tbody>
                           <tfoot>
-                            <tr className="border-t border-white/12">
+                            <tr className="border-t border-fg/12">
                               <th scope="row" className="pt-4 text-left text-xs font-semibold text-text-primary">Total</th>
                               {[1, 3, 5].map(yrs => {
                                 const total = analyses.reduce((s, a) => s + (a.dollar_impact || 0) * yrs, 0);

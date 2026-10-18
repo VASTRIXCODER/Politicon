@@ -1,7 +1,7 @@
 'use client';
 
 import { useState, useEffect, useRef, useId, useCallback } from 'react';
-import { m, AnimatePresence } from 'framer-motion';
+import { m, AnimatePresence } from 'motion/react';
 import Link from 'next/link';
 import { usePathname, useRouter } from 'next/navigation';
 import { Menu, X, LogOut, LayoutDashboard, Settings, ChevronDown } from 'lucide-react';
@@ -96,7 +96,7 @@ function UserDropdown({ user, onSignOut }: { user: SupabaseUser; onSignOut: () =
         aria-controls={open ? menuId : undefined}
         onClick={() => (open ? setOpen(false) : openWith('first'))}
         onKeyDown={onTriggerKeyDown}
-        className="flex items-center gap-2 glass border-white/10 hover:border-white/20 rounded-xl px-3 py-2 transition-all"
+        className="flex items-center gap-2 glass border-fg/10 hover:border-fg/20 rounded-xl px-3 py-2 transition-all"
       >
         <span aria-hidden="true" className="w-7 h-7 rounded-full bg-primary/20 border border-primary/30 flex items-center justify-center">
           <span className="text-xs font-bold text-primary-300">{initials}</span>
@@ -117,14 +117,14 @@ function UserDropdown({ user, onSignOut }: { user: SupabaseUser; onSignOut: () =
             animate={{ opacity: 1, y: 0, scale: 1 }}
             exit={{ opacity: 0, y: 6, scale: 0.97 }}
             transition={{ duration: 0.15 }}
-            className="absolute right-0 mt-2 w-52 glass-strong border-white/10 rounded-2xl p-1.5 shadow-xl z-50"
+            className="absolute right-0 mt-2 w-52 glass-strong border-fg/10 rounded-2xl p-1.5 shadow-xl z-50"
           >
             <Link
               href="/dashboard"
               role="menuitem"
               tabIndex={-1}
               onClick={() => setOpen(false)}
-              className={`${MENU_ITEM} text-text-muted hover:text-text-primary hover:bg-white/5 focus:text-text-primary focus:bg-white/5`}
+              className={`${MENU_ITEM} text-text-muted hover:text-text-primary hover:bg-fg/5 focus:text-text-primary focus:bg-fg/5`}
             >
               <LayoutDashboard className="w-4 h-4" aria-hidden="true" /> Dashboard
             </Link>
@@ -133,17 +133,17 @@ function UserDropdown({ user, onSignOut }: { user: SupabaseUser; onSignOut: () =
               role="menuitem"
               tabIndex={-1}
               onClick={() => setOpen(false)}
-              className={`${MENU_ITEM} text-text-muted hover:text-text-primary hover:bg-white/5 focus:text-text-primary focus:bg-white/5`}
+              className={`${MENU_ITEM} text-text-muted hover:text-text-primary hover:bg-fg/5 focus:text-text-primary focus:bg-fg/5`}
             >
               <Settings className="w-4 h-4" aria-hidden="true" /> Settings
             </Link>
-            <div role="separator" className="my-1 h-px bg-white/8" />
+            <div role="separator" className="my-1 h-px bg-fg/8" />
             <button
               type="button"
               role="menuitem"
               tabIndex={-1}
               onClick={() => { close(true); onSignOut(); }}
-              className={`${MENU_ITEM} text-red-400 hover:bg-red-500/10 focus:bg-red-500/10`}
+              className={`${MENU_ITEM} text-danger hover:bg-danger/10 focus:bg-danger/10`}
             >
               <LogOut className="w-4 h-4" aria-hidden="true" /> Sign Out
             </button>
@@ -252,7 +252,7 @@ export default function Navbar() {
           {/* Desktop CTA / User */}
           <div className="hidden md:flex items-center gap-3">
             {authLoading ? (
-              <div className="w-24 h-9 rounded-xl bg-white/5 animate-pulse" aria-hidden="true" />
+              <div className="w-24 h-9 rounded-xl bg-fg/5 animate-pulse" aria-hidden="true" />
             ) : user ? (
               <UserDropdown user={user} onSignOut={handleSignOut} />
             ) : (
@@ -287,7 +287,7 @@ export default function Navbar() {
               initial={{ opacity: 0 }}
               animate={{ opacity: 1 }}
               exit={{ opacity: 0 }}
-              className="fixed inset-0 bg-black/60 z-[110] backdrop-blur-sm"
+              className="fixed inset-0 bg-ink/60 z-[110] backdrop-blur-sm"
               onClick={closeMobile}
               aria-hidden="true"
               // Wheel/touch over the backdrop must not reach Lenis (the page is scroll-locked).
@@ -305,7 +305,7 @@ export default function Navbar() {
               animate={{ x: 0 }}
               exit={{ x: '100%' }}
               transition={{ type: 'spring', stiffness: 300, damping: 30 }}
-              className="fixed top-0 right-0 bottom-0 w-80 max-w-[85vw] glass-strong border-0 border-l border-white/8 z-[120] flex flex-col p-8 overflow-y-auto overscroll-contain focus:outline-none"
+              className="fixed top-0 right-0 bottom-0 w-80 max-w-[85vw] glass-strong border-0 border-l border-fg/8 z-[120] flex flex-col p-8 overflow-y-auto overscroll-contain focus:outline-none"
             >
               <div className="flex items-center justify-between mb-10">
                 <h2 id={drawerTitleId} className="sr-only">Menu</h2>
@@ -330,7 +330,7 @@ export default function Navbar() {
                     <Link
                       href={link.href}
                       aria-current={isActive(link.href) ? 'page' : undefined}
-                      className={`block py-3 px-4 hover:text-text-primary hover:bg-white/5 rounded-xl transition-all duration-200 font-body ${isActive(link.href) ? 'text-text-primary bg-white/5' : 'text-text-muted'}`}
+                      className={`block py-3 px-4 hover:text-text-primary hover:bg-fg/5 rounded-xl transition-all duration-200 font-body ${isActive(link.href) ? 'text-text-primary bg-fg/5' : 'text-text-muted'}`}
                       onClick={closeMobile}
                     >
                       {link.label}
@@ -339,19 +339,19 @@ export default function Navbar() {
                 ))}
                 {user && (
                   <>
-                    <div className="my-2 h-px bg-white/8" aria-hidden="true" />
+                    <div className="my-2 h-px bg-fg/8" aria-hidden="true" />
                     <Link href="/settings" onClick={closeMobile}
                       aria-current={isActive('/settings') ? 'page' : undefined}
-                      className="flex items-center gap-3 py-3 px-4 text-text-muted hover:text-text-primary hover:bg-white/5 rounded-xl transition-all">
+                      className="flex items-center gap-3 py-3 px-4 text-text-muted hover:text-text-primary hover:bg-fg/5 rounded-xl transition-all">
                       <Settings className="w-4 h-4" aria-hidden="true" /> Settings
                     </Link>
                   </>
                 )}
               </nav>
-              <div className="flex flex-col gap-3 pt-6 border-t border-white/8">
+              <div className="flex flex-col gap-3 pt-6 border-t border-fg/8">
                 {user ? (
                   <button type="button" onClick={() => { closeMobile(); void handleSignOut(); }}
-                    className="flex items-center justify-center gap-2 w-full py-3 rounded-xl text-sm text-red-400 border border-red-500/20 hover:bg-red-500/10 transition-all">
+                    className="flex items-center justify-center gap-2 w-full py-3 rounded-xl text-sm text-danger border border-danger/20 hover:bg-danger/10 transition-all">
                     <LogOut className="w-4 h-4" aria-hidden="true" /> Sign Out
                   </button>
                 ) : (

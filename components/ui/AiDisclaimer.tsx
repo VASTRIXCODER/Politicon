@@ -18,7 +18,7 @@ export default function AiDisclaimer({ className = '' }: { className?: string })
 /** A plain-language label for a 0–100 confidence score. */
 export function confidenceLabel(score: number): { label: string; tone: string } {
   if (!score) return { label: 'Confidence not rated', tone: 'text-text-muted' };
-  if (score >= 75) return { label: 'Higher confidence', tone: 'text-emerald-400' };
+  if (score >= 75) return { label: 'Higher confidence', tone: 'text-gain' };
   if (score >= 45) return { label: 'Moderate confidence', tone: 'text-gold' };
-  return { label: 'Low confidence', tone: 'text-amber-300' };
+  return { label: 'Low confidence', tone: 'text-caution' };
 }

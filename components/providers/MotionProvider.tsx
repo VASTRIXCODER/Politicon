@@ -1,6 +1,6 @@
 'use client';
 
-import { LazyMotion, MotionConfig, domAnimation } from 'framer-motion';
+import { LazyMotion, MotionConfig, domAnimation } from 'motion/react';
 
 /**
  * App-wide Framer Motion setup.

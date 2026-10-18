@@ -1,7 +1,7 @@
 'use client';
 
 import { useEffect, useRef, useState, useSyncExternalStore } from 'react';
-import { m } from 'framer-motion';
+import { m } from 'motion/react';
 import { TrendingDown, TrendingUp, Zap, Pause, Play } from 'lucide-react';
 import Badge from '@/components/ui/Badge';
 import { formatUSD } from '@/lib/format';
@@ -177,7 +177,7 @@ export default function ImpactCardDemo() {
                     <span className="text-meta text-text-muted font-mono-data">{PROJECTION_YEARS[i]}</span>
                     <span className="text-meta font-mono-data" style={{ color: current.color }}>{formatUSD(amount, { signed: true })}</span>
                   </div>
-                  <div className="h-1.5 rounded-full bg-white/5 overflow-hidden" aria-hidden="true">
+                  <div className="h-1.5 rounded-full bg-fg/5 overflow-hidden" aria-hidden="true">
                     <m.div
                       className="h-full rounded-full"
                       style={{ width: `${barWidth(amount, current.projection)}%`, backgroundColor: current.color + '99', originX: 0 }}
@@ -190,7 +190,7 @@ export default function ImpactCardDemo() {
               ))}
             </ul>
 
-            <p className="border-t border-white/6 pt-4 text-meta text-text-muted">
+            <p className="border-t border-fg/6 pt-4 text-meta text-text-muted">
               Hypothetical policy and illustrative figures from the Public Impact Explorer. Your analyses use your own profile and real bills.
             </p>
           </m.div>
@@ -202,7 +202,7 @@ export default function ImpactCardDemo() {
             type="button"
             onClick={() => setUserPaused(playing)}
             aria-label={playing ? 'Pause examples' : 'Play examples'}
-            className="mr-1 flex h-7 w-7 items-center justify-center rounded-full text-text-muted transition-colors hover:bg-white/6 hover:text-text-primary"
+            className="mr-1 flex h-7 w-7 items-center justify-center rounded-full text-text-muted transition-colors hover:bg-fg/6 hover:text-text-primary"
           >
             {playing ? <Pause className="w-3.5 h-3.5" aria-hidden="true" /> : <Play className="w-3.5 h-3.5" aria-hidden="true" />}
           </button>
@@ -218,7 +218,7 @@ export default function ImpactCardDemo() {
               <span
                 aria-hidden="true"
                 className={`block h-1 rounded-full transition-all duration-300 ${
-                  i === index ? 'w-6 bg-primary' : 'w-1.5 bg-white/20 group-hover:bg-white/40'
+                  i === index ? 'w-6 bg-primary' : 'w-1.5 bg-fg/20 group-hover:bg-fg/40'
                 }`}
               />
             </button>

@@ -142,8 +142,8 @@ export default function ResetPasswordPage() {
           />
         </div>
         {error && (
-          <div id={ids.error} role="alert" className="bg-red-500/10 border border-red-500/20 rounded-xl px-4 py-3">
-            <p className="text-sm text-red-400">{error}</p>
+          <div id={ids.error} role="alert" className="bg-danger/10 border border-danger/20 rounded-xl px-4 py-3">
+            <p className="text-sm text-danger">{error}</p>
           </div>
         )}
         <Button type="submit" variant="primary" fullWidth size="lg" disabled={saving}>

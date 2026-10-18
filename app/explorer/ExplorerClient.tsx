@@ -10,7 +10,7 @@ import { CATEGORIES, type CategoryKey } from '@/lib/explorerData';
 
 const PILL = 'flex-shrink-0 px-4 py-2 rounded-full text-xs font-medium border transition-all';
 const PILL_ON = 'bg-primary/20 border-primary/40 text-primary-300';
-const PILL_OFF = 'bg-white/4 border-white/8 text-text-muted hover:text-text-primary';
+const PILL_OFF = 'bg-fg/4 border-fg/8 text-text-muted hover:text-text-primary';
 
 /** The category filter and bracket chart: the interactive part of /explorer. */
 export default function ExplorerClient() {

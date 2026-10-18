@@ -46,7 +46,7 @@ export function JargonBuster({ terms }: { terms: JargonTerm[] }) {
         // Focusable so the list can be scrolled from the keyboard.
         <dl id={panelId} tabIndex={0} className="px-4 pb-4 space-y-3 max-h-[420px] overflow-y-auto">
           {list.map((t) => (
-            <div key={t.term.toLowerCase()} className="border-t border-white/6 pt-3 first:border-0 first:pt-0">
+            <div key={t.term.toLowerCase()} className="border-t border-fg/6 pt-3 first:border-0 first:pt-0">
               <dt className="text-xs font-semibold text-secondary">{t.term}</dt>
               <dd className="text-xs text-text-muted leading-relaxed mt-0.5">{t.definition}</dd>
             </div>

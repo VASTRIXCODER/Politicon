@@ -27,13 +27,13 @@ export function TransmissionWaterfall(
   }
 
   const borderFor = (d: Direction) =>
-    d === 'positive' ? 'border-emerald-500/30' : d === 'negative' ? 'border-red-500/30' : 'border-white/10';
+    d === 'positive' ? 'border-gain/30' : d === 'negative' ? 'border-loss/30' : 'border-fg/10';
   const bgFor = (d: Direction) =>
     d === 'positive' ? 'rgba(16,185,129,0.08)' : d === 'negative' ? 'rgba(239,68,68,0.08)' : 'rgba(255,255,255,0.03)';
   const barFor = (d: Direction) =>
     d === 'positive' ? CHART.emerald : d === 'negative' ? CHART.red : CHART.secondary;
   const valueColor = (d: Direction) =>
-    d === 'positive' ? 'text-emerald-400' : d === 'negative' ? 'text-red-400' : 'text-secondary';
+    d === 'positive' ? 'text-gain' : d === 'negative' ? 'text-loss' : 'text-secondary';
 
   return (
     <ol className="space-y-0">
@@ -58,7 +58,7 @@ export function TransmissionWaterfall(
               </div>
 
               {/* Magnitude bar (relative size only; the value is printed above) */}
-              <div className="h-2.5 rounded-full bg-white/8 overflow-hidden mb-3" aria-hidden>
+              <div className="h-2.5 rounded-full bg-fg/8 overflow-hidden mb-3" aria-hidden>
                 <div
                   className="h-full rounded-full transition-all duration-700 ease-out"
                   style={{
@@ -82,8 +82,8 @@ export function TransmissionWaterfall(
                 aria-hidden
               >
                 <div className="flex flex-col items-center">
-                  <div className="w-px h-3 bg-white/15" />
-                  <svg width="10" height="6" viewBox="0 0 10 6" className="text-white/20">
+                  <div className="w-px h-3 bg-fg/15" />
+                  <svg width="10" height="6" viewBox="0 0 10 6" className="text-fg/20">
                     <path d="M0 0L5 6L10 0" stroke="currentColor" strokeWidth="1.5" fill="none" strokeLinecap="round" strokeLinejoin="round" />
                   </svg>
                 </div>
@@ -121,17 +121,17 @@ export function SpendingHeatmap(
       {items.map((it) => (
         <li
           key={it.category}
-          className="rounded-xl border border-white/8 p-4 transition-all"
+          className="rounded-xl border border-fg/8 p-4 transition-all"
           style={{ background: cellColor(it.dollarImpact) }}
         >
           <p className="text-xs font-medium text-text-primary mb-1">{it.category}</p>
-          <p className={`font-mono-data text-sm font-bold ${it.dollarImpact > 0 ? 'text-emerald-300' : it.dollarImpact < 0 ? 'text-red-300' : 'text-text-muted'}`}>
+          <p className={`font-mono-data text-sm font-bold ${it.dollarImpact > 0 ? 'text-gain' : it.dollarImpact < 0 ? 'text-loss' : 'text-text-muted'}`}>
             {formatUSD(it.dollarImpact, { signed: true, suffix: '/mo' })}
           </p>
           {it.dollarImpact !== 0 && (
-            <div className="mt-2 h-1 rounded-full bg-white/8 overflow-hidden" aria-hidden>
+            <div className="mt-2 h-1 rounded-full bg-fg/8 overflow-hidden" aria-hidden>
               <div
-                className={`h-full rounded-full ${it.dollarImpact > 0 ? 'bg-emerald-400' : 'bg-red-400'}`}
+                className={`h-full rounded-full ${it.dollarImpact > 0 ? 'bg-gain-fill' : 'bg-loss-fill'}`}
                 style={{ width: `${Math.max(4, intensityOf(it.dollarImpact) * 100)}%` }}
               />
             </div>

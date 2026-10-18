@@ -21,8 +21,8 @@ const exampleCards = [
   household: `${bracket.label} household`,
   direction: annual < 0 ? ('negative' as const) : ('positive' as const),
   category: categoryLabel(policy.category),
-  gradient: annual < 0 ? 'from-red-500/20 to-red-500/5' : 'from-emerald-500/20 to-emerald-500/5',
-  borderColor: annual < 0 ? 'border-red-500/15' : 'border-emerald-500/20',
+  gradient: annual < 0 ? 'from-loss/20 to-loss/5' : 'from-gain/20 to-gain/5',
+  borderColor: annual < 0 ? 'border-loss/15' : 'border-gain/20',
   tilt,
 }));
 
@@ -69,7 +69,7 @@ export default function ShareableCards() {
                   </div>
                   <p className="text-meta text-text-muted">{card.household}</p>
 
-                  <p className="mt-5 pt-4 border-t border-white/6 text-meta font-mono-data text-text-muted uppercase tracking-wide">
+                  <p className="mt-5 pt-4 border-t border-fg/6 text-meta font-mono-data text-text-muted uppercase tracking-wide">
                     Example · illustrative figures
                   </p>
                 </div>

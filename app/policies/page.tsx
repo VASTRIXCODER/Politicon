@@ -225,7 +225,7 @@ export default function PoliciesPage() {
                     aria-pressed={category === cat}
                     onClick={() => setCategory(cat)}
                     className={`flex-shrink-0 inline-flex items-center gap-1.5 px-4 py-2 rounded-full text-xs font-medium border transition-all ${
-                      category === cat ? 'bg-primary/20 border-primary/40 text-primary-300' : 'bg-white/4 border-white/8 text-text-muted hover:text-text-primary hover:border-white/16'
+                      category === cat ? 'bg-primary/20 border-primary/40 text-primary-300' : 'bg-fg/4 border-fg/8 text-text-muted hover:text-text-primary hover:border-fg/16'
                     }`}
                   >
                     {Icon && <Icon className="w-3.5 h-3.5" aria-hidden />}

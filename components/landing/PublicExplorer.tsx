@@ -80,9 +80,9 @@ export function BracketChart({
                 const bar = divergingBar(amount);
                 return (
                   <li key={cat.key}>
-                    <div className={`relative overflow-hidden bg-white/4 ${track}`} aria-hidden="true">
+                    <div className={`relative overflow-hidden bg-fg/4 ${track}`} aria-hidden="true">
                       {/* Zero line */}
-                      <div className="absolute inset-y-0 left-1/2 w-px bg-white/16" />
+                      <div className="absolute inset-y-0 left-1/2 w-px bg-fg/16" />
                       {bar.width > 0 && (
                         // Grows out from the zero line with its row (see Reveal's group).
                         <div
@@ -129,7 +129,7 @@ export default function PublicExplorer() {
           <IllustrativeNote className="mb-6" />
           <BracketChart idPrefix="landing-bracket" />
 
-          <div className="border-t border-white/6 mt-8 pt-6 flex flex-wrap items-center justify-between gap-3">
+          <div className="border-t border-fg/6 mt-8 pt-6 flex flex-wrap items-center justify-between gap-3">
             <p className="text-xs text-text-muted">Each bar is the sum of the example policies in that category.</p>
             <Button
               href="/explorer"

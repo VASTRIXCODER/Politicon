@@ -21,7 +21,7 @@ const footerLinks = {
 
 export default function Footer() {
   return (
-    <footer className="border-t border-white/8 bg-base/80 backdrop-blur-sm">
+    <footer className="border-t border-fg/8 bg-base/80 backdrop-blur-sm">
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-16">
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-5 gap-12">
           {/* Brand */}
@@ -52,7 +52,7 @@ export default function Footer() {
           ))}
         </div>
 
-        <div className="border-t border-white/8 mt-12 pt-8 flex flex-col sm:flex-row items-center justify-between gap-4">
+        <div className="border-t border-fg/8 mt-12 pt-8 flex flex-col sm:flex-row items-center justify-between gap-4">
           <p className="text-xs text-text-muted">
             &copy; {new Date().getFullYear()} Politicon. All rights reserved.
           </p>

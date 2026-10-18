@@ -1,7 +1,7 @@
 'use client';
 
 import { useState, useEffect, useId } from 'react';
-import { m } from 'framer-motion';
+import { m } from 'motion/react';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import { Eye, EyeOff, ArrowLeft } from 'lucide-react';
@@ -156,8 +156,8 @@ export default function SignInPage() {
             </div>
 
             {error && (
-              <div id={errorId} role="alert" className="bg-red-500/10 border border-red-500/20 rounded-xl px-4 py-3">
-                <p className="text-sm text-red-400">{error}</p>
+              <div id={errorId} role="alert" className="bg-danger/10 border border-danger/20 rounded-xl px-4 py-3">
+                <p className="text-sm text-danger">{error}</p>
               </div>
             )}
 

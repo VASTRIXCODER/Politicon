@@ -1,7 +1,7 @@
 'use client';
 
 import { useEffect, useRef, useState, useSyncExternalStore } from 'react';
-import { useReducedMotion } from 'framer-motion';
+import { useReducedMotion } from 'motion/react';
 import { User, Search, DollarSign, CheckCircle, Pause, Play } from 'lucide-react';
 import Reveal from './Reveal';
 
@@ -184,7 +184,7 @@ export default function HowItWorks({ stateBills }: HowItWorksProps) {
                     <div
                       onClick={() => setActiveStep(i)}
                       className={`glass backdrop-filter-none h-full rounded-3xl p-8 cursor-pointer transition-all duration-300 ${
-                        isActive ? 'border-white/16 shadow-lg' : ''
+                        isActive ? 'border-fg/16 shadow-lg' : ''
                       }`}
                       style={isActive ? { boxShadow: `0 20px 60px ${step.color}22` } : {}}
                     >
@@ -251,7 +251,7 @@ export default function HowItWorks({ stateBills }: HowItWorksProps) {
               <button
                 type="button"
                 onClick={() => setUserPaused(playing)}
-                className="inline-flex items-center gap-2 rounded-full border border-white/10 bg-white/3 px-4 py-2 text-xs text-text-muted transition-colors hover:border-white/16 hover:text-text-primary"
+                className="inline-flex items-center gap-2 rounded-full border border-fg/10 bg-fg/3 px-4 py-2 text-xs text-text-muted transition-colors hover:border-fg/16 hover:text-text-primary"
               >
                 {playing
                   ? <><Pause className="w-3.5 h-3.5" aria-hidden="true" /> Pause step tour</>

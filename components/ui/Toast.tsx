@@ -1,7 +1,7 @@
 'use client';
 
 import { useCallback, useEffect, useRef, useState } from 'react';
-import { AnimatePresence, m } from 'framer-motion';
+import { AnimatePresence, m } from 'motion/react';
 import { AlertTriangle, Check, X } from 'lucide-react';
 
 export type ToastType = 'success' | 'error';
@@ -73,8 +73,8 @@ export function useToast() {
             exit={{ opacity: 0, y: 20, scale: 0.96 }}
             className={`fixed bottom-4 right-4 left-4 sm:left-auto sm:bottom-6 sm:right-6 sm:max-w-md z-[200] flex items-start gap-3 px-5 py-3.5 rounded-2xl shadow-xl border text-sm font-medium backdrop-blur-md ${
               state.type === 'success'
-                ? 'bg-emerald-950/80 border-emerald-500/30 text-emerald-300'
-                : 'bg-red-950/80 border-red-500/30 text-red-300'
+                ? 'bg-surface/80 border-gain/30 text-gain'
+                : 'bg-surface/80 border-danger/30 text-danger'
             }`}
           >
             {state.type === 'success'

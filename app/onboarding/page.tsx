@@ -1,7 +1,7 @@
 'use client';
 
 import { useState, useEffect, useCallback, useRef, useId, createContext, useContext } from 'react';
-import { m, AnimatePresence } from 'framer-motion';
+import { m, AnimatePresence } from 'motion/react';
 import { useRouter } from 'next/navigation';
 import { ChevronRight, ChevronLeft, Check, MapPin, User, Briefcase, Home } from 'lucide-react';
 import { createClient } from '@/lib/supabase/client';
@@ -76,7 +76,7 @@ function RadioGroup({ labelledBy, describedBy, ...props }: {
       labelledBy={labelledBy ?? titleId}
       describedBy={describedBy ?? hintId}
       optionClassName={selected => `w-full px-5 py-4 rounded-2xl border text-sm ${
-        selected ? 'bg-primary/15 border-primary/40 text-text-primary' : 'glass backdrop-filter-none border-white/10 text-text-muted hover:text-text-primary hover:border-white/20'
+        selected ? 'bg-primary/15 border-primary/40 text-text-primary' : 'glass backdrop-filter-none border-fg/10 text-text-muted hover:text-text-primary hover:border-fg/20'
       }`}
       renderOption={(o, selected) => (
         <span className="flex items-center justify-between gap-3">
@@ -92,11 +92,11 @@ function RadioGroup({ labelledBy, describedBy, ...props }: {
 function MultiOptionButton({ label, selected, disabled, onClick }: { label: string; selected: boolean; disabled?: boolean; onClick: () => void }) {
   return (
     <button type="button" onClick={onClick} aria-pressed={selected} disabled={disabled} className={`text-left px-4 py-3 rounded-xl border text-sm transition-all disabled:opacity-40 disabled:cursor-not-allowed ${
-      selected ? 'bg-primary/15 border-primary/40 text-text-primary' : 'glass backdrop-filter-none border-white/10 text-text-muted hover:text-text-primary hover:border-white/20'
+      selected ? 'bg-primary/15 border-primary/40 text-text-primary' : 'glass backdrop-filter-none border-fg/10 text-text-muted hover:text-text-primary hover:border-fg/20'
     }`}>
       <div className="flex items-center gap-2">
         <div aria-hidden="true" className={`w-4 h-4 rounded border flex items-center justify-center flex-shrink-0 ${
-          selected ? 'bg-primary border-primary' : 'border-white/20'
+          selected ? 'bg-primary border-primary' : 'border-fg/20'
         }`}>{selected && <Check className="w-2.5 h-2.5 text-white" />}</div>
         <span>{label}</span>
       </div>
@@ -445,7 +445,7 @@ export default function OnboardingPage() {
                 return (
                   <li key={stage.label} className="flex items-center gap-2" aria-current={isActive ? 'step' : undefined}>
                     <div aria-hidden="true" className={`w-7 h-7 rounded-full border flex items-center justify-center transition-all ${
-                      isDone ? 'bg-primary border-primary' : isActive ? 'border-primary bg-primary/20' : 'border-white/20 bg-white/5'
+                      isDone ? 'bg-primary border-primary' : isActive ? 'border-primary bg-primary/20' : 'border-fg/20 bg-fg/5'
                     }`}>
                       {isDone ? <Check className="w-3.5 h-3.5 text-white" /> : <Icon className={`w-3.5 h-3.5 ${isActive ? 'text-primary-300' : 'text-text-muted'}`} />}
                     </div>
@@ -459,7 +459,7 @@ export default function OnboardingPage() {
             </ol>
             <span className="text-xs text-text-muted font-mono-data" aria-hidden="true">Step {step + 1} of {TOTAL_STEPS}</span>
           </div>
-          <div className="h-1.5 bg-white/5 rounded-full overflow-hidden" role="progressbar" aria-label="Profile setup progress"
+          <div className="h-1.5 bg-fg/5 rounded-full overflow-hidden" role="progressbar" aria-label="Profile setup progress"
             aria-valuemin={1} aria-valuemax={TOTAL_STEPS} aria-valuenow={step + 1} aria-valuetext={`Step ${step + 1} of ${TOTAL_STEPS}`}>
             <m.div className="h-full rounded-full bg-primary" animate={{ width: `${progress}%` }} transition={{ duration: 0.4, ease: 'easeOut' }} />
           </div>
@@ -471,7 +471,7 @@ export default function OnboardingPage() {
           </StepFocusContext.Provider>
         </div>
 
-        <div className="flex items-center justify-between mt-10 pt-6 border-t border-white/10">
+        <div className="flex items-center justify-between mt-10 pt-6 border-t border-fg/10">
           <button type="button" onClick={back} disabled={step === 0}
             className="flex items-center gap-2 text-sm text-text-muted hover:text-text-primary transition-colors disabled:opacity-30 disabled:cursor-not-allowed rounded-lg">
             <ChevronLeft className="w-4 h-4" aria-hidden="true" /> Back
@@ -481,7 +481,7 @@ export default function OnboardingPage() {
             {isLast ? (saving ? 'Saving…' : p.investments ? 'See my impact' : 'Skip and see my impact') : step === 1 && !p.city ? 'Skip' : 'Continue'}
           </Button>
         </div>
-        {saveError && <p id={ids.saveError} role="alert" className="mt-4 text-sm text-red-400 text-center">{saveError}</p>}
+        {saveError && <p id={ids.saveError} role="alert" className="mt-4 text-sm text-danger text-center">{saveError}</p>}
       </main>
 
       <AnimatePresence>

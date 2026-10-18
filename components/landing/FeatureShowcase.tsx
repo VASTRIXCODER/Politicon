@@ -32,7 +32,7 @@ const ADVISOR_MID = exampleImpact('minimum-wage-increase', '50to75k');
 const DASHBOARD = BRACKET_ROWS.find(r => r.key === '50to75k') ?? BRACKET_ROWS[0];
 
 const TONE = { gain: 'text-positive', loss: 'text-negative', neutral: 'text-text-muted' } as const;
-const BAR = { gain: 'bg-positive/50', loss: 'bg-negative/50', neutral: 'bg-white/20' } as const;
+const BAR = { gain: 'bg-positive/50', loss: 'bg-negative/50', neutral: 'bg-fg/20' } as const;
 
 function buildFeatures(stateBills: boolean): Feature[] {
   return [
@@ -128,7 +128,7 @@ const MockupAnalysis = () => {
           </div>
         ))}
       </div>
-      <div className="mt-4 p-3 rounded-xl bg-white/4 border border-white/8">
+      <div className="mt-4 p-3 rounded-xl bg-fg/4 border border-fg/8">
         <p className="text-meta text-text-muted font-mono-data">Sample: {bracket.label} household · Confidence: medium</p>
       </div>
     </div>
@@ -143,7 +143,7 @@ const MockupDiscovery = () => (
         <div>
           <p className="text-meta font-medium text-text-primary">{policy.title}</p>
           <div className="flex items-center gap-2 mt-1">
-            <div className="h-1 w-16 rounded-full bg-white/8 overflow-hidden">
+            <div className="h-1 w-16 rounded-full bg-fg/8 overflow-hidden">
               <div className="h-full rounded-full bg-primary" style={{ width: `${score}%` }} />
             </div>
             <span className="text-meta text-text-muted">{score}% relevant</span>
@@ -199,7 +199,7 @@ const MockupDashboard = () => {
                 <span className="text-meta text-text-muted">{item.cat}</span>
                 <span className={`text-meta font-mono-data ${TONE[sign]}`}>{formatUSD(item.amount, { signed: true })}</span>
               </div>
-              <div className="h-1.5 rounded-full bg-white/6 overflow-hidden">
+              <div className="h-1.5 rounded-full bg-fg/6 overflow-hidden">
                 <div className={`h-full rounded-full ${BAR[sign]}`} style={{ width: `${Math.round((Math.abs(item.amount) / scale) * 100)}%` }} />
               </div>
             </div>

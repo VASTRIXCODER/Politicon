@@ -1,0 +1,105 @@
+/*
+ * Civic Light colour tokens, as RGB channels so Tailwind opacity modifiers
+ * work (rgb(var(--c-ink) / 0.6)). Mirrors lib/design/tokens.ts, which is the
+ * source of truth; tests/tokens.test.ts fails if they drift.
+ *
+ * Light is the default. <html data-theme="dark"> switches the whole page, and
+ * any element with data-night switches just its subtree (the cinematic
+ * "Chamber" sections), so night scenes read the same tokens.
+ */
+
+:root,
+[data-theme='light'] {
+  color-scheme: light;
+  --c-canvas: 246 243 238;
+  --c-surface: 251 250 247;
+  --c-raised: 255 255 255;
+  --c-ink: 21 18 31;
+  --c-muted: 92 86 107;
+  --c-fg: 21 18 31;
+  --c-violet: 109 74 255;
+  --c-violet-text: 84 52 224;
+  --c-violet-fill: 109 74 255;
+  --c-glow: 143 117 255;
+  --c-accent: 138 61 199;
+  --c-gain: 8 113 89;
+  --c-gain-fill: 14 159 126;
+  --c-loss: 163 84 15;
+  --c-loss-fill: 224 131 43;
+  --c-danger: 180 35 68;
+  --c-caution: 126 95 7;
+  --c-gold: 122 92 10;
+  --c-focus: 84 52 224;
+  --c-cat-taxes: 109 74 255;
+  --c-cat-housing: 184 134 11;
+  --c-cat-healthcare: 176 71 154;
+  --c-cat-employment: 79 107 47;
+  --c-cat-retirement: 138 61 199;
+  --c-cat-education: 47 122 122;
+  --c-cat-energy: 154 91 60;
+  --c-cat-other: 107 102 128;
+}
+
+[data-theme='dark'],
+[data-night] {
+  color-scheme: dark;
+  --c-canvas: 14 10 28;
+  --c-surface: 23 17 48;
+  --c-raised: 30 23 64;
+  --c-ink: 243 240 250;
+  --c-muted: 169 163 194;
+  --c-fg: 255 255 255;
+  --c-violet: 143 117 255;
+  --c-violet-text: 185 168 255;
+  --c-violet-fill: 109 74 255;
+  --c-glow: 185 168 255;
+  --c-accent: 216 180 254;
+  --c-gain: 63 211 174;
+  --c-gain-fill: 31 184 146;
+  --c-loss: 242 163 94;
+  --c-loss-fill: 224 131 43;
+  --c-danger: 255 143 163;
+  --c-caution: 232 195 90;
+  --c-gold: 227 179 65;
+  --c-focus: 185 168 255;
+  --c-cat-taxes: 156 134 255;
+  --c-cat-housing: 227 179 65;
+  --c-cat-healthcare: 229 138 203;
+  --c-cat-employment: 169 199 122;
+  --c-cat-retirement: 216 180 254;
+  --c-cat-education: 127 209 209;
+  --c-cat-energy: 227 162 127;
+  --c-cat-other: 169 163 194;
+}
+
+/* A light island inside a night section or a dark page (e.g. a paper receipt). */
+[data-day] {
+  color-scheme: light;
+  --c-canvas: 246 243 238;
+  --c-surface: 251 250 247;
+  --c-raised: 255 255 255;
+  --c-ink: 21 18 31;
+  --c-muted: 92 86 107;
+  --c-fg: 21 18 31;
+  --c-violet: 109 74 255;
+  --c-violet-text: 84 52 224;
+  --c-violet-fill: 109 74 255;
+  --c-glow: 143 117 255;
+  --c-accent: 138 61 199;
+  --c-gain: 8 113 89;
+  --c-gain-fill: 14 159 126;
+  --c-loss: 163 84 15;
+  --c-loss-fill: 224 131 43;
+  --c-danger: 180 35 68;
+  --c-caution: 126 95 7;
+  --c-gold: 122 92 10;
+  --c-focus: 84 52 224;
+  --c-cat-taxes: 109 74 255;
+  --c-cat-housing: 184 134 11;
+  --c-cat-healthcare: 176 71 154;
+  --c-cat-employment: 79 107 47;
+  --c-cat-retirement: 138 61 199;
+  --c-cat-education: 47 122 122;
+  --c-cat-energy: 154 91 60;
+  --c-cat-other: 107 102 128;
+}

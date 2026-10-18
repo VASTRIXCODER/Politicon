@@ -44,18 +44,20 @@ export type PolicyStatus = Policy['status'];
 
 /**
  * The one colour map for policy status, shared by StatusBadge and
- * getStatusColor: gold proposed, cyan passed, emerald enacted, red for
- * repealed and rejected. Each entry is text + tint + border classes.
+ * getStatusColor. Status is a fact about the record, not good or bad news,
+ * so it never uses the gain/loss colours: violet proposed, orchid passed,
+ * archive gold enacted (it's the law), and a neutral grey for repealed and
+ * rejected. Each entry is text + tint + border classes.
  */
 export const STATUS_STYLES: Record<PolicyStatus, string> = {
-  proposed: 'text-gold bg-gold/10 border-gold/20',
-  passed: 'text-secondary bg-secondary/10 border-secondary/20',
-  enacted: 'text-emerald-400 bg-emerald-400/10 border-emerald-400/20',
-  repealed: 'text-red-400 bg-red-400/10 border-red-400/20',
-  rejected: 'text-red-400 bg-red-400/10 border-red-400/20',
+  proposed: 'text-primary-300 bg-primary/10 border-primary/20',
+  passed: 'text-accent bg-accent/10 border-accent/20',
+  enacted: 'text-gold bg-gold/10 border-gold/25',
+  repealed: 'text-text-muted bg-fg/5 border-fg/15',
+  rejected: 'text-text-muted bg-fg/5 border-fg/15',
 };
 
-const STATUS_FALLBACK = 'text-text-muted bg-white/5 border-white/10';
+const STATUS_FALLBACK = 'text-text-muted bg-fg/5 border-fg/10';
 
 export function isPolicyStatus(status: unknown): status is PolicyStatus {
   return typeof status === 'string' && Object.prototype.hasOwnProperty.call(STATUS_STYLES, status);

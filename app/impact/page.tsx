@@ -2,7 +2,7 @@
 
 import { useState, useEffect, useMemo, Suspense } from 'react';
 import { useSearchParams } from 'next/navigation';
-import { m } from 'framer-motion';
+import { m } from 'motion/react';
 import { TrendingUp, TrendingDown, Minus, Search, ChevronDown, ArrowUpDown, Sparkles, Loader2 } from 'lucide-react';
 import { createClient } from '@/lib/supabase/client';
 import GlassCard from '@/components/ui/GlassCard';
@@ -70,8 +70,8 @@ const methodology = [
 function SkeletonCard() {
   return (
     <div className="glass rounded-2xl p-5 animate-pulse backdrop-filter-none" aria-hidden>
-      <div className="h-4 bg-white/10 rounded w-3/4 mb-3" />
-      <div className="h-3 bg-white/10 rounded w-1/2" />
+      <div className="h-4 bg-fg/10 rounded w-3/4 mb-3" />
+      <div className="h-3 bg-fg/10 rounded w-1/2" />
     </div>
   );
 }
@@ -94,9 +94,9 @@ function AnalysisBody({ row, headingTag = 'h4' }: { row: PolicyAnalysisRow; head
           <H className={heading}>Projections</H>
           <dl className="grid grid-cols-3 gap-3">
             {([['1 year', t.year1], ['3 years', t.year3], ['5 years', t.year5]] as const).map(([label, v]) => (
-              <div key={label} className="rounded-xl bg-white/5 border border-white/10 px-3 py-2">
+              <div key={label} className="rounded-xl bg-fg/5 border border-fg/10 px-3 py-2">
                 <dt className="text-meta text-text-muted">{label}</dt>
-                <dd className={`font-mono-data text-sm font-semibold ${(v ?? 0) < 0 ? 'text-red-400' : 'text-emerald-400'}`}>{v === undefined ? '—' : signedUSD(v)}</dd>
+                <dd className={`font-mono-data text-sm font-semibold ${(v ?? 0) < 0 ? 'text-loss' : 'text-gain'}`}>{v === undefined ? '—' : signedUSD(v)}</dd>
               </div>
             ))}
           </dl>
@@ -106,8 +106,8 @@ function AnalysisBody({ row, headingTag = 'h4' }: { row: PolicyAnalysisRow; head
         <div>
           <H className={heading}>Trade-offs</H>
           <ul className="space-y-1.5 text-sm">
-            {gains.map((g, i) => <li key={`g${i}`} className="flex justify-between gap-3"><span className="text-text-muted">{g.label}</span><span className="font-mono-data text-emerald-400">{signedUSD(Math.abs(g.value))}</span></li>)}
-            {losses.map((l, i) => <li key={`l${i}`} className="flex justify-between gap-3"><span className="text-text-muted">{l.label}</span><span className="font-mono-data text-red-400">{signedUSD(-Math.abs(l.value))}</span></li>)}
+            {gains.map((g, i) => <li key={`g${i}`} className="flex justify-between gap-3"><span className="text-text-muted">{g.label}</span><span className="font-mono-data text-gain">{signedUSD(Math.abs(g.value))}</span></li>)}
+            {losses.map((l, i) => <li key={`l${i}`} className="flex justify-between gap-3"><span className="text-text-muted">{l.label}</span><span className="font-mono-data text-loss">{signedUSD(-Math.abs(l.value))}</span></li>)}
           </ul>
         </div>
       )}
@@ -290,7 +290,7 @@ function ImpactContent() {
                   <p className="text-sm text-text-muted mb-6 max-w-sm mx-auto">Browse the policy feed on your dashboard to get started.</p>
                   <div className="flex flex-wrap gap-3 justify-center">
                     <Button href="/dashboard" variant="ghost" size="sm" className={`px-5 py-3 ${TINT_BUTTON}`}>Go to Dashboard</Button>
-                    <Button href="/advisor" variant="ghost" size="sm" className="px-5 py-3 font-normal text-text-muted hover:text-text-primary hover:border-white/16">Ask the Policy Guide</Button>
+                    <Button href="/advisor" variant="ghost" size="sm" className="px-5 py-3 font-normal text-text-muted hover:text-text-primary hover:border-fg/16">Ask the Policy Guide</Button>
                   </div>
                 </GlassCard>
               ) : (
@@ -298,7 +298,7 @@ function ImpactContent() {
                   <div className="flex items-center justify-between gap-3 mb-6">
                     <h2 className="font-display text-xl font-semibold text-text-primary">All Analyzed Policies</h2>
                     <button type="button" onClick={() => setSortBy(s => s === 'impact' ? 'date' : 'impact')}
-                      className="flex items-center gap-1.5 text-xs text-text-muted hover:text-text-primary bg-white/4 border border-white/8 hover:border-white/16 px-3 py-2 rounded-xl transition-all">
+                      className="flex items-center gap-1.5 text-xs text-text-muted hover:text-text-primary bg-fg/4 border border-fg/8 hover:border-fg/16 px-3 py-2 rounded-xl transition-all">
                       <ArrowUpDown className="w-3 h-3" aria-hidden /> Sort by {sortBy === 'impact' ? 'date' : 'impact'}
                     </button>
                   </div>
@@ -311,7 +311,7 @@ function ImpactContent() {
                         <li key={analysis.id}>
                           {/* The row toggles its summary; "View Full Impact" is a separate link beside it, not nested inside. */}
                           <div className={`flex items-center gap-3 p-4 rounded-2xl border transition-all ${
-                            isOpen ? 'bg-primary/10 border-primary/20' : 'bg-white/4 border-white/8 hover:border-white/16'
+                            isOpen ? 'bg-primary/10 border-primary/20' : 'bg-fg/4 border-fg/8 hover:border-fg/16'
                           }`}>
                             <button
                               type="button"
@@ -333,12 +333,12 @@ function ImpactContent() {
                             </button>
                             <ViewFullImpactButton policyId={analysis.policy_id} policyTitle={analysis.policy_title} category={analysis.category} variant="compact" analyzed className="flex-shrink-0" />
                             {value > 0
-                              ? <TrendingUp className="w-4 h-4 text-emerald-400 flex-shrink-0" aria-hidden />
-                              : value < 0 ? <TrendingDown className="w-4 h-4 text-red-400 flex-shrink-0" aria-hidden /> : <Minus className="w-4 h-4 text-text-muted flex-shrink-0" aria-hidden />}
+                              ? <TrendingUp className="w-4 h-4 text-gain flex-shrink-0" aria-hidden />
+                              : value < 0 ? <TrendingDown className="w-4 h-4 text-loss flex-shrink-0" aria-hidden /> : <Minus className="w-4 h-4 text-text-muted flex-shrink-0" aria-hidden />}
                           </div>
 
                           {isOpen && (
-                            <m.div id={panelId} initial={{ opacity: 0, height: 0 }} animate={{ opacity: 1, height: 'auto' }} className="mt-2 bg-white/3 border border-white/8 rounded-2xl p-6 overflow-hidden">
+                            <m.div id={panelId} initial={{ opacity: 0, height: 0 }} animate={{ opacity: 1, height: 'auto' }} className="mt-2 bg-fg/3 border border-fg/8 rounded-2xl p-6 overflow-hidden">
                               <AnalysisBody row={analysis} headingTag="h4" />
                             </m.div>
                           )}
@@ -356,7 +356,7 @@ function ImpactContent() {
                     {methodology.map((item, i) => {
                       const isOpen = expandedMethod === i;
                       return (
-                        <div key={i} className="bg-white/3 border border-white/8 rounded-2xl overflow-hidden">
+                        <div key={i} className="bg-fg/3 border border-fg/8 rounded-2xl overflow-hidden">
                           <h3>
                             <button
                               type="button"
@@ -400,7 +400,7 @@ function ImpactContent() {
                     <div className="absolute inset-0 bg-gradient-to-br from-gold/8 via-transparent to-primary/8" />
                     <div className="relative z-10">
                       <h2 className="text-xs font-mono-data text-text-muted uppercase tracking-widest mb-4">Net Annual Impact ({checkedAnalyses.length} selected)</h2>
-                      <div className={`font-mono-data text-6xl sm:text-7xl font-bold mb-3 ${netImpact >= 0 ? 'gradient-text-gold' : 'text-red-400'}`}>
+                      <div className={`font-mono-data text-6xl sm:text-7xl font-bold mb-3 ${netImpact >= 0 ? 'text-gain' : 'text-loss'}`}>
                         <CountUp value={Math.round(netImpact)} format={signedUSD} />
                       </div>
                       <p className="text-text-muted">per year</p>
@@ -413,7 +413,7 @@ function ImpactContent() {
                       <div role="group" aria-labelledby="select-policies">
                         <div className="space-y-2 max-h-[360px] overflow-y-auto pr-1">
                           {analyses.map(analysis => (
-                            <label key={analysis.id} className="flex items-center gap-3 p-3 rounded-xl hover:bg-white/5 cursor-pointer transition-all">
+                            <label key={analysis.id} className="flex items-center gap-3 p-3 rounded-xl hover:bg-fg/5 cursor-pointer transition-all">
                               <input type="checkbox" checked={checkedIds.has(analysis.id)}
                                 onChange={e => { const next = new Set(checkedIds); if (e.target.checked) next.add(analysis.id); else next.delete(analysis.id); setCheckedIds(next); }}
                                 className="w-4 h-4 accent-primary rounded" />
@@ -474,7 +474,7 @@ function ImpactContent() {
                                     <span className="sr-only">, {share}% of the total</span>
                                   </span>
                                 </div>
-                                <div className="h-2 rounded-full bg-white/6 overflow-hidden" aria-hidden>
+                                <div className="h-2 rounded-full bg-fg/6 overflow-hidden" aria-hidden>
                                   <m.div className="h-full rounded-full" style={{ backgroundColor: (a.dollar_impact || 0) >= 0 ? '#10B981' : '#EF4444' }}
                                     initial={{ width: 0 }} animate={{ width: `${share}%` }} transition={{ duration: 0.7, delay: Math.min(i, 8) * 0.05 }} />
                                 </div>

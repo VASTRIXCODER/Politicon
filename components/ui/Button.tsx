@@ -39,7 +39,7 @@ const sizeClasses: Record<ButtonSize, string> = {
 const variantClasses: Record<ButtonVariant, string> = {
   // bg-primary-fill (#6A4FF0) keeps white text at AA; .shimmer-btn layers the gradient on it.
   primary: 'bg-primary-fill text-white font-medium shimmer-btn relative overflow-hidden',
-  ghost: 'border border-white/10 text-text-primary bg-white/3 hover:bg-white/[0.07] hover:border-primary/40',
+  ghost: 'border border-fg/10 text-text-primary bg-fg/3 hover:bg-fg/[0.07] hover:border-primary/40',
   secondary: 'bg-secondary/10 border border-secondary/30 text-secondary hover:bg-secondary/20',
   gold: 'bg-gold/10 border border-gold/30 text-gold hover:bg-gold/20',
   link: 'px-0 py-0 rounded-md text-primary-300 hover:text-text-primary underline-offset-4 hover:underline',
