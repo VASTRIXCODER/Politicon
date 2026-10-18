@@ -36,7 +36,7 @@
     "postprocessing": "^6.39.5",
     "react": "^19.3.0",
     "react-dom": "^19.3.0",
-    "recharts": "^2.15.0",
+    "recharts": "^3.10.1",
     "server-only": "^0.0.1",
     "tailwind-merge": "^2.6.1",
     "three": "^0.186.1",
