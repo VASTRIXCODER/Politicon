@@ -26,15 +26,16 @@ import { useWarmup } from '@/components/three/kit/warmup';
  * A ledger as a column of glass slabs on a porcelain pedestal: gains in
  * ledger teal stacked up from a baseline (the zero line, a porcelain plate
  * with a faint violet tint), costs in ember amber hanging down from it, each
- * slab's height linear in its dollars, and a soft round halo of violet light
- * around the column marking the net. The halo has no hard core line and no
- * corners, so from no angle does it read as a wire box. The numbers
- * themselves are never 3D: the page says them in text.
+ * slab's height linear in its dollars, and, once the net is in, a soft halo
+ * of violet light pooled on the ground around the column's foot. The halo
+ * is round, with no core line and no corners, and lies on the ground, so
+ * from no angle does it read as a wire box. The numbers themselves are
+ * never 3D: the page says them in text.
  *
  *   fill  0..1, how far the slabs have grown out from the baseline (both
  *         ways, as a share of the taller stack), so they can fill as light
  *         arrives
- *   mark  0..1, the net ring appearing
+ *   mark  0..1, the halo at the foot appearing (the net is in)
  *   glow  0..1, the light inside the glass (an evening scene)
  *
  * Each can be a number or a function read every frame (no re-render).
@@ -70,11 +71,11 @@ diffuseColor.a = clamp(diffuseColor.a + rimLight * 0.3, 0.0, 1.0);
 #include <opaque_fragment>
 `;
 
-// The net's halo: a round, soft band of light drawn flat around the column
-// (a circle clear of the slabs' corners), brightest along its radius and
-// fading out both ways, with no core line. Premultiplied, so it reads as
-// violet haze on paper by day (uAdd < 1) and adds up as light by night
-// (uAdd 1).
+// The halo at the foot: a round pool of light lying on the ground around the
+// column, brightest just outside the foot and fading out softly (inward it
+// falls off fast, under the foot), with no core line. Premultiplied, so it
+// reads as violet haze on paper by day (uAdd < 1) and adds up as light by
+// night (uAdd 1).
 const HALO_VERTEX = /* glsl */ `
 varying vec2 vP;
 void main() {
@@ -92,7 +93,7 @@ uniform float uAdd;
 varying vec2 vP;
 void main() {
   float d = (length(vP) - uRadius) / uWidth;
-  float a = (exp(-d * d * 2.2) * 0.72 + exp(-abs(d) * 1.1) * 0.28) * uStrength;
+  float a = (d < 0.0 ? exp(-d * d * 4.0) : exp(-d * d * 1.2) * 0.7 + exp(-d * 0.9) * 0.3) * uStrength;
   if (a < 0.003) discard;
   vec4 o = linearToOutputTexel(vec4(uColor, 1.0));
   gl_FragColor = vec4(o.rgb * a, a * (1.0 - uAdd));
@@ -152,10 +153,10 @@ export default function LedgerColumn({
     const foot = occlude(new CylinderGeometry(width * 0.78, width * 0.84, base, 48), -base / 2, base / 2, 0.25);
     foot.translate(0, base / 2, 0);
     const plate = new RoundedBoxGeometry(width + 0.07, 0.016, width + 0.07, 2, 0.006);
-    // The net halo: a circle clear of the slabs' corners (half their diagonal), on a plane wide enough for its falloff.
-    const haloRadius = width * 0.71 + 0.05;
-    const haloWidth = 0.045;
-    const haloHalf = haloRadius + haloWidth * 4;
+    // The halo at the foot: brightest just outside the foot's rim, on a ground plane wide enough for its falloff.
+    const haloRadius = width * 0.84 + 0.02;
+    const haloWidth = 0.06;
+    const haloHalf = haloRadius + haloWidth * 5;
     const halo = new PlaneGeometry(haloHalf * 2, haloHalf * 2);
     halo.rotateX(-Math.PI / 2);
     // A slim spine from the pedestal to the baseline, so the zero line never floats.
@@ -282,8 +283,8 @@ export default function LedgerColumn({
       ))}
       {/* The baseline: zero, a porcelain plate. */}
       <mesh geometry={geo.plate} material={mats.plate} position={[0, layout.baseline, 0]} />
-      {/* The net: a soft round halo of violet light around the column, closing in as it appears. */}
-      <group ref={ring} position={[0, layout.netY, 0]}>
+      {/* Once the net is in: a soft halo of violet light on the ground around the foot, closing in as it appears. */}
+      <group ref={ring} position={[0, 0.004, 0]}>
         <mesh geometry={geo.halo} material={mats.halo} renderOrder={7} />
       </group>
     </group>

@@ -21,7 +21,7 @@ const SHOTS = [
   { title: 'The Capitol', note: 'Morning paper light, a slow dolly-in; the beam and glint at the lantern continue the hero.' },
   { title: 'A bill lifts off', note: 'The glass bill rises out of the lantern and glides toward the camera, turning to face it; the gold seal catches the light.' },
   { title: 'Light to the house', note: 'The sheet dissolves top first into light that streams over and down into the household; its windows warm.' },
-  { title: 'The ledger', note: 'The light rises into the ledger: gains up from the baseline in teal, costs down in amber, then the net ring (example: +$1,240/yr).' },
+  { title: 'The ledger', note: 'The light rises into the ledger: gains up from the baseline in teal, costs down in amber, then a halo of light at its foot once the net is in (example: +$1,240/yr).' },
   { title: 'Dusk', note: 'Back and up into twilight and night: lamplit windows, a moonlit rim, some of the light out again as fireflies.' },
 ] as const;
 
@@ -157,7 +157,7 @@ export default function FilmLab() {
           </div>
         </Surface>
         <Surface as="article" variant="outline" pad="sm" className="flex flex-col gap-3">
-          <SceneView className="aspect-square" poster={<FramePoster label="Ledger" />} label="A ledger column: two teal gain slabs above a baseline, two amber cost slabs below, and a ring at the net">
+          <SceneView className="aspect-square" poster={<FramePoster label="Ledger" />} label="A ledger column: two teal gain slabs above a baseline, two amber cost slabs below, and a halo of light at its foot">
             <SceneCamera position={[1.1, 0.95, 2.9]} target={[0, 0.55, 0]} fov={30} />
             <StudioLights />
             <LedgerColumn amounts={FILM_LEDGER_AMOUNTS} unitsPerDollar={FILM_LEDGER_SCALE} />

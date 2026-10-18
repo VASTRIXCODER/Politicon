@@ -184,8 +184,11 @@ describe('the film’s words', () => {
   it('says what the AI really reads (the official summary and record, not the legal text)', () => {
     const shot = buildFilmShots(true).find((s) => s.id === 'plain-english')!;
     const words = JSON.stringify(shot);
-    expect(words).not.toMatch(/legal text|full text|reads the bill\b(?!’s official summary)|AI Policy Guide/i);
-    expect(shot.body).toMatch(/official summary/);
+    // Not the bill's text, and not the /advisor chat (the AI Policy Guide), which is another feature.
+    expect(words).not.toMatch(/legal text|full text|reads the bill\b(?!’s official)|AI Policy Guide/i);
+    expect(shot.body).toMatch(/official record/);
+    // A summary only where one has been published (lib/server/legislation officialSummary can return none).
+    expect(shot.body).toMatch(/official summary when there is one/);
     expect(shot.body).toMatch(/what it assumed/);
   });
 
@@ -287,6 +290,12 @@ describe('the hero receipt and poster', () => {
     expect(keyframes).toMatch(/transform/);
     expect(keyframes).not.toMatch(/opacity|visibility|clip/);
     expect(css.match(/@keyframes bar-grow\s*\{[\s\S]*?\n\}/)?.[0]).not.toMatch(/scaleX\(0\)/);
+    // The whole print-in (the slide's lift, and each bar after its row's delay) is over within 600ms.
+    const seconds = (rule: string) => Number(css.match(new RegExp(`animation: ${rule} ([\\d.]+)s`))?.[1] ?? NaN);
+    const [perRow, base] = (css.match(/animation-delay: calc\(var\(--row, 0\) \* (\d+)ms \+ (\d+)ms\)/) ?? []).slice(1).map(Number);
+    const rows = examples[0].projection.length;
+    expect(seconds('receipt-in') * 1000).toBeLessThanOrEqual(600);
+    expect(seconds('bar-grow') * 1000 + (rows - 1) * perRow + base).toBeLessThanOrEqual(600);
   });
 
   it('renders the receipt labelled as an example, paused until it knows the motion preference', () => {

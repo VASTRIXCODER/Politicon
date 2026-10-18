@@ -40,16 +40,17 @@
   background-size: 7px 1px;
 }
 
-/* A slide that changes in (never the first one, which renders final). It
-   only moves: its words are never transparent, so a slow or busy main
-   thread (the 3D stage compiling its shaders, say) can delay the motion
+/* A slide that changes in (never the first one, which renders final, in
+   the server HTML). It only moves, and all of it is over within 600ms: its
+   words are never transparent and its bars start as stubs, so a busy main
+   thread or GPU (the 3D stage compiling its shaders, say) can hold a frame
    but never leave the receipt blank. */
 .enter {
-  animation: receipt-in 0.45s var(--ease-civic) both;
+  animation: receipt-in 0.4s var(--ease-civic) both;
 }
 .enter .bar {
-  animation: bar-grow 0.9s var(--ease-civic) both;
-  animation-delay: calc(var(--row, 0) * 110ms + 120ms);
+  animation: bar-grow 0.48s var(--ease-civic) both;
+  animation-delay: calc(var(--row, 0) * 40ms + 30ms);
 }
 .bar {
   transform-origin: left center;

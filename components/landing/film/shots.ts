@@ -95,10 +95,11 @@ export function buildFilmShots(stateBills: boolean): FilmShot[] {
       label: 'Plain English',
       kicker: 'A bill in plain English',
       title: { lead: 'The record,', accent: 'in plain words.' },
-      // What the analysis really reads: the official summary and the record
-      // (app/api/analyze, lib/claude.ts), never the full legal text.
-      body: 'Politicon’s AI reads the bill’s official summary and record, then explains what it would change and who it reaches. Where the record doesn’t say, such as amounts or start dates, it lists what it assumed. No jargon, and no spin.',
-      tags: [{ text: 'What changes' }, { text: 'Who it reaches' }, { text: 'What it assumed' }],
+      // What the analysis really reads (app/api/analyze, lib/claude.ts): the
+      // record's status and latest action, and the official summary where
+      // one has been published. Never the full legal text.
+      body: 'Politicon’s AI reads the bill’s official record, and its official summary when there is one, then explains in plain English what it would change. Where the record doesn’t say, such as amounts or start dates, it lists what it assumed. No jargon, and no spin.',
+      tags: [{ text: 'What changes' }, { text: 'Official summary' }, { text: 'What it assumed' }],
     },
     {
       id: 'household',

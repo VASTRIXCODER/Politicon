@@ -229,6 +229,41 @@ function runProbe() {
   refresh();
 }
 
+/** The longest the probe waits for the first paint (a hidden tab, a browser without paint timing). */
+const FIRST_PAINT_WAIT_MS = 4000;
+
+/**
+ * Runs `cb` at idle time once the page has painted its first content. The
+ * probe's WebGL context is created synchronously, and a GPU that is slow to
+ * start (a software rasteriser, a cold driver) can hold the main thread for
+ * a second or more: never before the page has shown its first screen.
+ */
+function afterFirstPaint(cb: () => void) {
+  const ric = (window as Window & { requestIdleCallback?: (cb: () => void, o?: { timeout: number }) => number }).requestIdleCallback;
+  const idle = () => (ric ? ric.call(window, cb, { timeout: 1500 }) : window.setTimeout(cb, 200));
+  let done = false;
+  let observer: PerformanceObserver | null = null;
+  const go = () => {
+    if (done) return;
+    done = true;
+    observer?.disconnect();
+    window.clearTimeout(timer);
+    idle();
+  };
+  const timer = window.setTimeout(go, FIRST_PAINT_WAIT_MS);
+  try {
+    observer = new PerformanceObserver((list) => {
+      if (list.getEntriesByName('first-contentful-paint').length) go();
+    });
+    // Buffered: a paint that happened before this call counts.
+    observer.observe({ type: 'paint', buffered: true });
+  } catch {
+    // No paint timing here: wait for a frame instead (it has been painted once rAF runs again).
+    if (typeof requestAnimationFrame === 'function') requestAnimationFrame(() => requestAnimationFrame(go));
+    else go();
+  }
+}
+
 function onStorage(e: StorageEvent) {
   if (e.key === EFFECTS_STORAGE_KEY) {
     prefEmit();
@@ -246,14 +281,12 @@ function subscribe(onChange: () => void) {
     window.addEventListener('storage', onStorage);
     if (typeof window.matchMedia === 'function') window.matchMedia(COARSE).addEventListener?.('change', onPointerChange);
   }
-  // Creating a probe context costs a few ms of main thread, so it waits for
-  // the browser to be idle (after hydration and first paint).
+  // Creating a probe context costs a few ms of main thread (far more on a
+  // slow GPU), so it waits for the first paint and then for the browser to
+  // be idle.
   if (!probe && !probeScheduled) {
     probeScheduled = true;
-    const ric = (window as Window & { requestIdleCallback?: (cb: () => void, o?: { timeout: number }) => number })
-      .requestIdleCallback;
-    if (ric) ric(runProbe, { timeout: 1500 });
-    else window.setTimeout(runProbe, 200);
+    afterFirstPaint(runProbe);
   }
   return () => {
     listeners.delete(onChange);

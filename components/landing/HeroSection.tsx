@@ -9,6 +9,9 @@ import { buildImpactExamples } from './hero/impactExamples';
 /** Longest question the hero hands to the AI Policy Guide (the guide caps it too). */
 const MAX_QUESTION = 500;
 
+/** The id of the empty marker at the end of the hero's HTML. */
+export const HERO_END = 'hero-end';
+
 interface HeroSectionProps {
   /** True when state bills are loaded (Open States is configured), so the hero may say so. */
   stateBills: boolean;
@@ -42,6 +45,11 @@ export default function HeroSection({ stateBills }: HeroSectionProps) {
       data-scene-section="hero"
       className="relative overflow-x-clip pb-16 pt-[4.75rem] sm:pt-28 lg:flex lg:min-h-[100svh] lg:items-center lg:pb-20 lg:pt-28"
     >
+      {/* Hold the first paint until the whole hero is parsed (Chromium; others
+          ignore it), so it never shows the headline without the receipt or a
+          half-drawn Capitol. React hoists this into the <head>; it costs only
+          the parse of the hero's own markup. */}
+      <link rel="expect" href={`#${HERO_END}`} blocking="render" />
       <div className="mx-auto grid w-full max-w-7xl grid-cols-1 items-center gap-y-5 px-4 sm:gap-y-6 sm:px-6 lg:grid-cols-12 lg:gap-x-10 lg:px-8">
         {/* ---- Copy ---- */}
         <div className="relative z-content lg:col-span-7 lg:col-start-1 lg:row-start-1">
@@ -127,19 +135,11 @@ export default function HeroSection({ stateBills }: HeroSectionProps) {
           </dl>
         </div>
 
-        {/* ---- The Capitol: the top of a phone's first screen (order-first), behind the receipt from lg ---- */}
-        {/* It bleeds to the screen's edges on phones and past the column on
-            desktops (the section clips it), up to the top of the section
-            there, so the lantern's beam rises out of view behind the
-            navigation instead of stopping at an edge. No fill: the 3D stage
-            draws behind the page. */}
-        <div className="relative order-first -mx-4 h-[clamp(10.5rem,22svh,14rem)] sm:-mx-6 sm:h-[20rem] lg:order-none lg:col-span-5 lg:col-start-8 lg:row-start-1 lg:mx-0 lg:h-auto lg:self-stretch">
-          <div className="absolute inset-0 lg:-top-28 lg:bottom-0 lg:-left-[10%] lg:-right-[22%]">
-            <HeroVisual poster={<HeroPoster />} />
-          </div>
-        </div>
-
         {/* ---- The example receipt: after the copy on phones, in front of the Capitol from lg ---- */}
+        {/* Before the Capitol in the HTML: the drawing is the heaviest markup in
+            the hero, and a slow phone may paint the part of the page it has
+            parsed so far. Its place on screen comes from the grid (and its
+            z-index), so the order here changes nothing you see. */}
         <div className="relative lg:col-span-5 lg:col-start-8 lg:row-start-1 lg:self-stretch">
           <div className="relative z-content mt-3 flex justify-center sm:mt-4 lg:absolute lg:bottom-[2%] lg:left-[-8%] lg:mt-0 lg:justify-start xl:left-[-4%]">
             <div className="w-full max-w-[360px] motion-safe:lg:animate-float">
@@ -152,7 +152,21 @@ export default function HeroSection({ stateBills }: HeroSectionProps) {
           {/* Desktop: hold the column's height so the receipt has room below the dome. */}
           <div aria-hidden="true" className="hidden lg:block lg:h-[min(46rem,82svh)]" />
         </div>
+
+        {/* ---- The Capitol: the top of a phone's first screen (order-first), behind the receipt from lg ---- */}
+        {/* It bleeds to the screen's edges on phones and past the column on
+            desktops (the section clips it), up to the top of the section
+            there, so the lantern's beam rises out of view behind the
+            navigation instead of stopping at an edge. No fill: the 3D stage
+            draws behind the page. */}
+        <div className="relative order-first -mx-4 h-[clamp(10.5rem,22svh,14rem)] sm:-mx-6 sm:h-[20rem] lg:order-none lg:col-span-5 lg:col-start-8 lg:row-start-1 lg:mx-0 lg:h-auto lg:self-stretch">
+          <div className="absolute inset-0 lg:-top-28 lg:bottom-0 lg:-left-[10%] lg:-right-[22%]">
+            <HeroVisual poster={<HeroPoster />} />
+          </div>
+        </div>
       </div>
+      {/* Where the hero's HTML ends: the render-blocking hint at the top waits for it. */}
+      <span id={HERO_END} hidden />
     </section>
   );
 }

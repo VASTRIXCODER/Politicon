@@ -128,6 +128,8 @@ test.describe('the pinned film', () => {
   });
 
   test('keeps each caption clear of the navigation and the rail on a phone', { tag: '@phone' }, async ({ page }) => {
+    // Two screen sizes, each a fresh load of the film and five shots.
+    test.setTimeout(180_000);
     for (const size of [
       { width: 375, height: 667 },
       { width: 375, height: 812 },

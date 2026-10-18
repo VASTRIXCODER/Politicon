@@ -478,8 +478,10 @@ export default function ExplorerClient({ poster, legend }: ExplorerClientProps) 
             </p>
           </div>
 
-          {/* The controls: glass, as controls are. */}
-          <div className="glass mt-5 flex flex-col gap-4 rounded-pane p-4 xl:flex-row xl:items-center xl:justify-between">
+          {/* The controls: glass, as controls are. On wide screens they float
+              over the top edge of the city (its empty sky), so the model rises
+              into the first screen. */}
+          <div className="glass relative z-content mt-5 flex flex-col gap-4 rounded-pane p-4 xl:flex-row xl:items-center xl:justify-between">
             <div className="min-w-0">
               <p id={bracketLabel} className="mb-1.5 px-1 font-mono-data text-meta uppercase tracking-[0.16em] text-muted">
                 Income bracket
@@ -536,7 +538,10 @@ export default function ExplorerClient({ poster, legend }: ExplorerClientProps) 
           </div>
 
           <div className="mt-4 grid gap-6 lg:grid-cols-12">
-            <figure className="min-w-0 lg:col-span-8 xl:col-span-9">
+            {/* From xl the controls are one row and the frame is 2:1, with about
+                a quarter of its height clear sky above the towers: the frame
+                starts under the glass bar, and the towers just below it. */}
+            <figure className="min-w-0 lg:col-span-8 xl:col-span-9 xl:-mt-[6.5rem]">
               <div
                 ref={frame}
                 className={cn(styles.root, 'relative aspect-[3/2] touch-pan-y touch-pinch-zoom sm:aspect-[16/9] lg:aspect-[16/10] xl:aspect-[2/1]')}

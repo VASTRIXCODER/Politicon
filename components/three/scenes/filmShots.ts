@@ -113,7 +113,7 @@ export const TIMELINE = {
   stream: { start: 0.42, end: 0.585, stagger: 0.6 },
   /** Shot 4: the light rises out of the house and settles into the ledger, filling it from the baseline out. */
   settle: { start: 0.6, end: 0.735, stagger: 0.5 },
-  /** The net ring, once the ledger is full. */
+  /** The halo at the ledger's foot (the net is in), once the ledger is full. */
   net: { start: 0.735, end: 0.752 },
   /** Shot 5: day turns to dusk, briskly, so the page dips into night with it (filmMath duskProgress)… */
   dusk: { start: 0.79, end: 0.86 },
@@ -136,7 +136,7 @@ export interface FilmCues {
   settle: number;
   /** The ledger's fill front, 0..1 of its taller stack. */
   fill: number;
-  /** The net ring, 0..1. */
+  /** The halo at the ledger's foot, 0..1. */
   mark: number;
   /** Shot 5's fireflies, 0..1. */
   fireflies: number;
