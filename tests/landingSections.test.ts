@@ -63,7 +63,7 @@ const FOCUSABLE = /<(a|button|input|select|textarea)\b|tabindex="0"/;
 const HERO_CTA = /get my impact report/i;
 
 const ALL_SECTIONS = [
-  () => h(StatsSection, { stats: NO_PUBLIC_STATS, stateBills: true }),
+  () => h(StatsSection, { stats: NO_PUBLIC_STATS, members: [], stateBills: true }),
   () => h(FeatureShowcase, { stateBills: true }),
   () => h(ShareableCards),
   () => h(PublicExplorer),
@@ -91,18 +91,18 @@ describe('landing sections', () => {
 
 describe('StatsSection', () => {
   it('shows only the plain rules when there are no measured figures', () => {
-    const t = text(renderToString(h(StatsSection, { stats: NO_PUBLIC_STATS, stateBills: false })));
+    const t = text(renderToString(h(StatsSection, { stats: NO_PUBLIC_STATS, members: [], stateBills: false })));
     expect(t).toMatch(/Built on official records/);
     expect(t).not.toMatch(/Politicon in numbers|Members|Personal analyses/);
     expect(t).toMatch(/Ranges only/);
     // State coverage is claimed only when Open States is configured.
     expect(t).not.toMatch(/50 states|Open States/);
-    expect(text(renderToString(h(StatsSection, { stats: NO_PUBLIC_STATS, stateBills: true })))).toMatch(/50 states/);
+    expect(text(renderToString(h(StatsSection, { stats: NO_PUBLIC_STATS, members: [], stateBills: true })))).toMatch(/50 states/);
   });
 
   it('shows exactly the measured figures it is given, with their source note', () => {
     const t = text(
-      renderToString(h(StatsSection, { stats: { members: 1234, analyses: null, medianAnnualImpact: 410 }, stateBills: true }))
+      renderToString(h(StatsSection, { stats: { members: 1234, analyses: null, medianAnnualImpact: 410 }, members: [], stateBills: true }))
     );
     expect(t).toMatch(/Politicon in numbers/);
     expect(t).toMatch(/1,234/);

@@ -84,6 +84,7 @@ These are all the variables the app reads (`grep -rn process.env app lib compone
 | `RATE_LIMIT_SALT` | server | Secret for hashing client IPs before they're stored for rate limiting (`lib/rateLimit.ts`). Without it the service-role key is used, then a fixed string. Use any long random string. |
 | `CONGRESS_API_KEY` | server | api.data.gov key for Congress.gov. Without it the public `DEMO_KEY` is used, and `/api/health` reports the federal source as not OK in production. |
 | `HEALTHCHECK_TOKEN` | server | Send it as the `x-health-token` header to get per-dependency details from `/api/health`. Without it, `/api/health` only ever returns `{ ok }`. |
+| `CRON_SECRET` | server | Vercel sends it as a bearer token to the daily `/api/cron/keepalive` job (`vercel.json`), which then refuses other callers. The job runs one small query a day so a free-tier Supabase project isn't paused for inactivity. |
 
 ### Optional
 
@@ -119,6 +120,19 @@ These are all the variables the app reads (`grep -rn process.env app lib compone
 
 If the production project is paused, restore it from the Supabase dashboard (Project → Restore). Otherwise create a new project. Copy the project URL, anon key and service-role key into your environment.
 
+A paused or deleted project shows up in the Vercel logs as `getaddrinfo ENOTFOUND <ref>.supabase.co`: its hostname stops resolving, so sign-in, the feed and the landing page figures all fail. After restoring (or creating a new project and updating `NEXT_PUBLIC_SUPABASE_URL`, `NEXT_PUBLIC_SUPABASE_ANON_KEY` and `SUPABASE_SERVICE_ROLE_KEY` in Vercel), redeploy so the new values are built in. The daily keepalive cron in `vercel.json` stops a free-tier project from pausing again.
+
+### Seed accounts (optional)
+
+`scripts/seed-accounts.mjs` creates confirmed accounts with random emails and passwords through the auth admin API (no mail is sent) and writes the credentials to `seed-accounts.local.csv`, which is gitignored:
+
+```bash
+node --env-file=.env.local scripts/seed-accounts.mjs --count 200
+node --env-file=.env.local scripts/seed-accounts.mjs --delete   # removes every seeded account
+```
+
+Seeded accounts are tagged `app_metadata.seeded = true`. They are test accounts, not people, so they never reach the landing page: `public_stats()` (from migration `20261019090000`) leaves them and their analyses out of every public figure, and the masked member list skips them. Emails default to `@getpoliticon.app`; `--domains` takes a comma-separated list, but avoid public providers, where a random address may belong to a real person.
+
 ### 2. Extensions
 
 Enable **pg_cron** (Database → Extensions) **before** applying the migrations. `20261007150000_account_lifecycle.sql` schedules the nightly retention job only if pg_cron is already enabled. If you enable it later, run that file again; it's safe to re-run.
@@ -141,6 +155,7 @@ Apply every file in `supabase/migrations` in filename order:
 12. `20261008090000_ai_jobs.sql`
 13. `20261008120000_grounding_and_feedback.sql`
 14. `20261008150000_public_stats.sql`
+15. `20261019090000_public_stats_exclude_seeded.sql`
 
 Do this with psql and the project's connection string (Project Settings → Database), the same way the database test suite builds its schema:
 
@@ -152,7 +167,7 @@ done
 
 Or paste each file into the SQL editor in that order. Every migration from `20261007120000` onwards is safe to run twice. On an existing database, find the last migration applied with `select public.schema_version();` and apply only the files after it. If you use the Supabase CLI (`supabase db push`) on a project that was set up by hand, first mark the files already applied with `supabase migration repair --status applied <version>`.
 
-`/api/health` checks that the database is at least at the schema version the code expects (`EXPECTED_SCHEMA_VERSION` in `app/api/health/route.ts`, currently `20261008150000`).
+`/api/health` checks that the database is at least at the schema version the code expects (`EXPECTED_SCHEMA_VERSION` in `app/api/health/route.ts`, currently `20261019090000`).
 
 ### 4. Auth URLs
 

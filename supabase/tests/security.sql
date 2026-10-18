@@ -454,3 +454,42 @@ begin
     raise exception 'empty public_stats returned % / % / %', s.analyses, s.contributors, s.median_abs_annual_impact;
   end if;
 end $$;
+
+-- Seeded test accounts (scripts/seed-accounts.mjs tags them
+-- raw_app_meta_data.seeded = true) are not people: confirmed or not, they and
+-- their analyses never reach the public figures.
+do $$
+declare
+  a constant uuid := '11111111-1111-1111-1111-111111111111';
+  seed constant uuid := '99999999-9999-9999-9999-999999999999';
+  before record;
+  s record;
+begin
+  delete from public.analyzed_policies where user_id = a;
+  select * into before from public.public_stats();
+
+  insert into auth.users (id, email, email_confirmed_at, raw_app_meta_data)
+    values (seed, 'seed@getpoliticon.app', now(), '{"seeded": true}');
+  insert into public.analyzed_policies (user_id, policy_id, analysis, net_annual_impact, generation_status) values
+    (seed, 'seed-1', '{"plainEnglishSummary":"x"}', 5000, 'ready');
+  insert into public.analyzed_policies (user_id, policy_id, analysis, net_annual_impact, generation_status) values
+    (a, 'real-1', '{"plainEnglishSummary":"x"}', 200, 'ready');
+
+  select * into s from public.public_stats();
+  if s.members <> before.members then
+    raise exception 'a seeded account was counted as a member (% -> %)', before.members, s.members;
+  end if;
+  if s.analyses <> 1 or s.contributors <> 1 or s.median_abs_annual_impact <> 200 then
+    raise exception 'seeded analyses leaked into public_stats: % / % / %', s.analyses, s.contributors, s.median_abs_annual_impact;
+  end if;
+
+  -- A real account whose metadata merely mentions the key still counts.
+  update auth.users set raw_app_meta_data = '{"seeded": false}' where id = seed;
+  select * into s from public.public_stats();
+  if s.members <> before.members + 1 then
+    raise exception 'seeded=false must count as a member (expected %, got %)', before.members + 1, s.members;
+  end if;
+
+  delete from public.analyzed_policies where user_id in (a, seed);
+  delete from auth.users where id = seed;
+end $$;

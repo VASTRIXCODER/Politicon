@@ -11,6 +11,7 @@ import NewsletterSection from '@/components/landing/NewsletterSection';
 import ClosingCta from '@/components/landing/ClosingCta';
 import Footer from '@/components/layout/Footer';
 import { getPublicStats } from '@/lib/server/publicStats';
+import { getMemberDirectory } from '@/lib/server/memberDirectory';
 
 // Static page, regenerated at most every 15 minutes (matches PUBLIC_STATS_REVALIDATE).
 export const revalidate = 900;
@@ -24,7 +25,7 @@ export const revalidate = 900;
  * night before the footer.
  */
 export default async function LandingPage() {
-  const stats = await getPublicStats();
+  const [stats, members] = await Promise.all([getPublicStats(), getMemberDirectory()]);
   // State bills are only fetched when Open States is configured; the page
   // claims state coverage only then.
   const stateBills = Boolean(process.env.OPENSTATES_API_KEY);
@@ -38,7 +39,7 @@ export default async function LandingPage() {
           <HeroSection stateBills={stateBills} />
           <PrinciplesRibbon stateBills={stateBills} />
           <FilmSection stateBills={stateBills} />
-          <StatsSection stats={stats} stateBills={stateBills} />
+          <StatsSection stats={stats} members={members} stateBills={stateBills} />
           <FeatureShowcase stateBills={stateBills} />
           <ShareableCards />
           <PublicExplorer />
