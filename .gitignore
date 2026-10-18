@@ -37,3 +37,6 @@ yarn-error.log*
 # typescript
 *.tsbuildinfo
 next-env.d.ts
+
+# seeded account credentials (scripts/seed-accounts.mjs)
+seed-accounts*.csv

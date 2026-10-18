@@ -1,5 +1,7 @@
 import CountUp from '@/components/ui/CountUp';
 import type { PublicStats } from '@/lib/server/publicStats';
+import type { ListedMember } from '@/lib/server/memberDirectory';
+import MemberList from './MemberList';
 import Reveal from './Reveal';
 
 interface LiveStat {
@@ -20,6 +22,8 @@ interface Fact {
 interface StatsSectionProps {
   /** Measured figures, rendered on the server. A null figure is not shown. */
   stats: PublicStats;
+  /** Masked member list, shown as a dropdown under the figures when the member count is shown. */
+  members: ListedMember[];
   /** True when state bills are loaded (Open States is configured). */
   stateBills: boolean;
 }
@@ -29,7 +33,7 @@ interface StatsSectionProps {
  * count) and plain facts about how Politicon works. Nothing here is a
  * hard-coded figure.
  */
-export default function StatsSection({ stats, stateBills }: StatsSectionProps) {
+export default function StatsSection({ stats, members, stateBills }: StatsSectionProps) {
   const live: LiveStat[] = [];
   if (stats.members !== null) {
     live.push({ value: stats.members, label: 'Members', sublabel: 'Accounts with a confirmed email address' });
@@ -104,6 +108,7 @@ export default function StatsSection({ stats, stateBills }: StatsSectionProps) {
                 </Reveal>
               ))}
             </div>
+            {stats.members !== null && <MemberList members={members} />}
             <p className="text-center text-xs text-text-muted mt-8">
               Counted from Politicon’s own records and refreshed every 15 minutes. Impact figures are AI estimates, not measured outcomes.
             </p>
