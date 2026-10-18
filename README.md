@@ -84,6 +84,7 @@ These are all the variables the app reads (`grep -rn process.env app lib compone
 | `RATE_LIMIT_SALT` | server | Secret for hashing client IPs before they're stored for rate limiting (`lib/rateLimit.ts`). Without it the service-role key is used, then a fixed string. Use any long random string. |
 | `CONGRESS_API_KEY` | server | api.data.gov key for Congress.gov. Without it the public `DEMO_KEY` is used, and `/api/health` reports the federal source as not OK in production. |
 | `HEALTHCHECK_TOKEN` | server | Send it as the `x-health-token` header to get per-dependency details from `/api/health`. Without it, `/api/health` only ever returns `{ ok }`. |
+| `CRON_SECRET` | server | Vercel sends it as a bearer token to the daily `/api/cron/keepalive` job (`vercel.json`), which then refuses other callers. The job runs one small query a day so a free-tier Supabase project isn't paused for inactivity. |
 
 ### Optional
 
@@ -118,6 +119,19 @@ These are all the variables the app reads (`grep -rn process.env app lib compone
 ### 1. Project
 
 If the production project is paused, restore it from the Supabase dashboard (Project → Restore). Otherwise create a new project. Copy the project URL, anon key and service-role key into your environment.
+
+A paused or deleted project shows up in the Vercel logs as `getaddrinfo ENOTFOUND <ref>.supabase.co`: its hostname stops resolving, so sign-in, the feed and the landing page figures all fail. After restoring (or creating a new project and updating `NEXT_PUBLIC_SUPABASE_URL`, `NEXT_PUBLIC_SUPABASE_ANON_KEY` and `SUPABASE_SERVICE_ROLE_KEY` in Vercel), redeploy so the new values are built in. The daily keepalive cron in `vercel.json` stops a free-tier project from pausing again.
+
+### Seed accounts (optional)
+
+`scripts/seed-accounts.mjs` creates confirmed accounts with random emails and passwords through the auth admin API (no mail is sent) and writes the credentials to `seed-accounts.local.csv`, which is gitignored:
+
+```bash
+node --env-file=.env.local scripts/seed-accounts.mjs --count 200
+node --env-file=.env.local scripts/seed-accounts.mjs --delete   # removes every seeded account
+```
+
+Seeded accounts are tagged `app_metadata.seeded = true`. They count toward the landing page's member figure and appear in its member list like any confirmed account. Emails default to `@getpoliticon.app`; `--domains` takes a comma-separated list, but avoid public providers, where a random address may belong to a real person.
 
 ### 2. Extensions
 
