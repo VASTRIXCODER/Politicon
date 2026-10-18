@@ -18,6 +18,20 @@
     --ease-civic: cubic-bezier(.2,.7,.2,1);
   }
 
+  /* Elevation (tailwind shadow-pane / shadow-lift). Shadows are always dark:
+     ink-tinted on paper, near-black under night panes. */
+  :root,
+  [data-theme='light'],
+  [data-day] {
+    --shadow-pane: 0 1px 0 rgb(21 18 31 / 0.04), 0 12px 32px -12px rgb(21 18 31 / 0.14);
+    --shadow-lift: 0 2px 0 rgb(21 18 31 / 0.04), 0 24px 48px -16px rgb(21 18 31 / 0.22);
+  }
+  [data-theme='dark'],
+  [data-night] {
+    --shadow-pane: 0 1px 0 rgb(255 255 255 / 0.04), 0 18px 40px -20px rgb(0 0 0 / 0.6);
+    --shadow-lift: 0 2px 0 rgb(255 255 255 / 0.04), 0 32px 64px -24px rgb(0 0 0 / 0.75);
+  }
+
   * {
     margin: 0;
     padding: 0;
@@ -62,6 +76,14 @@
     font-variation-settings: 'SOFT' 50, 'WONK' 0;
     font-optical-sizing: auto;
     letter-spacing: -0.015em;
+    /* Fraunces has a narrow space; without this, renderers that round glyph
+       advances to whole pixels (no subpixel positioning) run words together. */
+    word-spacing: 0.04em;
+  }
+  /* Editorial headlines never leave one word alone on a line. */
+  h1.font-display,
+  h2.font-display {
+    text-wrap: balance;
   }
   /* Italic accent words in headlines ("what this bill <em>means for you</em>"). */
   .font-display em,
@@ -134,10 +156,11 @@
     box-shadow: inset 0 1px 0 rgb(255 255 255 / 0.06), 0 18px 40px -20px rgb(0 0 0 / 0.6), 0 0 0 1px rgb(var(--c-violet) / 0.04);
   }
 
+  /* The hero pane behind numbers and charts: solid raised paper (a solid
+     night pane in the dark theme), never glass, so figures never sit on
+     refraction or moving light (the glass rule). The name is historical. */
   .glass-strong {
-    background-color: rgb(var(--c-raised) / 0.92);
-    backdrop-filter: blur(32px) saturate(160%);
-    -webkit-backdrop-filter: blur(32px) saturate(160%);
+    background-color: rgb(var(--c-raised));
     border-width: 1px;
     border-style: solid;
     border-color: rgb(var(--c-fg) / 0.1);
@@ -145,7 +168,6 @@
   }
   [data-theme='dark'] .glass-strong,
   [data-night] .glass-strong {
-    background-color: rgb(var(--c-raised) / 0.82);
     box-shadow: inset 0 1px 0 rgb(255 255 255 / 0.08), 0 24px 56px -24px rgb(0 0 0 / 0.7);
   }
 
@@ -154,10 +176,6 @@
     .glass {
       backdrop-filter: blur(10px);
       -webkit-backdrop-filter: blur(10px);
-    }
-    .glass-strong {
-      backdrop-filter: blur(16px) saturate(140%);
-      -webkit-backdrop-filter: blur(16px) saturate(140%);
     }
   }
 
@@ -221,21 +239,6 @@
     box-shadow: 0 0 30px rgb(var(--c-accent) / 0.35), 0 0 60px rgb(var(--c-accent) / 0.12);
   }
 
-  /* Gradient text: violet light falling into orchid. */
-  .gradient-text {
-    background-image: linear-gradient(120deg, rgb(var(--c-violet-text)) 0%, rgb(var(--c-violet)) 45%, rgb(var(--c-accent)) 100%);
-    -webkit-background-clip: text;
-    -webkit-text-fill-color: transparent;
-    background-clip: text;
-  }
-  /* Archive gold: official-record accents only. */
-  .gradient-text-gold {
-    background-image: linear-gradient(120deg, rgb(var(--c-gold)) 0%, rgb(var(--c-caution)) 100%);
-    -webkit-background-clip: text;
-    -webkit-text-fill-color: transparent;
-    background-clip: text;
-  }
-
   /* Primary button fill: violet light with a soft inner highlight. White text
      on the fill is 5.1:1 (AA). The sheen sweeps only while hovered with a
      mouse, so idle pages don't repaint it every frame. */
@@ -250,20 +253,6 @@
     .shimmer-btn:hover {
       animation: shimmer 1.6s var(--ease-civic) infinite;
     }
-  }
-
-  /* Underline that grows on hover for nav links */
-  .nav-underline::after {
-    content: '';
-    display: block;
-    height: 1px;
-    background: rgb(var(--c-violet));
-    transform: scaleX(0);
-    transform-origin: left;
-    transition: transform 0.3s var(--ease-civic);
-  }
-  .nav-underline:hover::after {
-    transform: scaleX(1);
   }
 
   /* "Skip to main content": hidden above the viewport until focused. */
@@ -312,10 +301,16 @@
   }
 }
 
+/* A night section (data-scene-night) shows its own night background until the
+   3D stage has painted the Chamber behind it; then it steps aside so views
+   inside show through (components/three/AmbientField.tsx). */
+html[data-stage='ready'] [data-scene-night][data-scene-night-live] {
+  background-color: transparent;
+}
+
 /* People who ask for less transparency get solid panes and bars. */
 @media (prefers-reduced-transparency: reduce) {
   .glass,
-  .glass-strong,
   .glass-nav {
     background-color: rgb(var(--c-surface));
     backdrop-filter: none;

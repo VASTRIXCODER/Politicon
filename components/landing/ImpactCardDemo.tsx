@@ -2,14 +2,18 @@
 
 import { useEffect, useRef, useState, useSyncExternalStore } from 'react';
 import { m } from 'motion/react';
-import { TrendingDown, TrendingUp, Zap, Pause, Play } from 'lucide-react';
+import { TrendingDown, TrendingUp, Pause, Play } from 'lucide-react';
 import Badge from '@/components/ui/Badge';
+import { LogoMark } from '@/components/ui/Logo';
 import { formatUSD } from '@/lib/format';
 import { exampleImpact, formatAnnual } from '@/lib/explorerData';
 
-// Semantic positive/negative tokens (tailwind `positive` / `negative`).
-const POSITIVE = '#34D399';
-const NEGATIVE = '#F87171';
+// Direction colours as token classes: ledger teal for gains, ember amber for
+// costs (text uses the AA text tone, bars and glow the fill tone).
+const TONE = {
+  positive: { text: 'text-gain', bar: 'bg-gain-fill', glow: 'rgb(var(--c-gain-fill) / 0.27)' },
+  negative: { text: 'text-loss', bar: 'bg-loss-fill', glow: 'rgb(var(--c-loss-fill) / 0.27)' },
+} as const;
 
 const ROTATE_MS = 4000;
 
@@ -41,7 +45,6 @@ const impacts = [
   note: 'estimated for a typical household in this bracket',
   direction: annual < 0 ? ('negative' as const) : ('positive' as const),
   projection: [annual, annual * 3, annual * 5],
-  color: annual < 0 ? NEGATIVE : POSITIVE,
 }));
 
 const PROJECTION_YEARS = ['Year 1', 'Year 3', 'Year 5'];
@@ -92,6 +95,7 @@ export default function ImpactCardDemo() {
   }, [rotating, index]);
 
   const current = impacts[index];
+  const tone = TONE[current.direction];
   const goTo = (i: number) => {
     setChanged(true);
     setIndex(i);
@@ -103,12 +107,13 @@ export default function ImpactCardDemo() {
       <div
         aria-hidden="true"
         className="absolute inset-0 rounded-3xl blur-3xl opacity-30"
-        style={{ background: `radial-gradient(circle, ${current.color}44 0%, transparent 70%)` }}
+        style={{ background: `radial-gradient(circle, ${tone.glow} 0%, transparent 70%)` }}
       />
-      {/* Pulsing violet halo: an opacity animation (compositor-only) instead of an animated box-shadow. */}
+      {/* Pulsing violet halo: an opacity animation (compositor-only) instead of an
+          animated box-shadow. Softer on paper, where a strong glow reads as a smudge. */}
       <div
         aria-hidden="true"
-        className="hidden lg:block absolute inset-0 rounded-3xl shadow-[0_0_40px_rgba(123,97,255,0.45),0_0_80px_rgba(123,97,255,0.15)] animate-pulse"
+        className="hidden lg:block absolute inset-0 rounded-3xl shadow-[0_0_40px_rgb(var(--c-glow)/0.3),0_0_80px_rgb(var(--c-glow)/0.1)] dark:shadow-[0_0_40px_rgb(var(--c-violet)/0.45),0_0_80px_rgb(var(--c-violet)/0.15)] animate-pulse"
       />
 
       <div
@@ -120,20 +125,18 @@ export default function ImpactCardDemo() {
         onPointerLeave={e => { if (e.pointerType === 'mouse') setHovered(false); }}
         onFocus={() => setFocused(true)}
         onBlur={e => { if (!e.currentTarget.contains(e.relatedTarget as Node | null)) setFocused(false); }}
-        className="glass-strong rounded-3xl p-6 w-full relative z-10 shadow-[0_0_20px_rgba(123,97,255,0.3)]"
+        className="glass-strong rounded-3xl p-6 w-full relative z-10 text-left shadow-[0_0_20px_rgb(var(--c-violet)/0.18)] dark:shadow-[0_0_20px_rgb(var(--c-violet)/0.3)]"
       >
         {/* Header */}
         <div className="flex items-start justify-between mb-5">
           <div className="flex items-center gap-2">
-            <div className="w-8 h-8 rounded-xl bg-primary/20 border border-primary/20 flex items-center justify-center" aria-hidden="true">
-              <Zap className="w-4 h-4 text-primary" />
-            </div>
+            <LogoMark className="h-8 w-8" detail="small" />
             <div>
               <p className="text-meta text-text-muted font-mono-data uppercase tracking-widest">AI Impact Analysis</p>
               <p className="text-xs text-text-primary font-medium">Politicon</p>
             </div>
           </div>
-          <Badge variant="gold">Example</Badge>
+          <Badge variant="example">Example</Badge>
         </div>
 
         {/* Current example. Announced politely only while rotation is stopped. */}
@@ -156,15 +159,12 @@ export default function ImpactCardDemo() {
 
             {/* Big impact number */}
             <div className="flex items-baseline gap-2">
-              <span
-                className="font-mono-data text-3xl font-bold"
-                style={{ color: current.color }}
-              >
+              <span className={`font-mono-data text-3xl font-bold ${tone.text}`}>
                 {current.headline}
               </span>
               {current.direction === 'negative'
-                ? <TrendingDown className="w-5 h-5" style={{ color: current.color }} aria-hidden="true" />
-                : <TrendingUp className="w-5 h-5" style={{ color: current.color }} aria-hidden="true" />}
+                ? <TrendingDown className={`w-5 h-5 ${tone.text}`} aria-hidden="true" />
+                : <TrendingUp className={`w-5 h-5 ${tone.text}`} aria-hidden="true" />}
             </div>
             <p className="text-meta text-text-muted mb-5">{current.note}</p>
 
@@ -175,12 +175,12 @@ export default function ImpactCardDemo() {
                 <li key={PROJECTION_YEARS[i]}>
                   <div className="flex items-center justify-between mb-1">
                     <span className="text-meta text-text-muted font-mono-data">{PROJECTION_YEARS[i]}</span>
-                    <span className="text-meta font-mono-data" style={{ color: current.color }}>{formatUSD(amount, { signed: true })}</span>
+                    <span className={`text-meta font-mono-data ${tone.text}`}>{formatUSD(amount, { signed: true })}</span>
                   </div>
                   <div className="h-1.5 rounded-full bg-fg/5 overflow-hidden" aria-hidden="true">
                     <m.div
-                      className="h-full rounded-full"
-                      style={{ width: `${barWidth(amount, current.projection)}%`, backgroundColor: current.color + '99', originX: 0 }}
+                      className={`h-full rounded-full ${tone.bar}`}
+                      style={{ width: `${barWidth(amount, current.projection)}%`, originX: 0 }}
                       initial={changed ? { scaleX: 0 } : false}
                       animate={{ scaleX: 1 }}
                       transition={{ duration: 0.8, delay: i * 0.12, ease: 'easeOut' }}

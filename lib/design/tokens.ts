@@ -39,11 +39,11 @@ export interface ThemeTokens {
   accent: string;
   /** Gains: ledger teal, for text. */
   gain: string;
-  /** Gains: fill for bars, slabs and dots. */
+  /** Gains: fill for bars, lines, slabs and dots (3:1 on canvas, surface and raised). */
   gainFill: string;
   /** Costs: ember amber, for text. */
   loss: string;
-  /** Costs: fill for bars, slabs and dots. */
+  /** Costs: fill for bars, lines, slabs and dots (3:1 on canvas, surface and raised). */
   lossFill: string;
   /** Errors and destructive actions. Never used for a cost. */
   danger: string;
@@ -71,7 +71,8 @@ export const THEMES: Record<ThemeName, ThemeTokens> = {
     gain: '#087159',
     gainFill: '#0E9F7E',
     loss: '#A3540F',
-    lossFill: '#E0832B',
+    // Ember amber deepened for paper: the brand ember (#E0832B) is under 3:1 there.
+    lossFill: '#C46A16',
     danger: '#B42344',
     caution: '#7E5F07',
     gold: '#7A5C0A',

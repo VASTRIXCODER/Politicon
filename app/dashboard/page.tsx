@@ -335,8 +335,8 @@ export default function DashboardPage() {
               </div>
             ) : (
               <div>
-                <h1 className="font-display text-3xl font-bold text-text-primary">
-                  Good {getGreeting()}, <span className="gradient-text capitalize">{firstName}</span>
+                <h1 className="font-display text-3xl font-medium text-text-primary">
+                  Good {getGreeting()}, <em className="capitalize">{firstName}</em>
                 </h1>
                 <p className="text-text-muted text-sm mt-1">Here&apos;s your personalized policy impact overview.</p>
               </div>
@@ -414,7 +414,6 @@ export default function DashboardPage() {
                   key={tab.id}
                   value={tab.id}
                   icon={<tab.icon className="w-3.5 h-3.5" />}
-                  className="border border-transparent aria-selected:bg-primary/20 aria-selected:border-primary/20"
                 >
                   {tab.label}
                   {tab.id === 'analyzed' && analyses.length > 0 && (
@@ -651,7 +650,7 @@ export default function DashboardPage() {
                                 </div>
                                 <div className="h-1.5 rounded-full bg-fg/5 overflow-hidden" aria-hidden>
                                   <div
-                                    className={`h-full rounded-full transition-all duration-700 ${val >= 0 ? 'bg-primary' : 'bg-loss-fill'}`}
+                                    className={`h-full rounded-full transition-all duration-700 ${val >= 0 ? 'bg-gain-fill' : 'bg-loss-fill'}`}
                                     style={{ width: `${Math.abs(val) / max * 100}%` }}
                                   />
                                 </div>

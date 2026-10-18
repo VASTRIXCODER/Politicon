@@ -128,9 +128,10 @@ const config: Config = {
         tile: '0.875rem',
       },
       boxShadow: {
-        // Soft paper elevation; the violet rim reads as light, not as a border.
-        pane: '0 1px 0 rgb(var(--c-fg) / 0.04), 0 12px 32px -12px rgb(var(--c-fg) / 0.14)',
-        lift: '0 2px 0 rgb(var(--c-fg) / 0.04), 0 24px 48px -16px rgb(var(--c-fg) / 0.22)',
+        // Soft paper elevation by day, a deep drop by night (app/globals.css
+        // switches --shadow-* with the theme, so no shadow ever glows white).
+        pane: 'var(--shadow-pane)',
+        lift: 'var(--shadow-lift)',
         glow: '0 0 0 1px rgb(var(--c-violet) / 0.25), 0 12px 40px -8px rgb(var(--c-violet) / 0.45)',
       },
       animation: {

@@ -96,7 +96,7 @@ function MultiOptionButton({ label, selected, disabled, onClick }: { label: stri
     }`}>
       <div className="flex items-center gap-2">
         <div aria-hidden="true" className={`w-4 h-4 rounded border flex items-center justify-center flex-shrink-0 ${
-          selected ? 'bg-primary border-primary' : 'border-fg/20'
+          selected ? 'bg-primary-fill border-primary-fill' : 'border-fg/20'
         }`}>{selected && <Check className="w-2.5 h-2.5 text-white" />}</div>
         <span>{label}</span>
       </div>
@@ -148,7 +148,7 @@ function Question({ title, hint, fieldId, children }: { title: string; hint?: st
   return (
     <QuestionContext.Provider value={{ titleId, hintId }}>
       <m.div ref={boxRef} initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: -20 }} transition={{ duration: 0.25 }}>
-        <h1 ref={titleRef} id={titleId} tabIndex={-1} className={`font-display text-2xl sm:text-3xl font-bold text-text-primary outline-none ${hint ? 'mb-2' : 'mb-8'}`}>
+        <h1 ref={titleRef} id={titleId} tabIndex={-1} className={`font-display text-2xl sm:text-3xl font-medium text-text-primary outline-none ${hint ? 'mb-2' : 'mb-8'}`}>
           {fieldId ? <label htmlFor={fieldId}>{title}</label> : title}
         </h1>
         {hint && <p id={hintId} className="text-sm text-text-muted mb-6">{hint}</p>}
@@ -445,7 +445,7 @@ export default function OnboardingPage() {
                 return (
                   <li key={stage.label} className="flex items-center gap-2" aria-current={isActive ? 'step' : undefined}>
                     <div aria-hidden="true" className={`w-7 h-7 rounded-full border flex items-center justify-center transition-all ${
-                      isDone ? 'bg-primary border-primary' : isActive ? 'border-primary bg-primary/20' : 'border-fg/20 bg-fg/5'
+                      isDone ? 'bg-primary-fill border-primary-fill' : isActive ? 'border-primary bg-primary/20' : 'border-fg/20 bg-fg/5'
                     }`}>
                       {isDone ? <Check className="w-3.5 h-3.5 text-white" /> : <Icon className={`w-3.5 h-3.5 ${isActive ? 'text-primary-300' : 'text-text-muted'}`} />}
                     </div>
@@ -493,7 +493,7 @@ export default function OnboardingPage() {
               <div aria-hidden="true" className="w-14 h-14 rounded-2xl bg-primary/20 border border-primary/30 flex items-center justify-center mx-auto mb-5">
                 <Check className="w-7 h-7 text-primary" />
               </div>
-              <h2 className="font-display text-3xl font-bold text-text-primary mb-2">Profile saved</h2>
+              <h2 className="font-display text-3xl font-medium text-text-primary mb-2">Profile saved</h2>
               <p className="text-text-muted">Building your personalized policy feed…</p>
             </m.div>
           </m.div>

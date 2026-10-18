@@ -4,6 +4,7 @@ import { useState, useEffect, useCallback, useRef, useId } from 'react';
 import { m, AnimatePresence } from 'motion/react';
 import { useRouter } from 'next/navigation';
 import Link from 'next/link';
+import dynamic from 'next/dynamic';
 import {
   User, Briefcase, DollarSign, Shield,
   Eye, Zap, ChevronRight, Check, AlertTriangle,
@@ -26,7 +27,19 @@ import Button from '@/components/ui/Button';
 import { Tabs, TabList, Tab, TabPanel, tabId } from '@/components/ui/Tabs';
 import RadioGroup from '@/components/forms/RadioGroup';
 import FullPageLoader from '@/components/auth/FullPageLoader';
+import Skeleton from '@/components/ui/Skeleton';
 import { friendlyAuthError } from '@/components/auth/authErrors';
+
+// The theme and visual-effects controls load with the Preferences tab.
+const Appearance = dynamic(() => import('./_components/Appearance'), {
+  loading: () => (
+    <div className="space-y-4" aria-busy="true">
+      <Skeleton className="h-10 w-64 max-w-full rounded-full" />
+      <Skeleton shape="line" className="w-32" />
+      <Skeleton className="h-24" />
+    </div>
+  ),
+});
 
 // ─── constants ───────────────────────────────────────────────────────────────
 
@@ -432,7 +445,7 @@ export default function SettingsPage() {
             <ArrowLeft className="w-4 h-4" aria-hidden="true" />
           </Link>
           <div>
-            <h1 className="font-display text-2xl font-bold text-text-primary">Settings</h1>
+            <h1 className="font-display text-2xl font-semibold text-text-primary">Settings</h1>
             <p className="text-sm text-text-muted">Manage your account, profile and preferences</p>
           </div>
         </div>
@@ -445,7 +458,7 @@ export default function SettingsPage() {
             {/* Avatar card */}
             <div className="glass border-fg/10 rounded-2xl p-5 mb-4 flex flex-col items-center text-center">
               <div aria-hidden="true" className="w-16 h-16 rounded-2xl bg-gradient-to-br from-primary/30 to-secondary/20 border border-primary/30 flex items-center justify-center mb-3">
-                <span className="font-display font-bold text-xl text-primary-300">{initials}</span>
+                <span className="font-display font-semibold text-xl text-primary-300">{initials}</span>
               </div>
               <p className="font-medium text-text-primary text-sm">{firstName || 'User'}</p>
               <p className="text-xs text-text-muted truncate max-w-full">{email}</p>
@@ -460,7 +473,7 @@ export default function SettingsPage() {
                     key={tab.id}
                     value={tab.id}
                     icon={<Icon className="w-4 h-4" />}
-                    className="gap-3 py-3 border border-transparent hover:bg-fg/5 aria-selected:border-primary/30 aria-selected:hover:bg-primary/15 lg:w-full group"
+                    className="gap-3 py-3 hover:bg-fg/5 aria-selected:hover:bg-primary/10 lg:w-full group"
                   >
                     <span>{tab.label}</span>
                     <ChevronRight aria-hidden="true" className="w-3.5 h-3.5 ml-auto hidden lg:group-aria-selected:block" />
@@ -539,7 +552,7 @@ export default function SettingsPage() {
               <m.div {...panelMotion} className="space-y-4">
                 <div className="glass border-caution/20 bg-caution/5 rounded-2xl px-5 py-4 flex gap-3">
                   <AlertTriangle className="w-4 h-4 text-caution flex-shrink-0 mt-0.5" aria-hidden="true" />
-                  <p className="text-sm text-caution/80">Changes here directly affect how the AI calculates your policy impact. Keep this accurate for best results.</p>
+                  <p className="text-sm text-caution">Changes here directly affect how the AI calculates your policy impact. Keep this accurate for best results.</p>
                 </div>
 
                 <SectionCard title="Location" subtitle="Used to factor in state taxes, cost of living and regional policies">
@@ -670,6 +683,10 @@ export default function SettingsPage() {
             {/* ── PREFERENCES TAB ── */}
             <TabPanel value="preferences">
               <m.div {...panelMotion} className="space-y-4">
+                <SectionCard title="Appearance" subtitle="Choose a light or dark theme, or follow your device's setting">
+                  <Appearance />
+                </SectionCard>
+
                 <SectionCard title="Reading Mode" subtitle="Controls how complex the AI analysis language is across the entire app">
                   <RadioGroup
                     label="Reading mode"
@@ -685,7 +702,7 @@ export default function SettingsPage() {
                       return (
                         <>
                           {selected && (
-                            <span aria-hidden="true" className="absolute top-3 right-3 w-5 h-5 rounded-full bg-primary flex items-center justify-center">
+                            <span aria-hidden="true" className="absolute top-3 right-3 w-5 h-5 rounded-full bg-primary-fill flex items-center justify-center">
                               <Check className="w-3 h-3 text-white" />
                             </span>
                           )}
@@ -822,7 +839,7 @@ export default function SettingsPage() {
                           <span className="block text-xs text-text-muted font-normal">Permanently delete your account and all data</span>
                         </span>
                       </span>
-                      <ChevronRight aria-hidden="true" className={`w-4 h-4 text-danger/60 transition-transform ${showDeleteZone ? 'rotate-90' : ''}`} />
+                      <ChevronRight aria-hidden="true" className={`w-4 h-4 text-danger transition-transform ${showDeleteZone ? 'rotate-90' : ''}`} />
                     </button>
                   </h2>
 
@@ -870,7 +887,7 @@ export default function SettingsPage() {
                             type="button"
                             onClick={deleteAccount}
                             disabled={deleteConfirm !== 'DELETE' || (hasPassword && !deletePassword) || deleteLoading}
-                            className="flex items-center gap-2 px-5 py-2.5 rounded-xl bg-danger/15 border border-danger/30 text-danger text-sm font-medium hover:bg-danger/25 transition-all disabled:opacity-40 disabled:cursor-not-allowed"
+                            className="flex items-center gap-2 px-5 py-2.5 rounded-xl bg-danger/10 border border-danger/30 text-danger text-sm font-medium hover:bg-danger/15 hover:border-danger/45 transition-all disabled:opacity-40 disabled:cursor-not-allowed"
                           >
                             {deleteLoading ? <RefreshCw className="w-4 h-4 animate-spin" aria-hidden="true" /> : <Trash2 className="w-4 h-4" aria-hidden="true" />}
                             {deleteLoading ? 'Deleting…' : 'Permanently Delete My Account'}

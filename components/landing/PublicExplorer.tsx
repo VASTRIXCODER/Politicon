@@ -17,7 +17,7 @@ const VALUE_TONE = { gain: 'text-positive', loss: 'text-negative', neutral: 'tex
 /** The required "these are examples" note, shown with every view of the explorer data. */
 export function IllustrativeNote({ className = '' }: { className?: string }) {
   return (
-    <p className={`inline-flex items-start gap-2 rounded-xl border border-gold/20 bg-gold/10 px-3 py-2 text-xs text-gold ${className}`}>
+    <p className={`inline-flex items-start gap-2 rounded-xl border border-dashed border-fg/25 px-3 py-2 text-xs text-muted ${className}`}>
       <Info className="w-3.5 h-3.5 flex-shrink-0 mt-px" aria-hidden="true" />
       <span>{ILLUSTRATIVE_NOTE}</span>
     </p>
@@ -43,8 +43,8 @@ export function BracketChart({
   const columns = { gridTemplateColumns: `repeat(${categories.length}, minmax(0, 1fr))` };
   const md = size === 'md';
   const track = md ? 'h-8 rounded-lg' : 'h-6 rounded-md';
-  const gainBar = `left-1/2 origin-left bg-positive/70 ${md ? 'rounded-r-lg' : 'rounded-r-md'}`;
-  const lossBar = `right-1/2 origin-right bg-negative/70 ${md ? 'rounded-l-lg' : 'rounded-l-md'}`;
+  const gainBar = `left-1/2 origin-left bg-gain-fill ${md ? 'rounded-r-lg' : 'rounded-r-md'}`;
+  const lossBar = `right-1/2 origin-right bg-loss-fill ${md ? 'rounded-l-lg' : 'rounded-l-md'}`;
 
   return (
     <div>
@@ -52,11 +52,11 @@ export function BracketChart({
       <div className="flex flex-wrap items-center justify-between gap-x-6 gap-y-2 mb-6 text-meta text-text-muted">
         <ul className="flex flex-wrap items-center gap-4" aria-label="Key">
           <li className="flex items-center gap-1.5">
-            <span className="w-3 h-3 rounded-sm bg-negative/70" aria-hidden="true" />
+            <span className="w-3 h-3 rounded-sm bg-loss-fill" aria-hidden="true" />
             Left of the line: costs the household
           </li>
           <li className="flex items-center gap-1.5">
-            <span className="w-3 h-3 rounded-sm bg-positive/70" aria-hidden="true" />
+            <span className="w-3 h-3 rounded-sm bg-gain-fill" aria-hidden="true" />
             Right: household gains
           </li>
         </ul>
@@ -114,10 +114,10 @@ export default function PublicExplorer() {
     <section aria-labelledby="explorer-teaser-heading" className="py-24 relative">
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
         <Reveal className="text-center mb-12">
-          <p className="text-xs font-mono-data text-gold uppercase tracking-widest mb-4">Illustrative examples</p>
-          <h2 id="explorer-teaser-heading" className="font-display text-4xl sm:text-5xl font-bold text-text-primary mb-4">
-            Policy impact by
-            <span className="gradient-text-gold"> income bracket</span>
+          <p className="text-xs font-mono-data text-muted uppercase tracking-widest mb-4">Illustrative examples</p>
+          <h2 id="explorer-teaser-heading" className="font-display text-4xl sm:text-5xl font-medium text-text-primary mb-4">
+            Policy impact by{' '}
+            <em>income bracket</em>
           </h2>
           <p className="text-text-muted text-lg max-w-xl mx-auto">
             The same policy can help one household and cost another. Here is how {EXAMPLE_COUNT_LABEL} could

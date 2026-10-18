@@ -4,6 +4,7 @@ import { useEffect, useRef, useState, useSyncExternalStore } from 'react';
 import { useReducedMotion } from 'motion/react';
 import { User, Search, DollarSign, CheckCircle, Pause, Play } from 'lucide-react';
 import Reveal from './Reveal';
+import { toneColor, type Tone } from './tone';
 
 const STEP_MS = 3000;
 
@@ -13,7 +14,8 @@ interface Step {
   title: string;
   subtitle: string;
   description: string;
-  color: string;
+  /** The step's accent light (AA as text on the cards). */
+  tone: Tone;
   details: string[];
 }
 
@@ -25,7 +27,7 @@ function buildSteps(stateBills: boolean): Step[] {
       title: 'Build your profile',
       subtitle: 'About two minutes',
       description: 'Tell us your income bracket, location, housing situation, debts, and life stage. We use ranges, not exact figures. Only those ranges (never your name or email) are sent to our AI provider to generate your analyses, and you can export or delete your data anytime.',
-      color: '#7B61FF',
+      tone: 'violet-text',
       details: ['Income & employment', 'Location & state taxes', 'Housing & debt situation', 'Family & dependents'],
     },
     {
@@ -36,7 +38,8 @@ function buildSteps(stateBills: boolean): Step[] {
       description: stateBills
         ? 'We start from recent bills in Congress (via Congress.gov) and your state legislature (via Open States), and the AI ranks them by how likely they are to affect you. If those sources are unavailable, any AI-suggested item is marked unverified.'
         : 'We start from recent bills in Congress (via Congress.gov), and the AI ranks them by how likely they are to affect you. If the source is unavailable, any AI-suggested item is marked unverified.',
-      color: '#00D4FF',
+      // Archive gold: this step is about the official record.
+      tone: 'gold',
       details: [stateBills ? 'Federal & state bills' : 'Federal bills', 'Relevance score for your profile', 'Official status & bill links', 'Category filters'],
     },
     {
@@ -45,7 +48,7 @@ function buildSteps(stateBills: boolean): Step[] {
       title: 'See your estimated dollar impact',
       subtitle: 'Usually ready in about a minute',
       description: 'Get a full breakdown: immediate effects, ripple effects, 1/3/5-year projections, and the assumptions behind each number — in dollars, not jargon. Each analysis runs in the background, so you can keep browsing while it’s prepared.',
-      color: '#F5C842',
+      tone: 'accent',
       details: ['Immediate monthly impact', '1-, 3- and 5-year projections', 'Trade-offs & assumptions', 'Confidence level'],
     },
   ];
@@ -63,7 +66,7 @@ const isDesktop = () => window.matchMedia(DESKTOP_QUERY).matches;
  * The active card's progress line. Driven by the Web Animations API so it can
  * pause mid-way and finish exactly when the step should advance.
  */
-function StepProgress({ color, running, onDone }: { color: string; running: boolean; onDone: () => void }) {
+function StepProgress({ tone, running, onDone }: { tone: Tone; running: boolean; onDone: () => void }) {
   const ref = useRef<HTMLDivElement>(null);
   const animation = useRef<Animation | null>(null);
   const onDoneRef = useRef(onDone);
@@ -92,7 +95,7 @@ function StepProgress({ color, running, onDone }: { color: string; running: bool
     else a.pause();
   }, [running]);
 
-  return <div ref={ref} aria-hidden="true" className="h-0.5 rounded-full mt-6 origin-left" style={{ backgroundColor: color }} />;
+  return <div ref={ref} aria-hidden="true" className="h-0.5 rounded-full mt-6 origin-left" style={{ backgroundColor: toneColor(tone) }} />;
 }
 
 interface HowItWorksProps {
@@ -157,11 +160,11 @@ export default function HowItWorks({ stateBills }: HowItWorksProps) {
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
         {/* Header */}
         <Reveal className="text-center mb-20">
-          <p className="text-xs font-mono-data text-primary uppercase tracking-widest mb-4">The Process</p>
-          <h2 id="how-it-works-heading" className="font-display text-4xl sm:text-5xl font-bold text-text-primary mb-4">
+          <p className="text-xs font-mono-data text-primary-300 uppercase tracking-widest mb-4">The Process</p>
+          <h2 id="how-it-works-heading" className="font-display text-4xl sm:text-5xl font-medium text-text-primary mb-4">
             From policy to your wallet
             <br />
-            <span className="gradient-text">in three steps</span>
+            <em>in three steps</em>
           </h2>
           <p className="text-text-muted text-lg max-w-xl mx-auto">
             Built for people who care about their finances, not their news feed.
@@ -186,7 +189,8 @@ export default function HowItWorks({ stateBills }: HowItWorksProps) {
                       className={`glass backdrop-filter-none h-full rounded-3xl p-8 cursor-pointer transition-all duration-300 ${
                         isActive ? 'border-fg/16 shadow-lg' : ''
                       }`}
-                      style={isActive ? { boxShadow: `0 20px 60px ${step.color}22` } : {}}
+                      // The lift is violet light whatever the step's tone (a dark-gold shadow looks muddy on paper).
+                      style={isActive ? { boxShadow: '0 20px 60px rgb(var(--c-glow) / 0.16)' } : {}}
                     >
                       {/* Step number */}
                       <div className="flex items-center justify-between mb-6">
@@ -194,21 +198,21 @@ export default function HowItWorks({ stateBills }: HowItWorksProps) {
                           aria-hidden="true"
                           data-decorative
                           className="font-mono-data text-5xl font-bold opacity-20"
-                          style={{ color: step.color }}
+                          style={{ color: toneColor(step.tone) }}
                         >
                           {step.number}
                         </span>
                         <div
                           aria-hidden="true"
                           className="w-12 h-12 rounded-2xl flex items-center justify-center"
-                          style={{ backgroundColor: step.color + '18', border: `1px solid ${step.color}30` }}
+                          style={{ backgroundColor: toneColor(step.tone, 0.09), border: `1px solid ${toneColor(step.tone, 0.19)}` }}
                         >
-                          <Icon className="w-5 h-5" style={{ color: step.color }} />
+                          <Icon className="w-5 h-5" style={{ color: toneColor(step.tone) }} />
                         </div>
                       </div>
 
                       {/* Content */}
-                      <p className="text-xs font-mono-data mb-2" style={{ color: step.color }}>
+                      <p className="text-xs font-mono-data mb-2" style={{ color: toneColor(step.tone) }}>
                         {step.subtitle}
                       </p>
                       <h3 className="font-display text-xl font-semibold text-text-primary mb-3">
@@ -222,7 +226,7 @@ export default function HowItWorks({ stateBills }: HowItWorksProps) {
                       <ul className="space-y-2">
                         {step.details.map(detail => (
                           <li key={detail} className="flex items-center gap-2.5">
-                            <CheckCircle className="w-3.5 h-3.5 flex-shrink-0" style={{ color: step.color }} aria-hidden="true" />
+                            <CheckCircle className="w-3.5 h-3.5 flex-shrink-0" style={{ color: toneColor(step.tone) }} aria-hidden="true" />
                             <span className="text-xs text-text-muted">{detail}</span>
                           </li>
                         ))}
@@ -232,12 +236,12 @@ export default function HowItWorks({ stateBills }: HowItWorksProps) {
                       {isActive && (showProgress ? (
                         <StepProgress
                           key={i}
-                          color={step.color}
+                          tone={step.tone}
                           running={running}
                           onDone={() => setActiveStep((i + 1) % steps.length)}
                         />
                       ) : (
-                        <div aria-hidden="true" className="h-0.5 rounded-full mt-6" style={{ backgroundColor: step.color }} />
+                        <div aria-hidden="true" className="h-0.5 rounded-full mt-6" style={{ backgroundColor: toneColor(step.tone) }} />
                       ))}
                     </div>
                   </Reveal>

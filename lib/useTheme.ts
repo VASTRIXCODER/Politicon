@@ -14,13 +14,17 @@ const DARK_QUERY = '(prefers-color-scheme: dark)';
 const listeners = new Set<() => void>();
 const notify = () => listeners.forEach((l) => l());
 
+/** The choice made on this page, for when localStorage is unavailable (blocked site data). */
+let memoryPreference: ThemePreference | null = null;
+
 function readPreference(): ThemePreference {
   try {
     const v = localStorage.getItem(THEME_STORAGE_KEY);
-    return isThemePreference(v) ? v : DEFAULT_THEME;
+    if (isThemePreference(v)) return v;
   } catch {
-    return DEFAULT_THEME;
+    /* storage blocked: fall through to the in-memory choice */
   }
+  return memoryPreference ?? DEFAULT_THEME;
 }
 
 function apply(pref: ThemePreference) {
@@ -56,6 +60,7 @@ function subscribe(onChange: () => void) {
 export function useThemePreference(): [ThemePreference, (pref: ThemePreference) => void] {
   const pref = useSyncExternalStore(subscribe, readPreference, () => DEFAULT_THEME);
   const set = useCallback((next: ThemePreference) => {
+    memoryPreference = next;
     try {
       localStorage.setItem(THEME_STORAGE_KEY, next);
     } catch {

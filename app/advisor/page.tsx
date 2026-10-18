@@ -110,9 +110,10 @@ function MessageBubble({ message, sessionId, onRetry }: {
           <>
             <p className="whitespace-pre-wrap text-sm leading-relaxed text-text-muted">{message.summary || message.content}</p>
             {message.dollarLine && (
-              <div className="mt-3 flex items-start gap-2.5 rounded-xl bg-gold/10 border border-gold/20 px-4 py-3">
-                <DollarSign className="w-4 h-4 text-gold flex-shrink-0 mt-0.5" aria-hidden="true" />
-                <p className="text-sm font-medium text-gold font-mono-data leading-snug">{message.dollarLine}</p>
+              // A free-text, hedged estimate with no known direction: violet, not gain/loss (or the record's gold).
+              <div className="mt-3 flex items-start gap-2.5 rounded-xl bg-primary/10 border border-primary/20 px-4 py-3">
+                <DollarSign className="w-4 h-4 text-primary-300 flex-shrink-0 mt-0.5" aria-hidden="true" />
+                <p className="text-sm font-medium text-primary-300 font-mono-data leading-snug">{message.dollarLine}</p>
               </div>
             )}
             {message.compiling && (
@@ -159,9 +160,10 @@ function MessageBubble({ message, sessionId, onRetry }: {
   );
 }
 
+// The same relevance colours as the feed cards: never the gain/loss pair.
 const RELEVANCE_BADGE = (score: number) =>
-  score >= 70 ? 'text-gain bg-gain/10 border-gain/20'
-    : score >= 40 ? 'text-caution bg-caution/10 border-caution/20'
+  score >= 70 ? 'text-primary-300 bg-primary/10 border-primary/20'
+    : score >= 40 ? 'text-accent bg-accent/10 border-accent/20'
     : 'text-text-muted bg-fg/5 border-fg/10';
 
 function DirDot({ d }: { d: string }) {
@@ -562,7 +564,7 @@ function AdvisorInner() {
               <m.div
                 key="history-backdrop"
                 initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}
-                className="md:hidden absolute inset-x-0 top-20 bottom-0 z-30 bg-ink/50"
+                className="md:hidden absolute inset-x-0 top-20 bottom-0 z-30 bg-night/50"
                 onClick={closeHistory}
                 aria-hidden
               />
@@ -647,7 +649,7 @@ function AdvisorInner() {
                   <Zap className="w-5 h-5 text-primary" />
                 </div>
                 <div className="flex-1 min-w-0">
-                  <h1 className="font-display text-xl font-bold text-text-primary">AI Policy Guide</h1>
+                  <h1 className="font-display text-xl font-semibold text-text-primary">AI Policy Guide</h1>
                   <div className="flex items-center gap-1.5">
                     <span aria-hidden="true" className="w-2 h-2 rounded-full bg-gain-fill animate-pulse" />
                     <p className="text-xs text-text-muted">Profile loaded • Non-partisan • Dollar-specific answers</p>
@@ -740,7 +742,7 @@ function AdvisorInner() {
                 <m.div
                   key="feed-backdrop"
                   initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}
-                  className="lg:hidden fixed inset-0 bg-ink/60 z-[110]"
+                  className="lg:hidden fixed inset-0 bg-night/60 z-overlay"
                   onClick={closeMobileFeed}
                   aria-hidden="true"
                 />
@@ -751,7 +753,7 @@ function AdvisorInner() {
                   tabIndex={-1}
                   initial={{ y: '100%' }} animate={{ y: 0 }} exit={{ y: '100%' }}
                   transition={{ type: 'spring', stiffness: 320, damping: 32 }}
-                  className="lg:hidden fixed inset-x-0 bottom-0 z-[120] max-h-[75dvh] glass-strong border-0 border-t border-fg/10 rounded-t-3xl flex flex-col focus:outline-none"
+                  className="lg:hidden fixed inset-x-0 bottom-0 z-modal max-h-[75dvh] glass-strong border-0 border-t border-fg/10 rounded-t-3xl flex flex-col focus:outline-none"
                 >
                   <div className="p-4 border-b border-fg/8 flex items-center justify-between">
                     <h2 id={sheetTitleId} className="text-sm font-semibold text-text-primary">Your Policy Feed</h2>

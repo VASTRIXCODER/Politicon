@@ -2,12 +2,19 @@ import { type ClassValue, clsx } from 'clsx';
 import { extendTailwindMerge } from 'tailwind-merge';
 import type { Policy } from '@/types';
 
-// Teach tailwind-merge the custom theme tokens so `text-meta` is treated as a
-// font size (and not dropped as a conflicting text colour).
+// Teach tailwind-merge the custom theme scales (tailwind.config.ts), so a
+// caller's class replaces the component default instead of both staying on
+// the element: `text-meta`/`text-display-*` are font sizes (not text colours),
+// `rounded-pane`/`rounded-tile` radii, `shadow-pane|lift|glow` shadows (not
+// shadow colours), and the named z-index layers.
 const twMerge = extendTailwindMerge({
   extend: {
     classGroups: {
-      'font-size': [{ text: ['meta'] }],
+      'font-size': [{ text: ['meta', 'display-sm', 'display-md', 'display-lg'] }],
+      rounded: [{ rounded: ['pane', 'tile'] }],
+      shadow: [{ shadow: ['pane', 'lift', 'glow'] }],
+      z: [{ z: ['stage', 'content', 'nav', 'overlay', 'modal', 'toast', 'skip'] }],
+      ease: [{ ease: ['civic'] }],
     },
   },
 });

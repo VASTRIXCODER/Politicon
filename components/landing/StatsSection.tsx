@@ -87,7 +87,7 @@ export default function StatsSection({ stats, stateBills }: StatsSectionProps) {
             <div className={`grid grid-cols-1 ${liveCols} gap-y-12 gap-x-6 lg:gap-12`}>
               {live.map((stat, i) => (
                 <Reveal key={stat.label} delay={i * 100} className="text-center">
-                  <div className="font-mono-data font-bold gradient-text-gold mb-1 leading-tight">
+                  <div className="font-mono-data font-bold text-text-primary mb-1 leading-tight">
                     <CountUp
                       value={stat.value}
                       prefix={stat.prefix}
@@ -96,7 +96,7 @@ export default function StatsSection({ stats, stateBills }: StatsSectionProps) {
                       className="text-3xl sm:text-4xl lg:text-5xl"
                     />
                     {stat.unit && (
-                      <span aria-hidden="true" className="block text-base sm:text-lg font-semibold opacity-80">{stat.unit}</span>
+                      <span aria-hidden="true" className="block text-base sm:text-lg font-semibold">{stat.unit}</span>
                     )}
                   </div>
                   <p className="font-display text-sm font-semibold text-text-primary mb-1">{stat.label}</p>
@@ -114,7 +114,7 @@ export default function StatsSection({ stats, stateBills }: StatsSectionProps) {
           {facts.map((fact, i) => (
             <li key={fact.value}>
               <Reveal delay={i * 100} className="text-center">
-                <p className="font-display text-2xl sm:text-3xl font-bold gradient-text-gold mb-2 leading-tight">{fact.value}</p>
+                <p className="font-display text-2xl sm:text-3xl font-semibold text-text-primary mb-2 leading-tight">{fact.value}</p>
                 <p className="font-display text-sm font-semibold text-text-primary mb-1">{fact.label}</p>
                 <p className="text-xs text-text-muted leading-snug max-w-[16rem] mx-auto">{fact.sublabel}</p>
               </Reveal>

@@ -12,9 +12,11 @@ import type { DiscoveredPolicy } from '@/types';
 
 type FeedPolicy = DiscoveredPolicy;
 
+// Relevance is not money, so it never borrows the gain/loss colours (or the
+// archive gold kept for the official record): violet, orchid, then neutral.
 const RELEVANCE_COLORS: Record<string, string> = {
-  High: 'text-gain bg-gain/10 border-gain/20',
-  Medium: 'text-gold bg-gold/10 border-gold/20',
+  High: 'text-primary-300 bg-primary/10 border-primary/20',
+  Medium: 'text-accent bg-accent/10 border-accent/20',
   Low: 'text-text-muted bg-fg/5 border-fg/10',
 };
 

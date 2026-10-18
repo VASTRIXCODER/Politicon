@@ -1,9 +1,10 @@
 import { Building2, Globe, Wallet, type LucideIcon } from 'lucide-react';
 import { formatUSD } from '@/lib/format';
-import { CHART } from './palette';
 
 // HTML-only charts: every value is printed as text, so they need no table
-// view, and they don't pull recharts into the page bundle.
+// view, and they don't pull recharts into the page bundle. Being HTML, they
+// colour themselves with token classes and CSS variables, so they follow the
+// theme without a palette hook.
 
 type Direction = 'positive' | 'negative' | 'neutral';
 
@@ -29,9 +30,9 @@ export function TransmissionWaterfall(
   const borderFor = (d: Direction) =>
     d === 'positive' ? 'border-gain/30' : d === 'negative' ? 'border-loss/30' : 'border-fg/10';
   const bgFor = (d: Direction) =>
-    d === 'positive' ? 'rgba(16,185,129,0.08)' : d === 'negative' ? 'rgba(239,68,68,0.08)' : 'rgba(255,255,255,0.03)';
+    d === 'positive' ? 'bg-gain-fill/8' : d === 'negative' ? 'bg-loss-fill/8' : 'bg-fg/3';
   const barFor = (d: Direction) =>
-    d === 'positive' ? CHART.emerald : d === 'negative' ? CHART.red : CHART.secondary;
+    d === 'positive' ? 'bg-gain-fill' : d === 'negative' ? 'bg-loss-fill' : 'bg-accent';
   const valueColor = (d: Direction) =>
     d === 'positive' ? 'text-gain' : d === 'negative' ? 'text-loss' : 'text-secondary';
 
@@ -43,8 +44,8 @@ export function TransmissionWaterfall(
           <li key={lvl.label}>
             {/* Card */}
             <div
-              className={`rounded-2xl border p-5 ${borderFor(lvl.direction)}`}
-              style={{ background: bgFor(lvl.direction), marginLeft: `${i * 5}%` }}
+              className={`rounded-2xl border p-5 ${borderFor(lvl.direction)} ${bgFor(lvl.direction)}`}
+              style={{ marginLeft: `${i * 5}%` }}
             >
               {/* Header row */}
               <div className="flex flex-wrap items-center justify-between gap-x-4 gap-y-1 mb-3">
@@ -60,11 +61,8 @@ export function TransmissionWaterfall(
               {/* Magnitude bar (relative size only; the value is printed above) */}
               <div className="h-2.5 rounded-full bg-fg/8 overflow-hidden mb-3" aria-hidden>
                 <div
-                  className="h-full rounded-full transition-all duration-700 ease-out"
-                  style={{
-                    width: `${Math.max(6, Math.min(100, lvl.magnitude))}%`,
-                    background: barFor(lvl.direction),
-                  }}
+                  className={`h-full rounded-full transition-all duration-700 ease-out ${barFor(lvl.direction)}`}
+                  style={{ width: `${Math.max(6, Math.min(100, lvl.magnitude))}%` }}
                 />
               </div>
 
@@ -97,7 +95,7 @@ export function TransmissionWaterfall(
 }
 
 // ===========================================================================
-// Spending heatmap — categories color-coded green (saves) → red (costs more)
+// Spending heatmap — categories tinted ledger teal (saves) or ember amber (costs more)
 // ===========================================================================
 export function SpendingHeatmap(
   { items }:
@@ -108,16 +106,17 @@ export function SpendingHeatmap(
   }
   const max = Math.max(...items.map((i) => Math.abs(i.dollarImpact)), 1);
   const intensityOf = (v: number) => Math.min(1, Math.abs(v) / max);
-  // The tint tops out at 0.35 alpha so the text stays AA on every cell (at full
-  // intensity: value about 6.4:1, label about 8.8:1). The bar carries the size.
+  // The tint tops out at --heat alpha (0.12 on paper, 0.35 at night) so the
+  // value text stays AA on every cell (at full intensity, about 4.7:1 by day
+  // and 4.9:1 by night for the amber; the label is higher). The bar carries the size.
   const cellColor = (v: number) => {
-    const alpha = 0.1 + intensityOf(v) * 0.25;
-    if (v > 0) return `rgba(16,185,129,${alpha})`;   // emerald — savings
-    if (v < 0) return `rgba(239,68,68,${alpha})`;    // red — costs more
-    return 'rgba(255,255,255,0.06)';
+    const alpha = `calc(var(--heat) * ${(0.3 + intensityOf(v) * 0.7).toFixed(3)})`;
+    if (v > 0) return `rgb(var(--c-gain-fill) / ${alpha})`; // savings
+    if (v < 0) return `rgb(var(--c-loss-fill) / ${alpha})`; // costs more
+    return 'rgb(var(--c-fg) / 0.06)';
   };
   return (
-    <ul className="grid grid-cols-2 sm:grid-cols-3 gap-3">
+    <ul className="grid grid-cols-2 sm:grid-cols-3 gap-3 [--heat:0.12] dark:[--heat:0.35]">
       {items.map((it) => (
         <li
           key={it.category}

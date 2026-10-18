@@ -9,11 +9,12 @@ import {
   RadarChart, Radar, PolarGrid, PolarAngleAxis, PolarRadiusAxis,
 } from 'recharts';
 import { formatAxisUSD, formatUSD } from '@/lib/format';
-import { CHART, seriesColor } from './palette';
+import { useChartPalette, type ChartPalette } from './palette';
 
 // Recharts is heavy: pages load these through components/charts/LazyCharts,
-// which splits them into their own chunk. Colours live in ./palette and the
-// HTML-only charts in ./StaticCharts, so neither pulls recharts in.
+// which splits them into their own chunk. Colours live in ./palette (one set
+// per theme, from the design tokens) and the HTML-only charts in
+// ./StaticCharts, so neither pulls recharts in.
 
 const fmtAxis = formatAxisUSD;
 const fmtMoney = (n: number) => formatUSD(n, { signed: true });
@@ -117,10 +118,10 @@ function DataTable({ title, table }: { title: string; table: TableData }) {
 }
 
 // ---------------------------------------------------------------------------
-// Tooltip
+// Tooltip: a solid raised pane (numbers never sit behind glass)
 // ---------------------------------------------------------------------------
 interface TooltipEntry { name?: string; value?: number; color?: string; dataKey?: string | number; payload?: Record<string, unknown> }
-function GlassTooltip({ active, payload, label, format = fmtMoney, accessibilityLayer }: {
+function PaneTooltip({ active, payload, label, format = fmtMoney, accessibilityLayer }: {
   active?: boolean; payload?: TooltipEntry[]; label?: string | number; format?: (_n: number) => string; accessibilityLayer?: boolean;
 }) {
   const live = accessibilityLayer ? { role: 'status', 'aria-live': 'polite' as const } : {};
@@ -135,7 +136,7 @@ function GlassTooltip({ active, payload, label, format = fmtMoney, accessibility
     <div
       // With the accessibility layer, arrow-key moves are read out from here.
       {...live}
-      className="rounded-xl border border-fg/12 bg-[#0E0A1F]/95 px-3.5 py-2.5 shadow-xl backdrop-blur-xl"
+      className="rounded-xl border border-fg/12 bg-raised px-3.5 py-2.5 shadow-lift"
     >
       {label !== undefined && label !== '' && (
         <p className="text-meta font-mono-data uppercase tracking-wider text-text-muted mb-1.5">{label}</p>
@@ -155,8 +156,9 @@ function GlassTooltip({ active, payload, label, format = fmtMoney, accessibility
 }
 
 const TICK_FONT = 12;
-const axisProps = { stroke: CHART.axis, tick: { fill: CHART.axis, fontSize: TICK_FONT }, tickLine: false } as const;
-const legendLabel = (v: ReactNode) => <span style={{ color: CHART.axis, fontSize: TICK_FONT }}>{v}</span>;
+const axisProps = (p: ChartPalette) => ({ stroke: p.axis, tick: { fill: p.axis, fontSize: TICK_FONT }, tickLine: false }) as const;
+// The legend is HTML, so its text follows the theme through a token class.
+const legendLabel = (v: ReactNode) => <span className="text-meta text-text-muted">{v}</span>;
 
 // ===========================================================================
 // 1. Category impact — vertical bars colored by sign, animated on load
@@ -165,6 +167,7 @@ export function CategoryImpactBar({ data, height = 300, title = 'Annual impact b
   data: { name: string; value: number }[]; height?: number; title?: string;
 }) {
   const animate = useChartAnimation();
+  const p = useChartPalette();
   if (data.length === 0) return <EmptyChart height={height} />;
   const summary = `Largest effects: ${largest(data, 3, (d) => d.value, (d) => `${d.name} ${fmtYearly(d.value)}`)}.`;
   const table: TableData = {
@@ -175,14 +178,14 @@ export function CategoryImpactBar({ data, height = 300, title = 'Annual impact b
     <ChartFigure title={title} summary={summary} table={table} height={height}>
       <ResponsiveContainer>
         <BarChart data={data} margin={{ top: 8, right: 8, left: 0, bottom: 8 }} accessibilityLayer title={title} desc={summary}>
-          <CartesianGrid strokeDasharray="3 3" stroke={CHART.grid} vertical={false} />
-          <XAxis dataKey="name" {...axisProps} interval={0} angle={-12} textAnchor="end" height={50} />
-          <YAxis {...axisProps} tickFormatter={fmtAxis} width={56} />
-          <Tooltip cursor={{ fill: 'rgba(255,255,255,0.03)' }} content={<GlassTooltip />} isAnimationActive={animate} />
-          <ReferenceLine y={0} stroke="rgba(255,255,255,0.18)" />
+          <CartesianGrid strokeDasharray="3 3" stroke={p.grid} vertical={false} />
+          <XAxis dataKey="name" {...axisProps(p)} interval={0} angle={-12} textAnchor="end" height={50} />
+          <YAxis {...axisProps(p)} tickFormatter={fmtAxis} width={56} />
+          <Tooltip cursor={{ fill: p.cursor }} content={<PaneTooltip />} isAnimationActive={animate} />
+          <ReferenceLine y={0} stroke={p.zero} />
           <Bar dataKey="value" name="Impact" radius={[6, 6, 0, 0]} isAnimationActive={animate} animationDuration={1100} animationBegin={150}>
             {data.map((d, i) => (
-              <Cell key={i} fill={d.value >= 0 ? CHART.emerald : CHART.red} />
+              <Cell key={i} fill={d.value >= 0 ? p.gain : p.loss} />
             ))}
           </Bar>
         </BarChart>
@@ -198,6 +201,7 @@ export function ImpactDonut({ data, height = 300, title = 'Share of impact by ca
   data: { name: string; value: number; color: string }[]; height?: number; title?: string;
 }) {
   const animate = useChartAnimation();
+  const p = useChartPalette();
   const cleaned = data.filter((d) => Math.abs(d.value) > 0).map((d) => ({ ...d, value: Math.abs(d.value), signed: d.value }));
   if (cleaned.length === 0) return <EmptyChart height={height} />;
   const total = cleaned.reduce((s, d) => s + d.value, 0) || 1;
@@ -222,9 +226,9 @@ export function ImpactDonut({ data, height = 300, title = 'Share of impact by ca
             isAnimationActive={animate}
             animationDuration={1000}
           >
-            {cleaned.map((d, i) => <Cell key={i} fill={d.color} />)}
+            {cleaned.map((d, i) => <Cell key={i} fill={d.color || p.series[i % p.series.length]} />)}
           </Pie>
-          <Tooltip content={<GlassTooltip />} isAnimationActive={animate} />
+          <Tooltip content={<PaneTooltip />} isAnimationActive={animate} />
           <Legend verticalAlign="bottom" iconType="circle" formatter={legendLabel} />
         </PieChart>
       </ResponsiveContainer>
@@ -239,13 +243,14 @@ export function MonthlyTimeline({ data, height = 300, title = 'Cumulative impact
   data: { month: number; impact: number }[]; height?: number; title?: string;
 }) {
   const animate = useChartAnimation();
+  const p = useChartPalette();
   // Unique per chart, and safe inside url(#…) whatever characters useId produces.
   const fillId = `timeline-fill-${useId().replace(/[^A-Za-z0-9_-]/g, '')}`;
   if (data.length === 0) return <EmptyChart height={height} />;
   const first = data[0];
   const last = data[data.length - 1];
   const positive = last.impact >= 0;
-  const stroke = positive ? CHART.emerald : CHART.red;
+  const stroke = positive ? p.gain : p.loss;
   const rows = data.map((d) => ({ name: `M${d.month}`, impact: d.impact }));
   const summary = data.length === 1
     ? `${fmtMoney(last.impact)} in month ${last.month}.`
@@ -264,11 +269,11 @@ export function MonthlyTimeline({ data, height = 300, title = 'Cumulative impact
               <stop offset="100%" stopColor={stroke} stopOpacity={0} />
             </linearGradient>
           </defs>
-          <CartesianGrid strokeDasharray="3 3" stroke={CHART.grid} vertical={false} />
-          <XAxis dataKey="name" {...axisProps} />
-          <YAxis {...axisProps} tickFormatter={fmtAxis} width={56} />
-          <Tooltip content={<GlassTooltip />} isAnimationActive={animate} />
-          <ReferenceLine y={0} stroke="rgba(255,255,255,0.18)" />
+          <CartesianGrid strokeDasharray="3 3" stroke={p.grid} vertical={false} />
+          <XAxis dataKey="name" {...axisProps(p)} />
+          <YAxis {...axisProps(p)} tickFormatter={fmtAxis} width={56} />
+          <Tooltip cursor={{ stroke: p.zero }} content={<PaneTooltip />} isAnimationActive={animate} />
+          <ReferenceLine y={0} stroke={p.zero} />
           <Area type="monotone" dataKey="impact" name="Cumulative" stroke={stroke} strokeWidth={2.5} fill={`url(#${fillId})`} isAnimationActive={animate} animationDuration={1300} dot={false} />
         </AreaChart>
       </ResponsiveContainer>
@@ -283,6 +288,7 @@ export function ProjectionBars({ year1, year3, year5, height = 280, title = 'Cum
   year1: number; year3: number; year5: number; height?: number; title?: string;
 }) {
   const animate = useChartAnimation();
+  const p = useChartPalette();
   const data = [
     { name: '1 Year', value: year1 },
     { name: '3 Years', value: year3 },
@@ -297,13 +303,13 @@ export function ProjectionBars({ year1, year3, year5, height = 280, title = 'Cum
     <ChartFigure title={title} summary={summary} table={table} height={height}>
       <ResponsiveContainer>
         <BarChart data={data} margin={{ top: 8, right: 8, left: 0, bottom: 8 }} accessibilityLayer title={title} desc={summary}>
-          <CartesianGrid strokeDasharray="3 3" stroke={CHART.grid} vertical={false} />
-          <XAxis dataKey="name" {...axisProps} />
-          <YAxis {...axisProps} tickFormatter={fmtAxis} width={56} />
-          <Tooltip cursor={{ fill: 'rgba(255,255,255,0.03)' }} content={<GlassTooltip />} isAnimationActive={animate} />
-          <ReferenceLine y={0} stroke="rgba(255,255,255,0.18)" />
+          <CartesianGrid strokeDasharray="3 3" stroke={p.grid} vertical={false} />
+          <XAxis dataKey="name" {...axisProps(p)} />
+          <YAxis {...axisProps(p)} tickFormatter={fmtAxis} width={56} />
+          <Tooltip cursor={{ fill: p.cursor }} content={<PaneTooltip />} isAnimationActive={animate} />
+          <ReferenceLine y={0} stroke={p.zero} />
           <Bar dataKey="value" name="Cumulative" radius={[6, 6, 0, 0]} isAnimationActive={animate} animationDuration={1100}>
-            {data.map((d, i) => <Cell key={i} fill={d.value >= 0 ? CHART.gold : CHART.red} />)}
+            {data.map((d, i) => <Cell key={i} fill={d.value >= 0 ? p.gain : p.loss} />)}
           </Bar>
         </BarChart>
       </ResponsiveContainer>
@@ -318,6 +324,7 @@ export function BeforeAfterBar({ items, unit = '%', height = 260, title = 'Befor
   items: { label: string; before: number; after: number }[]; unit?: string; height?: number; title?: string;
 }) {
   const animate = useChartAnimation();
+  const p = useChartPalette();
   if (items.length === 0) return <EmptyChart height={height} />;
   const fmt = (v: number) => (unit === '%' ? `${v}%` : formatUSD(v));
   const summary = `${items.map((i) => `${i.label}: ${fmt(i.before)} before, ${fmt(i.after)} after`).join('; ')}.`;
@@ -329,13 +336,13 @@ export function BeforeAfterBar({ items, unit = '%', height = 260, title = 'Befor
     <ChartFigure title={title} summary={summary} table={table} height={height}>
       <ResponsiveContainer>
         <BarChart data={items} margin={{ top: 8, right: 8, left: 0, bottom: 8 }} accessibilityLayer title={title} desc={summary}>
-          <CartesianGrid strokeDasharray="3 3" stroke={CHART.grid} vertical={false} />
-          <XAxis dataKey="label" {...axisProps} />
-          <YAxis {...axisProps} tickFormatter={(v) => (unit === '%' ? `${v}%` : fmtAxis(v))} width={48} />
-          <Tooltip cursor={{ fill: 'rgba(255,255,255,0.03)' }} content={<GlassTooltip format={unit === '%' ? (v) => `${v.toFixed(1)}%` : fmtMoney} />} isAnimationActive={animate} />
+          <CartesianGrid strokeDasharray="3 3" stroke={p.grid} vertical={false} />
+          <XAxis dataKey="label" {...axisProps(p)} />
+          <YAxis {...axisProps(p)} tickFormatter={(v) => (unit === '%' ? `${v}%` : fmtAxis(v))} width={48} />
+          <Tooltip cursor={{ fill: p.cursor }} content={<PaneTooltip format={unit === '%' ? (v) => `${v.toFixed(1)}%` : fmtMoney} />} isAnimationActive={animate} />
           <Legend iconType="circle" formatter={legendLabel} />
-          <Bar dataKey="before" name="Before" fill="#6B7280" radius={[5, 5, 0, 0]} isAnimationActive={animate} animationDuration={900} />
-          <Bar dataKey="after" name="After" fill={CHART.primary} radius={[5, 5, 0, 0]} isAnimationActive={animate} animationDuration={900} animationBegin={200} />
+          <Bar dataKey="before" name="Before" fill={p.neutral} radius={[5, 5, 0, 0]} isAnimationActive={animate} animationDuration={900} />
+          <Bar dataKey="after" name="After" fill={p.primary} radius={[5, 5, 0, 0]} isAnimationActive={animate} animationDuration={900} animationBegin={200} />
         </BarChart>
       </ResponsiveContainer>
     </ChartFigure>
@@ -349,6 +356,7 @@ export function CumulativeStackedBar({ data, series, height = 320, title = 'Comb
   data: Record<string, number | string>[]; series: { key: string; name: string }[]; height?: number; title?: string;
 }) {
   const animate = useChartAnimation();
+  const p = useChartPalette();
   if (data.length === 0 || series.length === 0) return <EmptyChart height={height} />;
   const categories = data.map((row) => {
     const parts = series
@@ -365,13 +373,13 @@ export function CumulativeStackedBar({ data, series, height = 320, title = 'Comb
     <ChartFigure title={title} summary={summary} table={table} height={height}>
       <ResponsiveContainer>
         <BarChart data={data} margin={{ top: 8, right: 8, left: 0, bottom: 8 }} accessibilityLayer title={title} desc={summary}>
-          <CartesianGrid strokeDasharray="3 3" stroke={CHART.grid} vertical={false} />
-          <XAxis dataKey="category" {...axisProps} interval={0} angle={-12} textAnchor="end" height={50} />
-          <YAxis {...axisProps} tickFormatter={fmtAxis} width={56} />
-          <Tooltip cursor={{ fill: 'rgba(255,255,255,0.03)' }} content={<GlassTooltip />} isAnimationActive={animate} />
-          <ReferenceLine y={0} stroke="rgba(255,255,255,0.18)" />
+          <CartesianGrid strokeDasharray="3 3" stroke={p.grid} vertical={false} />
+          <XAxis dataKey="category" {...axisProps(p)} interval={0} angle={-12} textAnchor="end" height={50} />
+          <YAxis {...axisProps(p)} tickFormatter={fmtAxis} width={56} />
+          <Tooltip cursor={{ fill: p.cursor }} content={<PaneTooltip />} isAnimationActive={animate} />
+          <ReferenceLine y={0} stroke={p.zero} />
           {series.map((s, i) => (
-            <Bar key={s.key} dataKey={s.key} name={s.name} stackId="a" fill={seriesColor(i)} isAnimationActive={animate} animationDuration={1000} radius={i === series.length - 1 ? [5, 5, 0, 0] : [0, 0, 0, 0]} />
+            <Bar key={s.key} dataKey={s.key} name={s.name} stackId="a" fill={p.series[i % p.series.length]} isAnimationActive={animate} animationDuration={1000} radius={i === series.length - 1 ? [5, 5, 0, 0] : [0, 0, 0, 0]} />
           ))}
         </BarChart>
       </ResponsiveContainer>
@@ -386,6 +394,7 @@ export function CumulativeProjectionLines({ data, series, height = 340, title = 
   data: Record<string, number | string>[]; series: { key: string; name: string; total?: boolean }[]; height?: number; title?: string;
 }) {
   const animate = useChartAnimation();
+  const p = useChartPalette();
   if (data.length === 0 || series.length === 0) return <EmptyChart height={height} />;
   const value = (row: Record<string, number | string>, key: string) => Number(row[key]) || 0;
   const total = series.find((s) => s.total);
@@ -400,20 +409,20 @@ export function CumulativeProjectionLines({ data, series, height = 340, title = 
     <ChartFigure title={title} summary={summary} table={table} height={height}>
       <ResponsiveContainer>
         <LineChart data={data} margin={{ top: 8, right: 12, left: 0, bottom: 8 }} accessibilityLayer title={title} desc={summary}>
-          <CartesianGrid strokeDasharray="3 3" stroke={CHART.grid} vertical={false} />
-          <XAxis dataKey="name" {...axisProps} />
-          <YAxis {...axisProps} tickFormatter={fmtAxis} width={56} />
-          <Tooltip content={<GlassTooltip />} isAnimationActive={animate} />
-          <ReferenceLine y={0} stroke="rgba(255,255,255,0.18)" />
+          <CartesianGrid strokeDasharray="3 3" stroke={p.grid} vertical={false} />
+          <XAxis dataKey="name" {...axisProps(p)} />
+          <YAxis {...axisProps(p)} tickFormatter={fmtAxis} width={56} />
+          <Tooltip cursor={{ stroke: p.zero }} content={<PaneTooltip />} isAnimationActive={animate} />
+          <ReferenceLine y={0} stroke={p.zero} />
           {series.map((s, i) => (
             <Line
               key={s.key}
               type="monotone"
               dataKey={s.key}
               name={s.name}
-              stroke={s.total ? CHART.gold : seriesColor(i)}
+              stroke={s.total ? p.total : p.series[i % p.series.length]}
               strokeWidth={s.total ? 3.5 : 2}
-              dot={{ r: s.total ? 4 : 2.5, strokeWidth: 0, fill: s.total ? CHART.gold : seriesColor(i) }}
+              dot={{ r: s.total ? 4 : 2.5, strokeWidth: 0, fill: s.total ? p.total : p.series[i % p.series.length] }}
               isAnimationActive={animate}
               animationDuration={1200}
             />
@@ -439,6 +448,7 @@ export function VulnerabilityRadar({ data, height = 320, title = 'Vulnerability 
   data: { dimension: string; score: number }[]; height?: number; title?: string;
 }) {
   const animate = useChartAnimation();
+  const p = useChartPalette();
   if (!data || data.length === 0) return <EmptyChart height={height} />;
   const score = (n: number) => `${Math.round(n)}/100`;
   const summary = `Most pressure: ${largest(data, 2, (d) => d.score, (d) => `${d.dimension} ${score(d.score)}`)}. Higher scores mean more pressure.`;
@@ -450,11 +460,11 @@ export function VulnerabilityRadar({ data, height = 320, title = 'Vulnerability 
     <ChartFigure title={title} summary={summary} table={table} height={height}>
       <ResponsiveContainer>
         <RadarChart data={data} outerRadius="70%" role="img" title={title} desc={summary}>
-          <PolarGrid stroke={CHART.grid} />
-          <PolarAngleAxis dataKey="dimension" tick={{ fill: CHART.axis, fontSize: TICK_FONT }} />
-          <PolarRadiusAxis domain={[0, 100]} tick={{ fill: CHART.axis, fontSize: TICK_FONT }} axisLine={false} />
-          <Radar name="Pressure" dataKey="score" stroke={CHART.primary} fill={CHART.primary} fillOpacity={0.35} isAnimationActive={animate} animationDuration={900} />
-          <Tooltip content={<GlassTooltip format={score} />} isAnimationActive={animate} />
+          <PolarGrid stroke={p.grid} />
+          <PolarAngleAxis dataKey="dimension" tick={{ fill: p.axis, fontSize: TICK_FONT }} />
+          <PolarRadiusAxis domain={[0, 100]} tick={{ fill: p.axis, fontSize: TICK_FONT }} axisLine={false} />
+          <Radar name="Pressure" dataKey="score" stroke={p.primary} fill={p.primary} fillOpacity={0.35} isAnimationActive={animate} animationDuration={900} />
+          <Tooltip content={<PaneTooltip format={score} />} isAnimationActive={animate} />
         </RadarChart>
       </ResponsiveContainer>
     </ChartFigure>

@@ -92,7 +92,7 @@ export default function PrivacyPage() {
       </Section>
 
       <Section title="Contact">
-        <p>Questions or requests: <a className="text-primary hover:underline" href={`mailto:${SUPPORT_EMAIL}`}>{SUPPORT_EMAIL}</a>. See also our <Link className="text-primary hover:underline" href="/terms">Terms of Service</Link> and <Link className="text-primary hover:underline" href="/disclaimer">Disclaimer</Link>.</p>
+        <p>Questions or requests: <a className="text-primary-300 underline-offset-2 hover:underline" href={`mailto:${SUPPORT_EMAIL}`}>{SUPPORT_EMAIL}</a>. See also our <Link className="text-primary-300 underline-offset-2 hover:underline" href="/terms">Terms of Service</Link> and <Link className="text-primary-300 underline-offset-2 hover:underline" href="/disclaimer">Disclaimer</Link>.</p>
       </Section>
     </LegalPage>
   );

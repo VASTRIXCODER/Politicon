@@ -53,7 +53,7 @@ export default function MarqueeStrip() {
 
       {/* Always visible, so no chip reads as a real estimate. */}
       <p
-        className="absolute left-2 top-1/2 -translate-y-1/2 z-20 rounded-full border border-gold/20 bg-base/90 px-3 py-1.5 text-meta font-mono-data uppercase tracking-wide text-gold"
+        className="absolute left-2 top-1/2 -translate-y-1/2 z-20 rounded-full border border-dashed border-fg/30 bg-base px-3 py-1.5 text-meta font-mono-data uppercase tracking-wide text-muted"
         aria-hidden="true"
       >
         Illustrative

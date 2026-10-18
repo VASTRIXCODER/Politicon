@@ -31,54 +31,71 @@ test.use({ contextOptions: { reducedMotion: 'reduce' } });
 
 const PAGES = [...PUBLIC_PAGES, { path: MISSING_PATH, h1: NOT_FOUND_H1 }];
 
-for (const { path, h1 } of PAGES) {
-  test(`${path === MISSING_PATH ? 'the 404 page' : path} has no serious WCAG 2.2 AA violations`, async ({ page }, testInfo) => {
-    await openPage(page, path, h1);
-    const results = await new AxeBuilder({ page })
-      .withTags(WCAG_TAGS)
-      // Pure decoration (aria-hidden and marked data-decorative) is exempt from
-      // contrast requirements under WCAG 1.4.3.
-      .exclude('[aria-hidden="true"][data-decorative]')
-      // No CSSOM preload: axe would re-fetch cross-origin stylesheets (Fontshare),
-      // which the CSP's connect-src rightly refuses. It only feeds css-orientation-lock.
-      .options({ preload: false })
-      .analyze();
+// Both themes must pass: light is the default, dark is the saved choice
+// (lib/theme.ts applies it before first paint).
+const THEMES = ['light', 'dark'] as const;
 
-    const known = KNOWN[path] ?? [];
-    const seen = new Set<KnownIssue>();
-    const blocking = results.violations
-      .filter((v) => BLOCKING.has(v.impact ?? ''))
-      .map((v) => ({
-        ...v,
-        nodes: v.nodes.filter((n) => {
-          const issue = known.find((k) => k.rule === v.id && k.target.test(n.target.join(' ')));
-          if (issue) seen.add(issue);
-          return !issue;
-        }),
-      }))
-      .filter((v) => v.nodes.length);
+for (const theme of THEMES) {
+  for (const { path, h1 } of PAGES) {
+    const name = `${path === MISSING_PATH ? 'the 404 page' : path} has no serious WCAG 2.2 AA violations`;
+    test(theme === 'light' ? name : `${name} (dark theme)`, async ({ page }, testInfo) => {
+      if (theme === 'dark') {
+        await page.addInitScript(() => {
+          try {
+            localStorage.setItem('pc-theme', 'dark');
+          } catch {
+            // Storage blocked: the page stays light and the scan below fails on the theme check.
+          }
+        });
+      }
+      await openPage(page, path, h1);
+      await expect(page.locator('html')).toHaveAttribute('data-theme', theme);
+      const results = await new AxeBuilder({ page })
+        .withTags(WCAG_TAGS)
+        // Pure decoration (aria-hidden and marked data-decorative) is exempt from
+        // contrast requirements under WCAG 1.4.3.
+        .exclude('[aria-hidden="true"][data-decorative]')
+        // No CSSOM preload: axe would re-fetch every stylesheet, and it only
+        // feeds css-orientation-lock.
+        .options({ preload: false })
+        .analyze();
 
-    for (const issue of known) {
-      testInfo.annotations.push(
-        seen.has(issue)
-          ? { type: 'fixme', description: `${issue.rule}: ${issue.why}` }
-          : { type: 'stale-known-issue', description: `${issue.rule} no longer found on ${path}; remove it from KNOWN in a11y.spec.ts` },
+      const known = KNOWN[path] ?? [];
+      const seen = new Set<KnownIssue>();
+      const blocking = results.violations
+        .filter((v) => BLOCKING.has(v.impact ?? ''))
+        .map((v) => ({
+          ...v,
+          nodes: v.nodes.filter((n) => {
+            const issue = known.find((k) => k.rule === v.id && k.target.test(n.target.join(' ')));
+            if (issue) seen.add(issue);
+            return !issue;
+          }),
+        }))
+        .filter((v) => v.nodes.length);
+
+      for (const issue of known) {
+        testInfo.annotations.push(
+          seen.has(issue)
+            ? { type: 'fixme', description: `${issue.rule}: ${issue.why}` }
+            : { type: 'stale-known-issue', description: `${issue.rule} no longer found on ${path}; remove it from KNOWN in a11y.spec.ts` },
+        );
+      }
+
+      const minor = results.violations.filter((v) => !BLOCKING.has(v.impact ?? ''));
+      if (minor.length) {
+        await testInfo.attach('axe-minor-violations.json', { body: JSON.stringify(minor, null, 2), contentType: 'application/json' });
+      }
+
+      const summary = blocking.map(
+        (v) =>
+          `${v.id} (${v.impact}): ${v.help} ${v.helpUrl}\n` +
+          v.nodes
+            .slice(0, 5)
+            .map((n) => `    ${n.target.join(' ')}: ${n.failureSummary?.split('\n').slice(1).join(' ').trim()}`)
+            .join('\n'),
       );
-    }
-
-    const minor = results.violations.filter((v) => !BLOCKING.has(v.impact ?? ''));
-    if (minor.length) {
-      await testInfo.attach('axe-minor-violations.json', { body: JSON.stringify(minor, null, 2), contentType: 'application/json' });
-    }
-
-    const summary = blocking.map(
-      (v) =>
-        `${v.id} (${v.impact}): ${v.help} ${v.helpUrl}\n` +
-        v.nodes
-          .slice(0, 5)
-          .map((n) => `    ${n.target.join(' ')}: ${n.failureSummary?.split('\n').slice(1).join(' ').trim()}`)
-          .join('\n'),
-    );
-    expect(blocking.map((v) => v.id), summary.join('\n')).toEqual([]);
-  });
+      expect(blocking.map((v) => v.id), summary.join('\n')).toEqual([]);
+    });
+  }
 }

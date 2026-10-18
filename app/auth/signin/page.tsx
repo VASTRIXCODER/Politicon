@@ -106,7 +106,7 @@ export default function SignInPage() {
 
           <Logo size="lg" href={null} className="mb-8 flex" />
 
-          <h1 className="font-display text-3xl font-bold text-text-primary mb-2">Welcome back</h1>
+          <h1 className="font-display text-3xl font-medium text-text-primary mb-2">Welcome <em>back</em></h1>
           <p className="text-text-muted text-sm mb-8">Sign in to see your personalized policy impact.</p>
 
           <form onSubmit={handleSignIn} className="space-y-4">

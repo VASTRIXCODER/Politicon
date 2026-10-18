@@ -96,7 +96,7 @@ function AnalysisBody({ row, headingTag = 'h4' }: { row: PolicyAnalysisRow; head
             {([['1 year', t.year1], ['3 years', t.year3], ['5 years', t.year5]] as const).map(([label, v]) => (
               <div key={label} className="rounded-xl bg-fg/5 border border-fg/10 px-3 py-2">
                 <dt className="text-meta text-text-muted">{label}</dt>
-                <dd className={`font-mono-data text-sm font-semibold ${(v ?? 0) < 0 ? 'text-loss' : 'text-gain'}`}>{v === undefined ? '—' : signedUSD(v)}</dd>
+                <dd className={`font-mono-data text-sm font-semibold ${impactTone(v ?? 0)}`}>{v === undefined ? '—' : signedUSD(v)}</dd>
               </div>
             ))}
           </dl>
@@ -244,14 +244,14 @@ function ImpactContent() {
         <main id="main" tabIndex={-1} className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 pt-28 pb-20">
 
           <m.div initial={{ opacity: 0, y: 16 }} animate={{ opacity: 1, y: 0 }} className="mb-8">
-            <h1 className="font-display text-3xl font-bold text-text-primary mb-2">Impact Analysis</h1>
+            <h1 className="font-display text-3xl font-medium text-text-primary mb-2">Impact <em>Analysis</em></h1>
             <p className="text-text-muted">Your personalized policy financial impact breakdown.</p>
           </m.div>
 
           <Tabs value={tab} onValueChange={setTab}>
             <TabList label="Impact views" className="glass rounded-2xl p-1 mb-8 w-fit">
               {(['individual', 'cumulative'] as const).map(t => (
-                <Tab key={t} value={t} className="px-5 py-2.5 border border-transparent aria-selected:bg-primary/20 aria-selected:border-primary/20">
+                <Tab key={t} value={t} className="px-5 py-2.5">
                   {t === 'individual' ? 'Individual Analyses' : 'Cumulative Analysis'}
                 </Tab>
               ))}
@@ -264,7 +264,7 @@ function ImpactContent() {
                   <div className="flex items-start justify-between gap-4 mb-6">
                     <div>
                       <Badge variant="default">{selectedPolicy.category}</Badge>
-                      <h2 className="font-display text-2xl font-bold text-text-primary mt-2">{selectedPolicy.policy_title}</h2>
+                      <h2 className="font-display text-2xl font-semibold text-text-primary mt-2">{selectedPolicy.policy_title}</h2>
                       <p className="text-xs text-text-muted mt-1">{new Date(selectedPolicy.created_at).toLocaleDateString()}</p>
                     </div>
                     <div className="flex flex-col items-end gap-3 flex-shrink-0">
@@ -397,7 +397,7 @@ function ImpactContent() {
               ) : (
                 <>
                   <m.div initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} className="glass-strong rounded-3xl p-10 relative overflow-hidden text-center">
-                    <div className="absolute inset-0 bg-gradient-to-br from-gold/8 via-transparent to-primary/8" />
+                    <div className="absolute inset-0 bg-gradient-to-br from-primary/8 via-transparent to-secondary/6" />
                     <div className="relative z-10">
                       <h2 className="text-xs font-mono-data text-text-muted uppercase tracking-widest mb-4">Net Annual Impact ({checkedAnalyses.length} selected)</h2>
                       <div className={`font-mono-data text-6xl sm:text-7xl font-bold mb-3 ${netImpact >= 0 ? 'text-gain' : 'text-loss'}`}>
@@ -450,7 +450,7 @@ function ImpactContent() {
                         ))}
                       </dl>
                     </div>
-                    <p className="text-xs text-text-muted mb-4">One line per policy, with a gold total line.</p>
+                    <p className="text-xs text-text-muted mb-4">One line per policy, with a thicker total line.</p>
                     <CumulativeProjectionLines data={projectionData} series={projectionSeries} height={340} title="1, 3 and 5-year projection" />
                   </GlassCard>
 
@@ -475,7 +475,7 @@ function ImpactContent() {
                                   </span>
                                 </div>
                                 <div className="h-2 rounded-full bg-fg/6 overflow-hidden" aria-hidden>
-                                  <m.div className="h-full rounded-full" style={{ backgroundColor: (a.dollar_impact || 0) >= 0 ? '#10B981' : '#EF4444' }}
+                                  <m.div className={`h-full rounded-full ${(a.dollar_impact || 0) >= 0 ? 'bg-gain-fill' : 'bg-loss-fill'}`}
                                     initial={{ width: 0 }} animate={{ width: `${share}%` }} transition={{ duration: 0.7, delay: Math.min(i, 8) * 0.05 }} />
                                 </div>
                               </li>

@@ -68,7 +68,7 @@ export const CHART_DESCRIPTIONS: Record<string, string> = {
   beforeAfter: 'Your numbers before this policy vs. after it.',
   waterfall: 'How this policy flows from the whole economy down to your own wallet.',
   radar: 'The areas of your money life this policy puts the most pressure on.',
-  heatmap: 'Which everyday spending categories get cheaper (green) or pricier (red).',
+  heatmap: 'Which everyday spending categories get cheaper (teal) or pricier (amber).',
 };
 
 /** Built-in fallback definitions for common terms (merged with model-supplied jargon). */

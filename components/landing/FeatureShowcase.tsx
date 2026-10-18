@@ -1,6 +1,7 @@
 import { BarChart2, Compass, MessageSquare, PieChart, ArrowRight } from 'lucide-react';
 import Link from 'next/link';
 import Reveal from './Reveal';
+import { toneColor, type Tone } from './tone';
 import { formatUSD, impactSign } from '@/lib/format';
 import { BRACKET_ROWS, CATEGORIES, EXAMPLE_POLICIES, bracketByKey, exampleImpact, formatAnnual } from '@/lib/explorerData';
 
@@ -10,7 +11,8 @@ interface Feature {
   title: string;
   description: string;
   bullets: string[];
-  color: string;
+  /** The feature's accent light (AA as text on the page). */
+  tone: Tone;
   href: string;
   mockup: string;
   preview: string;
@@ -32,7 +34,7 @@ const ADVISOR_MID = exampleImpact('minimum-wage-increase', '50to75k');
 const DASHBOARD = BRACKET_ROWS.find(r => r.key === '50to75k') ?? BRACKET_ROWS[0];
 
 const TONE = { gain: 'text-positive', loss: 'text-negative', neutral: 'text-text-muted' } as const;
-const BAR = { gain: 'bg-positive/50', loss: 'bg-negative/50', neutral: 'bg-fg/20' } as const;
+const BAR = { gain: 'bg-gain-fill', loss: 'bg-loss-fill', neutral: 'bg-fg/20' } as const;
 
 function buildFeatures(stateBills: boolean): Feature[] {
   return [
@@ -47,7 +49,7 @@ function buildFeatures(stateBills: boolean): Feature[] {
         'The assumptions behind every estimate',
         'A confidence level on every analysis',
       ],
-      color: '#7B61FF',
+      tone: 'violet-text',
       href: '/policies',
       mockup: 'analysis',
       preview: `Example with illustrative figures: the “${ANALYSIS.policy.title}” example for a sample ${ANALYSIS.bracket.label} household, shown per month, for one year and over five years, with a confidence level.`,
@@ -65,7 +67,8 @@ function buildFeatures(stateBills: boolean): Feature[] {
         'Official status and a link to each bill',
         'Hide what isn’t relevant to you',
       ],
-      color: '#00D4FF',
+      // Archive gold: the feed is built from the official record.
+      tone: 'gold',
       href: '/policies',
       mockup: 'discovery',
       preview: `Example with illustrative figures: three example policies ranked by how relevant they are to a sample ${DISCOVERY_BRACKET.label} household, two gains and one cost, each with an estimated yearly impact.`,
@@ -81,7 +84,7 @@ function buildFeatures(stateBills: boolean): Feature[] {
         'Simple or Expert reading mode',
         'Educational estimates, not advice',
       ],
-      color: '#F5C842',
+      tone: 'accent',
       href: '/advisor',
       mockup: 'advisor',
       preview: 'Example with illustrative figures: a what-if question about a minimum wage increase, answered in dollars for two sample households, one that gains and one that pays a little more.',
@@ -97,7 +100,7 @@ function buildFeatures(stateBills: boolean): Feature[] {
         'Sort by impact or date',
         'Export or delete your data anytime',
       ],
-      color: '#7B61FF',
+      tone: 'violet-text',
       href: '/impact',
       mockup: 'dashboard',
       preview: 'Example with illustrative figures: a combined net annual impact with a breakdown by category, some categories gains and some costs.',
@@ -187,7 +190,7 @@ const MockupDashboard = () => {
     <div className={`${nestedGlass} rounded-2xl p-5`}>
       <div className="text-center mb-4">
         <p className="text-meta text-text-muted font-mono-data mb-1">Net Annual Impact</p>
-        <p className="font-mono-data text-3xl font-bold gradient-text-gold">{formatUSD(net, { signed: true })}</p>
+        <p className={`font-mono-data text-3xl font-bold ${TONE[impactSign(net)]}`}>{formatUSD(net, { signed: true })}</p>
         <p className="text-meta text-text-muted mt-1">across {EXAMPLE_POLICIES.length} tracked policies · {DASHBOARD.label} sample</p>
       </div>
       <div className="space-y-2">
@@ -228,11 +231,11 @@ export default function FeatureShowcase({ stateBills }: FeatureShowcaseProps) {
     <section aria-labelledby="features-heading" className="py-32 relative">
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
         <Reveal className="text-center mb-20">
-          <p className="text-xs font-mono-data text-primary uppercase tracking-widest mb-4">Features</p>
-          <h2 id="features-heading" className="font-display text-4xl sm:text-5xl font-bold text-text-primary">
+          <p className="text-xs font-mono-data text-primary-300 uppercase tracking-widest mb-4">Features</p>
+          <h2 id="features-heading" className="font-display text-4xl sm:text-5xl font-medium text-text-primary">
             Everything you need to
             <br />
-            <span className="gradient-text">understand your money</span>
+            <em>understand your money</em>
           </h2>
         </Reveal>
 
@@ -254,16 +257,16 @@ export default function FeatureShowcase({ stateBills }: FeatureShowcaseProps) {
                     <div
                       aria-hidden="true"
                       className="w-10 h-10 rounded-2xl flex items-center justify-center"
-                      style={{ backgroundColor: feature.color + '18', border: `1px solid ${feature.color}25` }}
+                      style={{ backgroundColor: toneColor(feature.tone, 0.09), border: `1px solid ${toneColor(feature.tone, 0.15)}` }}
                     >
-                      <Icon className="w-5 h-5" style={{ color: feature.color }} />
+                      <Icon className="w-5 h-5" style={{ color: toneColor(feature.tone) }} />
                     </div>
-                    <span className="text-xs font-mono-data uppercase tracking-widest" style={{ color: feature.color }}>
+                    <span className="text-xs font-mono-data uppercase tracking-widest" style={{ color: toneColor(feature.tone) }}>
                       {feature.tag}
                     </span>
                   </div>
 
-                  <h3 className="font-display text-3xl sm:text-4xl font-bold text-text-primary mb-4 leading-tight">
+                  <h3 className="font-display text-3xl sm:text-4xl font-medium text-text-primary mb-4 leading-tight">
                     {feature.title}
                   </h3>
                   <p className="text-text-muted text-base leading-relaxed mb-8">
@@ -276,7 +279,7 @@ export default function FeatureShowcase({ stateBills }: FeatureShowcaseProps) {
                         <div
                           aria-hidden="true"
                           className="w-1.5 h-1.5 rounded-full flex-shrink-0"
-                          style={{ backgroundColor: feature.color }}
+                          style={{ backgroundColor: toneColor(feature.tone) }}
                         />
                         <span className="text-sm text-text-muted">{bullet}</span>
                       </li>
@@ -286,7 +289,7 @@ export default function FeatureShowcase({ stateBills }: FeatureShowcaseProps) {
                   <Link
                     href={feature.href}
                     className="inline-flex items-center gap-2 rounded-md text-sm font-medium transition-all group"
-                    style={{ color: feature.color }}
+                    style={{ color: toneColor(feature.tone) }}
                   >
                     Explore feature<span className="sr-only">: {feature.title}</span>
                     <ArrowRight className="w-4 h-4 group-hover:translate-x-1 transition-transform" aria-hidden="true" />
@@ -295,10 +298,11 @@ export default function FeatureShowcase({ stateBills }: FeatureShowcaseProps) {
 
                 {/* Mockup (illustrative, so screen readers get a summary instead) */}
                 <div className={`${!isEven ? 'lg:order-1' : ''} relative`}>
+                  {/* Violet light behind every mockup: the text tones (dark gold by day) would read as a smudge on paper. */}
                   <div
                     aria-hidden="true"
                     className="absolute inset-0 rounded-3xl blur-3xl opacity-20"
-                    style={{ background: `radial-gradient(circle, ${feature.color}55 0%, transparent 70%)` }}
+                    style={{ background: 'radial-gradient(circle, rgb(var(--c-glow) / 0.33) 0%, transparent 70%)' }}
                   />
                   <p className="sr-only">{feature.preview}</p>
                   <div aria-hidden="true" className="glass-strong rounded-3xl p-8 relative z-10">

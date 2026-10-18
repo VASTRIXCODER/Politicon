@@ -35,7 +35,7 @@ import {
   CategoryImpactBar, ImpactDonut, MonthlyTimeline, ProjectionBars, BeforeAfterBar, VulnerabilityRadar,
 } from '@/components/charts/LazyCharts';
 import { TransmissionWaterfall, SpendingHeatmap } from '@/components/charts/StaticCharts';
-import { CATEGORY_COLOR } from '@/components/charts/palette';
+import { useChartPalette } from '@/components/charts/palette';
 import { useReadingMode } from '@/components/providers/ReadingModeProvider';
 import ReadingModeToggle from '@/components/ui/ReadingModeToggle';
 import { WhatThisMeans, JargonBuster } from '@/components/ui/SimpleMode';
@@ -298,7 +298,7 @@ export default function PolicyDetailPage({ params }: { params: Promise<{ policyI
         <div className="w-14 h-14 rounded-2xl bg-primary/10 border border-primary/20 flex items-center justify-center mx-auto mb-5">
           <Target className="w-7 h-7 text-primary-300" aria-hidden />
         </div>
-        <h1 className="font-display text-2xl font-bold text-text-primary mb-2">{legacy ? 'Update this analysis' : 'No analysis yet'}</h1>
+        <h1 className="font-display text-2xl font-medium text-text-primary mb-2">{legacy ? 'Update this analysis' : 'No analysis yet'}</h1>
         <p role="status" className="text-sm text-text-muted mb-6">
           {generating
             ? 'Compiling your full financial analysis. This can take up to a minute…'
@@ -361,13 +361,15 @@ function DetailView({
   policyId: string;
 }) {
   const { simple } = useReadingMode();
+  // Category colours for the theme on the page (charts need concrete colours).
+  const { category: categoryColors } = useChartPalette();
   const income = useMemo(() => incomeMidpoint({ incomeRange: profile?.incomeRange || '' } as Parameters<typeof incomeMidpoint>[0]), [profile]);
 
   const categoryBars = useMemo(
     () => Object.entries(a.categoryImpacts)
-      .map(([k, v]) => ({ name: titleCase(k), value: v, color: CATEGORY_COLOR[k] || '#6B7280' }))
+      .map(([k, v]) => ({ name: titleCase(k), value: v, color: categoryColors[k] || categoryColors.other }))
       .filter((d) => d.value !== 0),
-    [a.categoryImpacts]
+    [a.categoryImpacts, categoryColors]
   );
 
   const confidence = confidenceLabel(a.confidenceScore);
@@ -422,7 +424,7 @@ function DetailView({
             {a.confidenceScore ? <> · {a.confidenceScore}/100<span className="sr-only"> (model-rated)</span></> : null}
           </span>
         </div>
-        <h1 className="font-display text-3xl sm:text-4xl font-bold text-text-primary leading-tight">{a.policyTitle}</h1>
+        <h1 className="font-display text-3xl sm:text-4xl font-medium text-text-primary leading-tight">{a.policyTitle}</h1>
         {analyzedAt && (
           <p className="text-xs text-text-muted mt-2">Last analyzed {new Date(analyzedAt).toLocaleString()}</p>
         )}
@@ -433,13 +435,13 @@ function DetailView({
       </m.div>
 
       {stale && (
-        <div role="status" className="mb-6 flex flex-col sm:flex-row sm:items-center justify-between gap-3 rounded-2xl border border-gold/30 bg-gold/10 px-5 py-4">
+        <div role="status" className="mb-6 flex flex-col sm:flex-row sm:items-center justify-between gap-3 rounded-2xl border border-caution/30 bg-caution/10 px-5 py-4">
           <p className="text-sm text-text-primary">
             Your financial profile changed after this analysis was made, so these numbers may be out of date.
             {reanalyzeError && <span className="block text-danger mt-1">{reanalyzeError}</span>}
           </p>
           <button type="button" onClick={onReanalyze} disabled={reanalyzing} aria-busy={reanalyzing || undefined}
-            className="inline-flex items-center justify-center gap-2 whitespace-nowrap bg-gold/20 hover:bg-gold/30 border border-gold/30 text-gold px-4 py-2 rounded-xl text-sm font-medium transition-all disabled:opacity-60">
+            className="inline-flex items-center justify-center gap-2 whitespace-nowrap bg-raised hover:bg-surface border border-caution/30 hover:border-caution/50 text-caution px-4 py-2 rounded-xl text-sm font-medium transition-all disabled:opacity-60">
             {reanalyzing && <Loader2 className="w-4 h-4 animate-spin" aria-hidden />}
             {reanalyzing ? 'Re-analyzing…' : 'Re-analyze with my current profile'}
           </button>
@@ -449,7 +451,7 @@ function DetailView({
       {/* Hero impact card */}
       <m.div initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.5, delay: 0.05 }}
         className="glass-strong rounded-3xl p-8 mb-8 relative overflow-hidden">
-        <div className={`absolute inset-0 ${a.direction === 'negative' ? 'bg-gradient-to-br from-loss/10' : 'bg-gradient-to-br from-gold/10'} via-transparent to-primary/5`} />
+        <div className={`absolute inset-0 ${a.direction === 'negative' ? 'bg-gradient-to-br from-loss-fill/10' : 'bg-gradient-to-br from-gain-fill/10'} via-transparent to-primary/5`} />
         <div className="relative z-10 grid md:grid-cols-[1.2fr_1fr] gap-8 items-center">
           <div>
             <p className="text-xs font-mono-data text-text-muted uppercase tracking-widest mb-3">Net Annual Impact</p>
@@ -482,7 +484,7 @@ function DetailView({
       <Tabs value={tab} onValueChange={setTab}>
         <TabList label="Analysis sections" className="glass rounded-2xl p-1 mb-8 w-full sm:w-fit">
           {TABS.map((t) => (
-            <Tab key={t} value={t} className="py-2.5 border border-transparent aria-selected:bg-primary/20 aria-selected:border-primary/20">
+            <Tab key={t} value={t} className="py-2.5">
               {TAB_LABELS[t]}
             </Tab>
           ))}
@@ -628,7 +630,8 @@ function OverviewTab({ a, categoryBars, simple, income, applies }: {
 
 // ----- Tab 2: Financial Breakdown -----
 function BreakdownTab({ a, categoryBars, simple }: { a: FullAnalysis; categoryBars: { name: string; value: number; color?: string }[]; simple: boolean }) {
-  const donutData = categoryBars.map((c) => ({ name: c.name, value: c.value, color: c.color || '#6B7280' }));
+  // ImpactDonut picks a palette colour for any slice without one.
+  const donutData = categoryBars.map((c) => ({ name: c.name, value: c.value, color: c.color || '' }));
   const beforeAfter = [{ label: 'Effective Tax Rate', before: a.tax.effectiveRateBefore, after: a.tax.effectiveRateAfter }];
   return (
     <div className="space-y-6">
@@ -692,7 +695,7 @@ function TimelineTab({ a, simple }: { a: FullAnalysis; simple: boolean }) {
             <ol>
               {milestones.map((ms, i) => (
                 <li key={i} className="relative mb-5 last:mb-0">
-                  <div className={`absolute -left-[22px] top-0.5 w-3.5 h-3.5 rounded-full border-2 ${ms.value >= 0 ? 'border-gain-fill bg-gain/20' : 'border-loss-fill bg-loss/20'}`} aria-hidden />
+                  <div className={`absolute -left-[22px] top-0.5 w-3.5 h-3.5 rounded-full border-2 ${ms.value >= 0 ? 'border-gain-fill bg-gain-fill/20' : 'border-loss-fill bg-loss-fill/20'}`} aria-hidden />
                   <div className="flex items-center justify-between gap-3">
                     <span className="text-sm text-text-primary font-medium">{ms.label}</span>
                     <span className={`font-mono-data text-sm font-semibold ${impactTone(ms.value)}`}>{money(ms.value)}</span>
@@ -827,7 +830,7 @@ function EconomicContextTab({ a, simple, income, applies }: { a: FullAnalysis; s
       {/* Spending heatmap */}
       <GlassCard className="rounded-3xl p-7" animate={false}>
         <h3 className="font-display text-base font-semibold text-text-primary mb-1">{simple ? 'What gets cheaper or pricier' : 'Spending Category Pressure'}</h3>
-        <p className="text-xs text-text-muted mb-4">{simple ? CHART_DESCRIPTIONS.heatmap : 'Monthly dollar pressure per spending category — green saves you money, red costs more.'}</p>
+        <p className="text-xs text-text-muted mb-4">{simple ? CHART_DESCRIPTIONS.heatmap : 'Monthly dollar pressure per spending category — teal saves you money, amber costs more.'}</p>
         <SpendingHeatmap items={a.spendingVelocity} />
       </GlassCard>
 
@@ -858,10 +861,10 @@ function EconomicContextTab({ a, simple, income, applies }: { a: FullAnalysis; s
         <div className="mt-5 pt-5 border-t border-fg/8">
           <div className="flex items-center justify-between mb-2">
             <span className="text-sm text-text-primary font-medium">{simple ? 'Should you build up emergency savings?' : 'Precautionary behavior index'}</span>
-            <span className="font-mono-data text-sm font-bold text-gold">{personal.precautionaryIndex}/100</span>
+            <span className="font-mono-data text-sm font-bold text-text-primary">{personal.precautionaryIndex}/100</span>
           </div>
           <div className="h-2 rounded-full bg-fg/5 overflow-hidden" aria-hidden>
-            <div className="h-full rounded-full bg-gradient-to-r from-gain-fill via-gold to-loss-fill transition-all duration-700" style={{ width: `${personal.precautionaryIndex}%` }} />
+            <div className="h-full rounded-full bg-gradient-to-r from-gain-fill to-loss-fill transition-all duration-700" style={{ width: `${personal.precautionaryIndex}%` }} />
           </div>
           {personal.precautionaryExplanation && <p className="text-xs text-text-muted leading-relaxed mt-3">{personal.precautionaryExplanation}</p>}
         </div>
@@ -969,9 +972,10 @@ function DeepDiveTab({ a }: { a: FullAnalysis }) {
 }
 
 // ----- Tab 5: Things to consider -----
+// Danger is kept for errors, so a high priority is a caution note.
 const PRIORITY_STYLES: Record<string, string> = {
-  high: 'bg-danger/10 border-danger/20 text-danger',
-  medium: 'bg-caution/10 border-caution/20 text-caution',
+  high: 'bg-caution/10 border-caution/25 text-caution',
+  medium: 'bg-primary/10 border-primary/20 text-primary-300',
   low: 'bg-fg/5 border-fg/10 text-text-muted',
 };
 

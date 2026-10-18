@@ -18,7 +18,7 @@ export default function NotFound() {
         <main id="main" tabIndex={-1} className="max-w-xl mx-auto px-4 pt-40 pb-24 text-center">
           <Compass className="w-10 h-10 text-primary mx-auto mb-6" aria-hidden />
           <p className="font-mono-data text-xs uppercase tracking-widest text-text-muted mb-3">404</p>
-          <h1 className="font-display text-3xl sm:text-4xl font-bold text-text-primary mb-3">We couldn&apos;t find that page</h1>
+          <h1 className="font-display text-3xl sm:text-4xl font-medium text-text-primary mb-3">We couldn&apos;t find <em>that page</em></h1>
           <p className="text-text-muted mb-8">The link may be out of date, or the page may have moved.</p>
           <div className="flex flex-col sm:flex-row gap-3 justify-center">
             <Button href="/">Go to the home page</Button>

@@ -156,12 +156,15 @@ export interface TabProps {
   disabled?: boolean;
   /** Decorative icon shown before the label. */
   icon?: ReactNode;
-  /** Classes for every state. Style the selected state with `aria-selected:` variants. */
+  /**
+   * Classes for every state. Style the selected state with `aria-selected:`
+   * variants, but keep a marker of 3:1 or more (the default violet rim).
+   */
   className?: string;
 }
 
 export function Tab({ value, children, disabled, icon, className }: TabProps) {
-  const { baseId, value: current, select } = useTabs('Tab');
+  const { baseId, value: current, select, orientation } = useTabs('Tab');
   const selected = current === value;
 
   return (
@@ -179,9 +182,18 @@ export function Tab({ value, children, disabled, icon, className }: TabProps) {
       data-state={selected ? 'active' : 'inactive'}
       onClick={() => select(value)}
       className={cn(
-        'inline-flex flex-shrink-0 items-center gap-2 whitespace-nowrap rounded-xl px-4 py-2 text-sm font-medium transition-colors',
-        'text-text-muted hover:text-text-primary disabled:cursor-not-allowed disabled:opacity-50',
-        'aria-selected:bg-primary/15 aria-selected:text-primary-300',
+        'inline-flex flex-shrink-0 items-center gap-2 whitespace-nowrap border border-transparent px-4 py-2 text-sm font-medium',
+        // Pills in a row; softer corners in a full-width column.
+        orientation === 'horizontal' ? 'rounded-full' : 'rounded-xl',
+        'transition-[color,background-color,border-color,box-shadow] duration-200 ease-civic',
+        'text-muted hover:bg-fg/5 hover:text-ink disabled:cursor-not-allowed disabled:opacity-50',
+        // The selected tab is a raised paper pill with a violet rim: the rim is
+        // what marks it (3:1 or more on every pane, WCAG 1.4.11), the pill and
+        // the faint violet light below it are the finish.
+        'aria-selected:border-primary aria-selected:bg-raised aria-selected:text-ink',
+        // A tight glow: a scrolling tab strip clips anything that spreads further.
+        'aria-selected:shadow-[0_1px_2px_rgb(var(--c-fg)/0.1),0_2px_6px_-2px_rgb(var(--c-violet)/0.35)]',
+        'dark:aria-selected:shadow-[inset_0_1px_0_rgb(var(--c-fg)/0.08),0_2px_6px_-2px_rgb(var(--c-violet)/0.5)]',
         className
       )}
     >
@@ -211,7 +223,7 @@ export function TabPanel({ value, children, className, forceMount = false }: Tab
       aria-labelledby={tabId(baseId, value)}
       tabIndex={0}
       hidden={!selected}
-      className={cn('rounded-2xl', className)}
+      className={cn('rounded-2xl focus-visible:outline-offset-4', className)}
     >
       {children}
     </div>

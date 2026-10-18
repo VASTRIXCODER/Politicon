@@ -16,9 +16,16 @@
 // The budgets' headroom absorbs that; for exact per-page numbers, compare the
 // <script> tags in .next/server/app/<route>.html.
 //
-// Exits 1 if any page is over its group's budget, 2 if the build output is
+// The 3D stage (three.js, React Three Fiber, drei and the ambient light
+// field) must never reach a first load: StageLoader imports it with
+// next/dynamic once the page is idle, and only on devices that render 3D.
+// This script fails if any page's first-load chunks contain three.js or R3F,
+// and holds the stage's lazy chunks (and all lazy 3D code) to their own budgets.
+//
+// Exits 1 if any page is over its group's budget, three.js is in a first-load
+// chunk, or the lazy 3D code is over its budgets; 2 if the build output is
 // missing or unreadable.
-import { appendFileSync, existsSync, readFileSync } from 'node:fs';
+import { appendFileSync, existsSync, readFileSync, readdirSync } from 'node:fs';
 import { join, resolve } from 'node:path';
 import { gzipSync } from 'node:zlib';
 
@@ -30,6 +37,29 @@ const BUDGETS_KB = {
   marketing: 276,
   app: 297,
 };
+
+// The lazy 3D stage: the gzipped chunks behind StageLoader's and SceneView's
+// dynamic imports (react-loadable-manifest.json), minus anything a first load
+// already carries. This is what any page with 3D downloads (and only on a
+// device that renders it). Measured at 263.3 kB on 2026-10-18 (three.js ~190,
+// R3F ~55, drei View and PerformanceMonitor, the light field and the stage
+// ~17); the budget is that plus ~15%.
+const LAZY_STAGE_BUDGET_KB = 302;
+// Every lazy chunk that is part of the 3D kit: the stage above, the tier-2
+// bloom pass (postprocessing, ~94 kB, loaded only when a view asks for
+// <PostFX /> on tier 2) and the kit pieces (glass, particles, the Capitol,
+// studio lights…), each loaded only by pages that use it. Measured at
+// 412.4 kB on 2026-10-18; the budget is that plus ~15%.
+//
+// NOTE: the redesign plan set "about 300 kB gzip for the stage and the shared
+// kit". The stage alone is close to that, but everything 3D together is about
+// 37% over it, and these two budgets are this file's numbers, not the plan's:
+// they need the owner's sign-off (listed under Known issues in the R0 PR).
+// Trimming further means replacing postprocessing's bloom or splitting the kit.
+const LAZY_3D_TOTAL_BUDGET_KB = 473;
+
+// Strings that survive minification and only three.js / R3F contain.
+const THREE_SIGNATURES = ['__THREE__', 'isWebGLRenderer', '__r3f'];
 
 // Signed-in pages; mirrors PROTECTED_ROUTES in middleware.ts. Everything else
 // (landing, help, legal, explorer, auth screens, 404) is public "marketing".
@@ -51,22 +81,33 @@ function readJson(name) {
 const buildManifest = readJson('build-manifest.json');
 const appManifest = readJson('app-build-manifest.json').pages ?? {};
 const appPaths = readJson('app-path-routes-manifest.json');
+// Written by every webpack build that uses next/dynamic (the stage does).
+const loadableManifest = readJson('react-loadable-manifest.json');
 
 const polyfills = new Set(buildManifest.polyfillFiles ?? []);
 const rootMain = (buildManifest.rootMainFiles ?? []).filter((f) => f.endsWith('.js'));
 
 const sizeCache = new Map();
-function gzipBytes(file) {
-  if (!sizeCache.has(file)) {
+const sourceCache = new Map();
+function source(file) {
+  if (!sourceCache.has(file)) {
     const path = join(distDir, file);
     if (!existsSync(path)) {
       console.error(`check-bundle: ${path} is listed in the manifest but missing on disk.`);
       process.exit(2);
     }
-    sizeCache.set(file, gzipSync(readFileSync(path), { level: 9 }).length);
+    sourceCache.set(file, readFileSync(path));
   }
+  return sourceCache.get(file);
+}
+function gzipBytes(file) {
+  if (!sizeCache.has(file)) sizeCache.set(file, gzipSync(source(file), { level: 9 }).length);
   return sizeCache.get(file);
 }
+const has3d = (file) => {
+  const text = source(file).toString('latin1');
+  return THREE_SIGNATURES.some((sig) => text.includes(sig));
+};
 
 const jsFor = (key) => (appManifest[key] ?? []).filter((f) => f.endsWith('.js') && !polyfills.has(f));
 
@@ -100,7 +141,7 @@ for (const [entry, route] of Object.entries(appPaths)) {
   const bytes = [...files].reduce((sum, f) => sum + gzipBytes(f), 0);
   const group = groupOf(route);
   const budget = BUDGETS_KB[group] * 1000;
-  rows.push({ route, group, bytes, budget, over: bytes > budget });
+  rows.push({ route, group, bytes, budget, over: bytes > budget, files });
 }
 
 if (rows.length === 0) {
@@ -135,6 +176,47 @@ for (const [group, limit] of Object.entries(BUDGETS_KB)) {
   console.log(`${group}: largest ${fmt(max)} of ${limit} kB budget`);
 }
 
+// --- The lazy 3D stage --------------------------------------------------------
+
+const firstLoad = new Set(rows.flatMap((r) => [...r.files]));
+const eager3d = rows.flatMap((r) => [...r.files].filter(has3d).map((f) => `${r.route} (${f})`));
+
+// The stage proper: what StageLoader and SceneView pull in on any 3D page.
+const isStageKey = (k) => /^components\/three\/(StageLoader|SceneView)\.tsx -> /.test(k);
+const lazyFiles = (keys) =>
+  new Set(keys.flatMap((k) => (loadableManifest[k].files ?? []).filter((f) => f.endsWith('.js') && !firstLoad.has(f))));
+const threeKeys = Object.keys(loadableManifest).filter((k) => k.startsWith('components/three/'));
+const stageKeys = threeKeys.filter(isStageKey);
+const stageFiles = lazyFiles(stageKeys);
+const stageBytes = [...stageFiles].reduce((sum, f) => sum + gzipBytes(f), 0);
+const stageBudget = LAZY_STAGE_BUDGET_KB * 1000;
+const stageMissing = stageKeys.length === 0 || ![...stageFiles].some(has3d);
+
+// Everything else 3D that loads lazily: the other dynamic imports under
+// components/three/ (post effects, kit pieces; postprocessing has no three.js
+// signature of its own) and any other lazy chunk carrying three.js (/lab).
+const chunkDir = join(distDir, 'static', 'chunks');
+const allChunks = [];
+(function walk(dir, rel) {
+  for (const entry of readdirSync(dir, { withFileTypes: true })) {
+    const relPath = `${rel}/${entry.name}`;
+    if (entry.isDirectory()) walk(join(dir, entry.name), relPath);
+    else if (entry.name.endsWith('.js')) allChunks.push(`static/chunks${relPath}`);
+  }
+})(chunkDir, '');
+const extraFiles = new Set([
+  ...lazyFiles(threeKeys.filter((k) => !isStageKey(k))),
+  ...allChunks.filter((f) => !firstLoad.has(f) && has3d(f)),
+]);
+for (const f of stageFiles) extraFiles.delete(f);
+const extraBytes = [...extraFiles].reduce((sum, f) => sum + gzipBytes(f), 0);
+const totalBytes = stageBytes + extraBytes;
+const totalBudget = LAZY_3D_TOTAL_BUDGET_KB * 1000;
+
+console.log(`\nLazy 3D stage (${stageKeys.length} dynamic imports, ${stageFiles.size} chunks): ${fmt(stageBytes)} of ${LAZY_STAGE_BUDGET_KB} kB budget`);
+console.log(`Lazy 3D effects and kit pieces (${extraFiles.size} more chunks): ${fmt(extraBytes)}`);
+console.log(`Lazy 3D total: ${fmt(totalBytes)} of ${LAZY_3D_TOTAL_BUDGET_KB} kB budget`);
+
 if (process.env.GITHUB_STEP_SUMMARY) {
   const md = [
     '### First-load JS per page (gzip)',
@@ -144,14 +226,35 @@ if (process.env.GITHUB_STEP_SUMMARY) {
     ...table.map(([route, group, size, budget, used, status]) =>
       `| \`${route}\` | ${group} | ${size} | ${budget} | ${used}${status === 'OVER' ? ' **OVER**' : ''} |`),
     '',
+    `Lazy 3D stage: ${fmt(stageBytes)} of ${LAZY_STAGE_BUDGET_KB} kB${stageBytes > stageBudget ? ' **OVER**' : ''}; ` +
+      `all lazy 3D: ${fmt(totalBytes)} of ${LAZY_3D_TOTAL_BUDGET_KB} kB${totalBytes > totalBudget ? ' **OVER**' : ''}.`,
+    '',
   ].join('\n');
   try { appendFileSync(process.env.GITHUB_STEP_SUMMARY, md); } catch { /* summary is optional */ }
 }
 
+let failed = false;
 const over = rows.filter((r) => r.over);
 if (over.length > 0) {
   console.error(`\nOver budget: ${over.map((r) => `${r.route} (${fmt(r.bytes)} > ${fmt(r.budget)})`).join(', ')}`);
   console.error('Trim the page, or raise BUDGETS_KB in scripts/check-bundle.mjs if the growth is intended.');
-  process.exit(1);
+  failed = true;
 }
-console.log('\nAll pages are within budget.');
+if (eager3d.length > 0) {
+  console.error(`\nthree.js / R3F in a first-load chunk: ${eager3d.join(', ')}`);
+  console.error('3D code must load through next/dynamic or import() (see components/three/StageLoader.tsx and kit/lazy.tsx).');
+  failed = true;
+}
+if (stageMissing) {
+  console.error('\nNo lazy 3D stage found in react-loadable-manifest.json (expected next/dynamic imports under components/three/ that load three.js).');
+  failed = true;
+} else if (stageBytes > stageBudget) {
+  console.error(`\nLazy 3D stage over budget: ${fmt(stageBytes)} > ${fmt(stageBudget)}. Trim it, or raise LAZY_STAGE_BUDGET_KB if the growth is intended.`);
+  failed = true;
+}
+if (totalBytes > totalBudget) {
+  console.error(`\nLazy 3D total over budget: ${fmt(totalBytes)} > ${fmt(totalBudget)}. Trim it, or raise LAZY_3D_TOTAL_BUDGET_KB if the growth is intended.`);
+  failed = true;
+}
+if (failed) process.exit(1);
+console.log('\nAll pages are within budget, no first load carries three.js, and the lazy 3D code is within budget.');

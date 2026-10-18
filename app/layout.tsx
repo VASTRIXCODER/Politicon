@@ -8,6 +8,7 @@ import LenisProvider from '@/components/providers/LenisProvider';
 import MotionProvider from '@/components/providers/MotionProvider';
 import { ReadingModeProvider } from '@/components/providers/ReadingModeProvider';
 import Analytics from '@/components/Analytics';
+import StageLoader from '@/components/three/StageLoader';
 import { SITE_DESCRIPTION, SITE_NAME, SITE_URL } from '@/lib/site';
 import { THEME_SCRIPT } from '@/lib/theme';
 import { BRAND_COLORS } from '@/lib/design/tokens';
@@ -76,6 +77,8 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
             </ReadingModeProvider>
           </LenisProvider>
         </MotionProvider>
+        {/* The shared WebGL stage behind every page (loads at idle, tier 1+ only). */}
+        <StageLoader />
         {/* Vercel Web Analytics + Speed Insights (Vercel deployments only). */}
         <Analytics />
       </body>

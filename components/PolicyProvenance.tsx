@@ -23,7 +23,7 @@ export default function PolicyProvenance({ record, compact = false, snapshotLabe
 }) {
   if (!record || !record.verified) {
     return (
-      <p className="flex items-start gap-1.5 text-meta text-caution/90">
+      <p className="flex items-start gap-1.5 text-meta text-caution">
         <ShieldAlert className="w-3.5 h-3.5 flex-shrink-0 mt-px" aria-hidden />
         <span>Not verified against an official source{compact ? '' : ' — details may be incomplete or out of date. Check the official record before relying on it.'}</span>
       </p>

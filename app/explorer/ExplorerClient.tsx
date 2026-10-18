@@ -89,8 +89,8 @@ export function ExplorerCta({ stateBills = false }: { stateBills?: boolean }) {
     return (
       <>
         <p className="text-xs font-mono-data text-primary-300 uppercase tracking-widest mb-4">Your estimates</p>
-        <h2 className="font-display text-3xl font-bold text-text-primary mb-4">
-          See <span className="gradient-text">real bills</span> for your situation
+        <h2 className="font-display text-3xl font-medium text-text-primary mb-4">
+          See <em>real bills</em> for your situation
         </h2>
         <p className="text-text-muted mb-8 max-w-lg mx-auto">
           Your dashboard lists official bills matched to your profile. Analyze any of them for an estimated dollar
@@ -111,8 +111,8 @@ export function ExplorerCta({ stateBills = false }: { stateBills?: boolean }) {
   return (
     <>
       <p className="text-xs font-mono-data text-primary-300 uppercase tracking-widest mb-4">Go deeper</p>
-      <h2 className="font-display text-3xl font-bold text-text-primary mb-4">
-        See estimates for <span className="gradient-text">your situation</span>
+      <h2 className="font-display text-3xl font-medium text-text-primary mb-4">
+        See estimates for <em>your situation</em>
       </h2>
       <p className="text-text-muted mb-8 max-w-lg mx-auto">
         These are made-up examples. Create a free account, tell us about your household, and get AI estimates of how
