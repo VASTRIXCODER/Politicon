@@ -9,7 +9,9 @@ import { LazyMotion, MotionConfig, domAnimation } from 'motion/react';
 export const EASE_CIVIC = [0.2, 0.7, 0.2, 1] as const;
 
 /**
- * App-wide Motion setup.
+ * Motion setup for the signed-in app, rendered by each app route's layout
+ * (app/dashboard, app/impact, …): only those pages animate with motion/react,
+ * so the marketing pages never load it.
  * - reducedMotion="user": when the OS asks for reduced motion, transform and
  *   layout animations jump to their end state (opacity/colour still fade).
  * - LazyMotion + domAnimation: lets components use the lightweight `m.*`

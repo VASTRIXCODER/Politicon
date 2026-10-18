@@ -6,13 +6,13 @@ import { INVALID_LINK_PATH, isEmailLinkType } from '@/lib/server/authRedirect';
 import { confirmEmailLink } from './actions';
 import SubmitButton from './SubmitButton';
 
-const COPY: Record<EmailOtpType, { title: string; subtitle: string; button: string }> = {
-  signup: { title: 'Confirm your email', subtitle: 'One click and your account is ready.', button: 'Confirm and continue' },
-  email: { title: 'Confirm your email', subtitle: 'One click and your account is ready.', button: 'Confirm and continue' },
-  invite: { title: 'Accept your invitation', subtitle: 'Continue to set up your Politicon account.', button: 'Continue' },
-  magiclink: { title: 'Sign in to Politicon', subtitle: 'Continue to finish signing in.', button: 'Sign in' },
-  recovery: { title: 'Reset your password', subtitle: 'Continue to choose a new password.', button: 'Continue' },
-  email_change: { title: 'Confirm your new email', subtitle: 'Continue to confirm the change to your email address.', button: 'Confirm' },
+const COPY: Record<EmailOtpType, { eyebrow: string; title: string; subtitle: string; button: string }> = {
+  signup: { eyebrow: 'Email confirmation', title: 'Confirm your email', subtitle: 'One click and your account is ready.', button: 'Confirm and continue' },
+  email: { eyebrow: 'Email confirmation', title: 'Confirm your email', subtitle: 'One click and your account is ready.', button: 'Confirm and continue' },
+  invite: { eyebrow: 'Invitation', title: 'Accept your invitation', subtitle: 'Continue to set up your Politicon account.', button: 'Continue' },
+  magiclink: { eyebrow: 'Sign-in link', title: 'Sign in to Politicon', subtitle: 'Continue to finish signing in.', button: 'Sign in' },
+  recovery: { eyebrow: 'Account recovery', title: 'Reset your password', subtitle: 'Continue to choose a new password.', button: 'Continue' },
+  email_change: { eyebrow: 'Email change', title: 'Confirm your new email', subtitle: 'Continue to confirm the change to your email address.', button: 'Confirm' },
 };
 
 /**
@@ -33,14 +33,14 @@ export default async function ConfirmEmailLinkPage({ searchParams }: { searchPar
   const copy = COPY[type];
 
   return (
-    <AuthCard title={copy.title} subtitle={copy.subtitle}>
+    <AuthCard eyebrow={copy.eyebrow} title={copy.title} subtitle={copy.subtitle}>
       <form action={confirmEmailLink} className="space-y-4">
         <input type="hidden" name="token_hash" value={tokenHash} />
         <input type="hidden" name="type" value={type} />
         <input type="hidden" name="next" value={param('next')} />
         {user?.email && (
-          <p className="text-sm text-text-muted leading-relaxed">
-            You&apos;re signed in as <span className="font-medium text-text-primary">{user.email}</span>. If this link is for a
+          <p className="text-sm leading-relaxed text-muted">
+            You&apos;re signed in as <span className="font-medium text-ink">{user.email}</span>. If this link is for a
             different account, continuing switches this browser to that account.
           </p>
         )}

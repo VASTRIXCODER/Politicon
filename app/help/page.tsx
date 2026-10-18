@@ -1,6 +1,7 @@
 import type { Metadata } from 'next';
 import Link from 'next/link';
-import LegalPage, { Section } from '@/components/legal/LegalPage';
+import LegalPage from '@/components/legal/LegalPage';
+import { ContactCard, Faq } from '@/components/legal/Faq';
 import { SUPPORT_EMAIL } from '@/lib/legal';
 
 export const metadata: Metadata = {
@@ -42,18 +43,24 @@ const buildFaq = (stateBills: boolean): { q: string; a: React.ReactNode }[] => [
 export default function HelpPage() {
   const faq = buildFaq(Boolean(process.env.OPENSTATES_API_KEY));
   return (
-    <LegalPage title="Help" intro="Quick answers to common questions. If you can't find what you need, email us and a person will reply.">
-      {faq.map(({ q, a }) => (
-        <Section key={q} title={q}>
-          <p>{a}</p>
-        </Section>
-      ))}
-      <Section title="Contact support">
-        <p>
-          Email <a className="text-primary-300 underline-offset-2 hover:underline" href={`mailto:${SUPPORT_EMAIL}`}>{SUPPORT_EMAIL}</a>. Please don&apos;t
-          send passwords or full financial details. To report a security issue, use the same address with &ldquo;Security&rdquo; in the subject.
-        </p>
-      </Section>
+    <LegalPage
+      title={<em>Help</em>}
+      eyebrow="Support"
+      intro="Quick answers to common questions. If you can't find what you need, email us and a person will reply."
+      toc={false}
+      aside={
+        <ContactCard title="Contact support">
+          <p>
+            Email <a className="text-primary-300 underline-offset-2 hover:underline" href={`mailto:${SUPPORT_EMAIL}`}>{SUPPORT_EMAIL}</a>. Please don&apos;t
+            send passwords or full financial details. To report a security issue, use the same address with &ldquo;Security&rdquo; in the subject.
+          </p>
+        </ContactCard>
+      }
+    >
+      <section>
+        <h2 className="mb-2 font-mono-data text-meta font-medium uppercase tracking-[0.16em] text-muted">Common questions</h2>
+        <Faq items={faq} />
+      </section>
     </LegalPage>
   );
 }

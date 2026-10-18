@@ -120,13 +120,15 @@ export const BRAND_COLORS = {
 
 /**
  * Categorical colours for policy categories in charts and 3D. None is red or
- * blue, and none reuses the gain teal or loss amber, so a category is never
- * mistaken for a direction.
+ * blue, none reuses the gain teal or loss amber, so a category is never
+ * mistaken for a direction, and none is archive gold, which marks the
+ * official record and nothing else (housing is a warm stone grey). Each is
+ * 3:1 or more on every pane of its theme, as a graphic (WCAG 1.4.11).
  */
 export const CATEGORY_COLORS: Record<ThemeName, Record<string, string>> = {
   light: {
     taxes: '#6D4AFF',
-    housing: '#B8860B',
+    housing: '#7A6C61',
     healthcare: '#B0479A',
     employment: '#4F6B2F',
     retirement: '#8A3DC7',
@@ -136,7 +138,7 @@ export const CATEGORY_COLORS: Record<ThemeName, Record<string, string>> = {
   },
   dark: {
     taxes: '#9C86FF',
-    housing: '#E3B341',
+    housing: '#BCAEA2',
     healthcare: '#E58ACB',
     employment: '#A9C77A',
     retirement: '#D8B4FE',

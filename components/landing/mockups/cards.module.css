@@ -1,0 +1,140 @@
+/*
+ * The share-card designs (ShareableCards): collectible "impact cards", a
+ * porcelain face over a night nameplate, fanned out like a hand of cards.
+ * Under a mouse the card you point at lifts and straightens and a sheen of
+ * violet foil crosses it; touch screens and reduced motion keep the fan
+ * still. Each card is a light island (data-day, so its shadows stay ink in
+ * the dark theme too) with a night nameplate (data-night). Decorative
+ * throughout (the section's copy describes them).
+ */
+
+.hand {
+  display: grid;
+  place-items: center;
+  padding-block: 1.5rem 2.5rem;
+}
+
+.card {
+  --x: 0rem;
+  --y: 0rem;
+  --r: 0deg;
+  grid-area: 1 / 1;
+  position: relative;
+  width: min(15rem, 68vw);
+  aspect-ratio: 5 / 7;
+  border-radius: 1.4rem;
+  transform: translate3d(var(--x), var(--y), 0) rotate(var(--r));
+  transition:
+    transform 0.6s var(--ease-civic),
+    box-shadow 0.6s var(--ease-civic);
+  box-shadow:
+    0 1px 0 rgb(255 255 255 / 0.6) inset,
+    0 0 0 1px rgb(var(--c-violet) / 0.14),
+    0 30px 50px -28px rgb(var(--c-ink) / 0.45),
+    0 10px 30px -18px rgb(var(--c-violet) / 0.45);
+}
+.card[data-pos='left'] {
+  --x: -2.6rem;
+  --y: 1rem;
+  --r: -8deg;
+}
+.card[data-pos='right'] {
+  --x: 2.6rem;
+  --y: 1rem;
+  --r: 8deg;
+}
+.card[data-pos='center'] {
+  z-index: 1;
+}
+@media (min-width: 640px) {
+  .card[data-pos='left'] {
+    --x: -10.5rem;
+    --y: 1.5rem;
+    --r: -9deg;
+  }
+  .card[data-pos='right'] {
+    --x: 10.5rem;
+    --y: 1.5rem;
+    --r: 9deg;
+  }
+}
+@media (min-width: 1280px) {
+  .card[data-pos='left'] {
+    --x: -12.75rem;
+  }
+  .card[data-pos='right'] {
+    --x: 12.75rem;
+  }
+}
+@media (hover: hover) and (pointer: fine) and (prefers-reduced-motion: no-preference) {
+  .card:hover {
+    --y: -1rem;
+    --r: 0deg;
+    z-index: 2;
+    box-shadow:
+      0 1px 0 rgb(255 255 255 / 0.6) inset,
+      0 0 0 1px rgb(var(--c-violet) / 0.3),
+      0 44px 70px -30px rgb(var(--c-ink) / 0.5),
+      0 18px 50px -20px rgb(var(--c-violet) / 0.6);
+  }
+}
+
+/* The porcelain face, framed by a hairline inset from its edge. */
+.face {
+  position: absolute;
+  inset: 0;
+  overflow: hidden;
+  border-radius: inherit;
+  background-color: rgb(var(--c-raised));
+  background-image:
+    radial-gradient(120% 60% at 50% 0%, rgb(var(--c-glow) / 0.14), transparent 70%),
+    linear-gradient(rgb(var(--c-canvas) / 0.6), rgb(var(--c-raised)));
+}
+.frame {
+  pointer-events: none;
+  position: absolute;
+  inset: 0.5rem;
+  border-radius: 1rem;
+  border: 1px solid rgb(var(--c-violet) / 0.16);
+}
+
+/* The mark, pressed into the porcelain: a lip of light under a faint shade. */
+.emboss {
+  color: rgb(var(--c-fg) / 0.07);
+  filter: drop-shadow(0 1px 0 rgb(255 255 255 / 0.95)) drop-shadow(0 -1px 0 rgb(var(--c-fg) / 0.08));
+}
+
+/* The night nameplate at the foot of the card. */
+.plate {
+  background-color: rgb(var(--c-surface));
+  background-image:
+    radial-gradient(90% 80% at 15% 0%, rgb(var(--c-violet) / 0.32), transparent 70%),
+    radial-gradient(60% 60% at 100% 100%, rgb(var(--c-accent) / 0.12), transparent 70%);
+  box-shadow: inset 0 1px 0 rgb(255 255 255 / 0.08);
+}
+
+/* Violet foil that crosses the card under a pointer. */
+.foil {
+  pointer-events: none;
+  position: absolute;
+  inset: 0;
+  z-index: 3;
+  border-radius: inherit;
+  background: linear-gradient(
+    115deg,
+    transparent 30%,
+    rgb(var(--c-glow) / 0.2) 44%,
+    rgb(var(--c-accent) / 0.16) 50%,
+    rgb(255 255 255 / 0.22) 53%,
+    transparent 66%
+  );
+  background-size: 260% 100%;
+  background-position: 100% 0;
+  mix-blend-mode: soft-light;
+  transition: background-position 1.2s var(--ease-civic);
+}
+@media (hover: hover) and (pointer: fine) and (prefers-reduced-motion: no-preference) {
+  .card:hover .foil {
+    background-position: 0% 0;
+  }
+}

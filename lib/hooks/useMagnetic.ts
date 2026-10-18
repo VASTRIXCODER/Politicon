@@ -1,14 +1,14 @@
 'use client';
 
 import { useEffect, useRef, type RefObject } from 'react';
+import { prefersLessMotion } from '@/lib/motion';
 
 const FINE_POINTER = '(hover: hover) and (pointer: fine)';
-const REDUCED_MOTION = '(prefers-reduced-motion: reduce)';
 
 /** Whether pointer-following effects may run right now (a mouse, and motion allowed). */
 export function pointerEffectsAllowed(): boolean {
   if (typeof window === 'undefined' || typeof window.matchMedia !== 'function') return false;
-  return window.matchMedia(FINE_POINTER).matches && !window.matchMedia(REDUCED_MOTION).matches;
+  return window.matchMedia(FINE_POINTER).matches && !prefersLessMotion();
 }
 
 /**

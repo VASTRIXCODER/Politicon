@@ -1,0 +1,271 @@
+/*
+ * The pinned film (FilmStage): a tall track, a sticky stage the height of
+ * the screen, captions that cross-fade per shot over a paper scrim, and the
+ * progress rail. Only the browser ever renders this layout (motion allowed,
+ * a device that runs the 3D stage); the server, reduced motion and tier 0
+ * get the static sequence in FilmPlayer, which needs none of it.
+ *
+ * --film-progress (0 … 1) is written on .stage by FilmStage once a frame
+ * while the page scrolls; the rail reads it, so scrolling never re-renders React.
+ */
+
+.track {
+  position: relative;
+  /* Five shots of a little under a screen each on phones… */
+  height: calc(var(--film-shots) * 85vh);
+  height: calc(var(--film-shots) * 85svh);
+}
+@media (min-width: 1024px) {
+  /* …and a full screen each on desktops. */
+  .track {
+    height: calc(var(--film-shots) * 100vh);
+    height: calc(var(--film-shots) * 100svh);
+  }
+}
+
+.stage {
+  position: sticky;
+  top: 0;
+  height: 100vh;
+  height: 100svh;
+  overflow: hidden;
+}
+
+/* ---- Posters (until the 3D scene draws, and whenever it can't) ---------- */
+
+.poster {
+  position: absolute;
+  inset: 0;
+  opacity: 0;
+  transition: opacity 0.7s var(--ease-civic);
+}
+.poster[data-state='active'] {
+  opacity: 1;
+}
+/* The drawing sits above the captions on phones and right of them on
+   desktops; the dusk still is a landscape and fills the frame. */
+.poster svg {
+  position: absolute;
+  top: 9%;
+  left: 0;
+  width: 100%;
+  height: 51%;
+}
+@media (min-width: 1024px) {
+  /* Between the captions and the rail. */
+  .poster svg {
+    top: 7%;
+    left: 36%;
+    width: 48%;
+    height: 86%;
+  }
+  /* Dusk is a landscape: it spans the frame behind the captions. */
+  .poster [data-night] svg {
+    top: 4%;
+    left: 0;
+    width: 100%;
+    height: 96%;
+  }
+}
+
+/* ---- Scrims: paper (or night) light behind the captions ----------------- */
+
+.scrim {
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  /* The scene's top edge feathers into the page (it scrolls in under the
+     section header), then the paper rises behind the captions in the lower
+     part of the frame, where the scene keeps clear of them. */
+  background:
+    linear-gradient(to bottom, rgb(var(--c-canvas)) 0%, rgb(var(--c-canvas) / 0) 12%),
+    linear-gradient(
+      to top,
+      rgb(var(--c-canvas)) 0%,
+      rgb(var(--c-canvas) / 0.96) 36%,
+      rgb(var(--c-canvas) / 0.75) 45%,
+      rgb(var(--c-canvas) / 0.3) 53%,
+      rgb(var(--c-canvas) / 0) 61%
+    );
+  transition: opacity 0.8s var(--ease-civic);
+}
+@media (min-width: 1024px) {
+  .scrim {
+    /* Top and bottom edges feather into the page; the captions' side is paper. */
+    background:
+      linear-gradient(to bottom, rgb(var(--c-canvas)) 0%, rgb(var(--c-canvas) / 0) 12%),
+      linear-gradient(to top, rgb(var(--c-canvas)) 0%, rgb(var(--c-canvas) / 0) 14%),
+      linear-gradient(
+        to right,
+        rgb(var(--c-canvas) / 0.97) 0%,
+        rgb(var(--c-canvas) / 0.92) 36%,
+        rgb(var(--c-canvas) / 0.5) 48%,
+        rgb(var(--c-canvas) / 0) 60%
+      );
+  }
+}
+
+/* After the film: dusk gives way to the paper page below it, through the
+   violet hour rather than grey (alpha over paper greys; these stops are
+   opaque). A short band whose tail runs under the next section's padding.
+   --exit-paper is the page's own canvas, resolved here before the night
+   layer inside (a [data-night] element) switches --c-canvas to the night's. */
+.exit {
+  --exit-paper: var(--c-canvas);
+  position: relative;
+  z-index: -1;
+  height: 12vh;
+  margin-bottom: -4vh;
+  pointer-events: none;
+}
+@media (min-width: 1024px) {
+  .exit {
+    height: 18vh;
+    margin-bottom: -8vh;
+  }
+}
+.exitNight {
+  position: absolute;
+  inset: 0;
+  background: linear-gradient(to bottom, rgb(var(--c-canvas)), rgb(var(--exit-paper)));
+  background: linear-gradient(
+    to bottom,
+    rgb(var(--c-canvas)) 0%,
+    color-mix(in oklch, rgb(var(--c-canvas)) 74%, rgb(var(--c-violet))) 30%,
+    color-mix(in oklch, rgb(var(--c-violet)) 22%, rgb(var(--exit-paper))) 68%,
+    rgb(var(--exit-paper)) 100%
+  );
+}
+/* A dark page is already night: only a faint violet afterglow between the two. */
+:global([data-theme='dark']) .exitNight {
+  background: linear-gradient(
+    to bottom,
+    rgb(var(--c-canvas)),
+    color-mix(in oklch, rgb(var(--c-canvas)) 88%, rgb(var(--c-violet))) 45%,
+    rgb(var(--c-canvas))
+  );
+}
+/* For the dusk shot the paper scrim hands over to its night twin (a
+   [data-night] layer), so no band of day light is left between them. */
+.scrimNight {
+  opacity: 0;
+}
+.stage[data-dusk] .scrim {
+  opacity: 0;
+}
+.stage[data-dusk] .scrimNight {
+  opacity: 1;
+}
+
+/* ---- Captions ------------------------------------------------------------ */
+
+.overlay {
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+}
+.overlay > * {
+  pointer-events: auto;
+}
+/* Words change colour softly when the overlay dips into night. */
+.overlay :where(p, h3, span, em, dt, dd, li, figure) {
+  transition-property: color, background-color, border-color;
+  transition-duration: 0.6s;
+  transition-timing-function: var(--ease-civic);
+}
+
+/* The captions share one grid cell: each step's list item stacks on the others. */
+.slot {
+  display: grid;
+}
+.step {
+  grid-area: 1 / 1;
+  align-self: end;
+}
+@media (min-width: 1024px) {
+  .step {
+    align-self: center;
+  }
+}
+.caption {
+  transition:
+    opacity 0.5s var(--ease-civic),
+    transform 0.7s var(--ease-civic),
+    visibility 0s linear 0.5s;
+}
+/* A rail jump from the keyboard focuses the step it lands on (no ring: it is
+   not a control, and the reader's eye is already on it). */
+.caption article:focus {
+  outline: none;
+}
+/* Inactive captions are faded, moved aside, and then hidden outright, so
+   they never linger as faint, readable text (they are aria-hidden and inert
+   from the start). */
+.caption[data-state='before'] {
+  opacity: 0;
+  transform: translate3d(0, -1.75rem, 0);
+  visibility: hidden;
+}
+.caption[data-state='after'] {
+  opacity: 0;
+  transform: translate3d(0, 1.75rem, 0);
+  visibility: hidden;
+}
+.caption[data-state='active'] {
+  opacity: 1;
+  transform: none;
+  visibility: visible;
+  transition-delay: 0.12s, 0.12s, 0s;
+}
+
+/* Phones and short screens: the caption keeps its story and drops the
+   extras (tags, the example's note), so the scene keeps the top of the
+   screen. The example ledger folds its four lines into two, savings and
+   costs each with its sign and words, so the costs never drop out. */
+.stage [data-caption-title] {
+  font-size: clamp(1.625rem, 1.2rem + 2vw, 2.75rem);
+}
+@media not all and (min-width: 640px) and (min-height: 720px) {
+  .stage [data-caption-extra],
+  .stage [data-caption-line] {
+    display: none;
+  }
+  .stage [data-caption-summary] {
+    display: flex;
+  }
+  .stage [data-caption-body] {
+    font-size: 0.9375rem;
+    line-height: 1.6;
+  }
+}
+
+/* ---- Progress rail --------------------------------------------------------- */
+
+.segment {
+  position: relative;
+  overflow: hidden;
+  border-radius: 9999px;
+  background-color: rgb(var(--c-fg) / 0.12);
+}
+.fill {
+  position: absolute;
+  inset: 0;
+  border-radius: inherit;
+  background-color: rgb(var(--c-violet));
+  transform-origin: left center;
+  transform: scaleX(clamp(0, calc(var(--film-progress, 0) * var(--film-shots) - var(--i)), 1));
+}
+@media (min-width: 1024px) {
+  .fill {
+    transform-origin: center top;
+    transform: scaleY(clamp(0, calc(var(--film-progress, 0) * var(--film-shots) - var(--i)), 1));
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .poster,
+  .caption,
+  .scrim {
+    transition: none;
+  }
+}

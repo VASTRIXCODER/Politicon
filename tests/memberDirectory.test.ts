@@ -41,6 +41,16 @@ describe('listableMembers', () => {
     ]);
   });
 
+  it('leaves out seeded test accounts', () => {
+    const list = listableMembers([
+      { email: 'real@a.com', email_confirmed_at: '2026-10-02', created_at: '2026-10-01T00:00:00Z', app_metadata: {} },
+      { email: 'alex.smith@getpoliticon.app', email_confirmed_at: '2026-10-02', created_at: '2026-10-03T00:00:00Z', app_metadata: { seeded: true } },
+      // Only the exact flag the seed script sets counts.
+      { email: 'quoted@b.com', email_confirmed_at: '2026-10-02', created_at: '2026-10-02T00:00:00Z', app_metadata: { seeded: 'false' } },
+    ]);
+    expect(list.map((m) => m.email.head)).toEqual(['q', 'r']);
+  });
+
   it('caps the list', () => {
     const users = Array.from({ length: MAX_LISTED_MEMBERS + 5 }, (_, i) => ({
       email: `u${i}@x.com`,

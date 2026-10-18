@@ -6,6 +6,7 @@ import { MailCheck } from 'lucide-react';
 import { createClient } from '@/lib/supabase/client';
 import Button from '@/components/ui/Button';
 import AuthCard from '@/components/auth/AuthCard';
+import { FIELD_INPUT, FIELD_LABEL, FORM_ERROR, FORM_LINK } from '@/components/auth/fields';
 
 const COOLDOWN_S = 60;
 
@@ -59,24 +60,25 @@ export default function ForgotPasswordPage() {
 
   return (
     <AuthCard
+      eyebrow="Account recovery"
       title={sentTo ? 'Check your email' : 'Reset your password'}
       subtitle={sentTo ? undefined : "Enter the email you signed up with and we'll send you a reset link."}
     >
       <p role="status" className="sr-only">{announcement}</p>
       {sentTo ? (
-        <div className="glass rounded-2xl p-6 space-y-4">
-          <MailCheck className="w-8 h-8 text-primary" aria-hidden />
-          <p className="text-sm text-text-primary leading-relaxed">
+        <div className="space-y-4 rounded-tile border border-fg/8 bg-fg/[0.02] p-5">
+          <MailCheck className="h-8 w-8 text-primary-300" aria-hidden />
+          <p className="text-sm leading-relaxed text-ink">
             If an account exists for <span className="font-medium">{sentTo}</span>, we&apos;ve sent a link to reset your
             password. It expires in about an hour.
           </p>
-          <p className="text-xs text-text-muted">Don&apos;t see it? Check your spam folder.</p>
+          <p className="text-xs text-muted">Don&apos;t see it? Check your spam folder.</p>
           {error && <p role="alert" className="text-sm text-danger">{error}</p>}
           <button
             type="button"
             onClick={() => send()}
             disabled={cooldown > 0 || sending}
-            className="text-sm text-primary-300 hover:text-text-primary disabled:text-text-muted disabled:cursor-not-allowed rounded-lg"
+            className="rounded-lg text-sm text-primary-300 hover:text-ink disabled:cursor-not-allowed disabled:text-muted"
           >
             {sending ? 'Sending…' : cooldown > 0 ? `Resend in ${cooldown}s` : 'Resend the link'}
           </button>
@@ -85,7 +87,7 @@ export default function ForgotPasswordPage() {
         <>
           <form onSubmit={send} className="space-y-4">
             <div>
-              <label htmlFor={emailId} className="text-xs font-medium text-text-muted uppercase tracking-wider mb-2 block">Email</label>
+              <label htmlFor={emailId} className={FIELD_LABEL}>Email</label>
               <input
                 id={emailId}
                 type="email"
@@ -97,11 +99,11 @@ export default function ForgotPasswordPage() {
                 inputMode="email"
                 aria-invalid={error ? true : undefined}
                 aria-describedby={error ? errorId : undefined}
-                className="input-glass w-full px-4 py-3.5 text-sm"
+                className={FIELD_INPUT}
               />
             </div>
             {error && (
-              <div id={errorId} role="alert" className="bg-danger/10 border border-danger/20 rounded-xl px-4 py-3">
+              <div id={errorId} role="alert" className={FORM_ERROR}>
                 <p className="text-sm text-danger">{error}</p>
               </div>
             )}
@@ -109,8 +111,8 @@ export default function ForgotPasswordPage() {
               {sending ? 'Sending…' : 'Send reset link'}
             </Button>
           </form>
-          <p className="text-center text-sm text-text-muted mt-6">
-            Remembered it? <Link href="/auth/signin" className="text-primary-300 hover:text-text-primary font-medium rounded">Sign in</Link>
+          <p className="mt-6 text-center text-sm text-muted">
+            Remembered it? <Link href="/auth/signin" className={FORM_LINK}>Sign in</Link>
           </p>
         </>
       )}

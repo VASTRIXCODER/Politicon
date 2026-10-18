@@ -1,83 +1,67 @@
-import { BarChart2, Compass, MessageSquare, PieChart, ArrowRight } from 'lucide-react';
+import type { ReactNode } from 'react';
 import Link from 'next/link';
-import Reveal from './Reveal';
+import { ArrowRight } from 'lucide-react';
+import Badge from '@/components/ui/Badge';
+import KineticHeadline from '@/components/landing/KineticHeadline';
+import { cn } from '@/lib/utils';
+import { FEED_EXAMPLES, GUIDE_EXAMPLE, LEDGER_POLICY_COUNT, LEDGER_ROW, POLICY_EXAMPLE } from './mockups/data';
+import GuideMockup from './mockups/GuideMockup';
+import LedgerMockup from './mockups/LedgerMockup';
+import PolicyMockup from './mockups/PolicyMockup';
 import { toneColor, type Tone } from './tone';
-import { formatUSD, impactSign } from '@/lib/format';
-import { BRACKET_ROWS, CATEGORIES, EXAMPLE_POLICIES, bracketByKey, exampleImpact, formatAnnual } from '@/lib/explorerData';
+
+type MockupKind = 'policy' | 'guide' | 'ledger';
 
 interface Feature {
-  icon: typeof BarChart2;
+  id: MockupKind;
+  /** Short name of the app surface, above the title. */
   tag: string;
-  title: string;
+  /** Title, with the italic accent words split out. */
+  title: { lead: string; accent: string };
   description: string;
   bullets: string[];
   /** The feature's accent light (AA as text on the page). */
   tone: Tone;
   href: string;
-  mockup: string;
-  preview: string;
+  /** What the mockup shows, in words: its visible caption (the mockup itself is decorative). */
+  caption: string;
 }
 
-// Only what ships today. The mockups' example figures come from the explorer's
-// illustrative dataset (lib/explorerData), picked so that, taken together,
-// they show gains and costs for both lower and higher incomes from policy
-// types across the spectrum.
-const ANALYSIS = exampleImpact('income-tax-rate-cut', '75to100k');
-const DISCOVERY_BRACKET = bracketByKey('25to50k');
-const DISCOVERY = [
-  { impact: exampleImpact('premium-subsidy-extension', DISCOVERY_BRACKET.key), score: 94 },
-  { impact: exampleImpact('import-tariff', DISCOVERY_BRACKET.key), score: 88 },
-  { impact: exampleImpact('income-tax-rate-cut', DISCOVERY_BRACKET.key), score: 81 },
-];
-const ADVISOR_LOW = exampleImpact('minimum-wage-increase', 'under25k');
-const ADVISOR_MID = exampleImpact('minimum-wage-increase', '50to75k');
-const DASHBOARD = BRACKET_ROWS.find(r => r.key === '50to75k') ?? BRACKET_ROWS[0];
+const MOCKUPS: Record<MockupKind, (_props: { facing: 'left' | 'right' }) => ReactNode> = {
+  policy: PolicyMockup,
+  guide: GuideMockup,
+  ledger: LedgerMockup,
+};
 
-const TONE = { gain: 'text-positive', loss: 'text-negative', neutral: 'text-text-muted' } as const;
-const BAR = { gain: 'bg-gain-fill', loss: 'bg-loss-fill', neutral: 'bg-fg/20' } as const;
-
+// Only what ships today. The mockups' example figures come from the
+// explorer's illustrative dataset (components/landing/mockups/data.ts), and
+// every caption says so.
 function buildFeatures(stateBills: boolean): Feature[] {
+  const feed = FEED_EXAMPLES.map(({ impact }) => impact.policy.title.toLowerCase());
   return [
     {
-      icon: BarChart2,
-      tag: 'Core Feature',
-      title: 'Personalized Impact Analysis',
-      description: 'Each policy is analyzed by AI for your income range, location, housing situation, and life stage, with the assumptions behind every number written out. Educational estimates, not financial advice.',
+      id: 'policy',
+      tag: 'Policy pages',
+      title: { lead: 'Every bill,', accent: 'in plain English.' },
+      description: stateBills
+        ? 'Your feed starts from recent bills in Congress and your state legislature, ranked by how likely they are to affect your finances. Each verified bill links to its official record and status. Analyze one for a plain-English explanation and a dollar estimate for your income range, location and life stage. Anything the record can’t confirm is marked unverified.'
+        : 'Your feed starts from recent bills in Congress, ranked by how likely they are to affect your finances. Each verified bill links to its official record and status. Analyze one for a plain-English explanation and a dollar estimate for your income range, location and life stage. Anything the record can’t confirm is marked unverified.',
       bullets: [
-        'Immediate effects on your monthly budget',
-        '1, 3, and 5-year projections',
-        'The assumptions behind every estimate',
-        'A confidence level on every analysis',
+        'Official status and a record link for verified bills',
+        'The effect on your monthly budget',
+        '1, 3 and 5-year projections',
+        'The assumptions, and a confidence level',
       ],
       tone: 'violet-text',
       href: '/policies',
-      mockup: 'analysis',
-      preview: `Example with illustrative figures: the “${ANALYSIS.policy.title}” example for a sample ${ANALYSIS.bracket.label} household, shown per month, for one year and over five years, with a confidence level.`,
+      caption: `A policy page for the hypothetical “${POLICY_EXAMPLE.policy.title}”: its record header, status, plain-English summary and estimate for a sample ${POLICY_EXAMPLE.bracket.label} household, beside a feed that ranks ${feed.join(', ')} by relevance.`,
     },
     {
-      icon: Compass,
-      tag: 'Discovery',
-      title: 'AI Policy Discovery',
-      description: stateBills
-        ? 'Your feed starts from recent bills in Congress and your state legislature, taken from official records, and the AI ranks them by how likely they are to affect your finances.'
-        : 'Your feed starts from recent bills in Congress, taken from official records, and the AI ranks them by how likely they are to affect your finances.',
-      bullets: [
-        'Relevance score for your situation',
-        stateBills ? 'Federal bills plus your state’s' : 'Federal bills from Congress.gov',
-        'Official status and a link to each bill',
-        'Hide what isn’t relevant to you',
-      ],
-      // Archive gold: the feed is built from the official record.
-      tone: 'gold',
-      href: '/policies',
-      mockup: 'discovery',
-      preview: `Example with illustrative figures: three example policies ranked by how relevant they are to a sample ${DISCOVERY_BRACKET.label} household, two gains and one cost, each with an estimated yearly impact.`,
-    },
-    {
-      icon: MessageSquare,
+      id: 'guide',
       tag: 'AI Policy Guide',
-      title: 'Your AI Policy Guide',
-      description: 'Ask how a policy could affect you. The guide uses the ranges in your profile and answers with educational dollar estimates, not political talking points.',
+      title: { lead: 'Ask anything.', accent: 'Get dollars, not talking points.' },
+      description:
+        'Ask how a policy could affect you. The guide answers from the ranges in your profile, with educational dollar estimates both ways, and never tells you what to think or how to vote.',
       bullets: [
         'Your profile ranges in every answer',
         'Ask about any policy in your feed',
@@ -86,236 +70,122 @@ function buildFeatures(stateBills: boolean): Feature[] {
       ],
       tone: 'accent',
       href: '/advisor',
-      mockup: 'advisor',
-      preview: 'Example with illustrative figures: a what-if question about a minimum wage increase, answered in dollars for two sample households, one that gains and one that pays a little more.',
+      caption: `The guide answering “${GUIDE_EXAMPLE.question}” in dollars for two sample households: one earning ${GUIDE_EXAMPLE.asker.bracket.label} that pays a little more, and one earning ${GUIDE_EXAMPLE.contrast.bracket.label.toLowerCase()} that gains.`,
     },
     {
-      icon: PieChart,
-      tag: 'Dashboard',
-      title: 'Cumulative Impact Dashboard',
-      description: 'Track every policy you\'ve analyzed. See your combined estimated net annual impact, broken down by category.',
+      id: 'ledger',
+      tag: 'My Impact',
+      title: { lead: 'Your ledger,', accent: 'every policy in one number.' },
+      description:
+        'Track every policy you’ve analyzed. See your combined estimated net yearly impact, broken down by category, with gains and costs side by side.',
       bullets: [
-        'Combined net annual impact',
-        'Breakdown by category (taxes, housing...)',
+        'Combined net yearly impact',
+        'Breakdown by category (taxes, housing…)',
         'Sort by impact or date',
         'Export or delete your data anytime',
       ],
       tone: 'violet-text',
       href: '/impact',
-      mockup: 'dashboard',
-      preview: 'Example with illustrative figures: a combined net annual impact with a breakdown by category, some categories gains and some costs.',
+      caption: `A combined net yearly impact across ${LEDGER_POLICY_COUNT} example policies for a sample ${LEDGER_ROW.label} household, with each category as a gain or a cost.`,
     },
   ];
 }
-
-// The mockups below are illustrations; FeatureShowcase hides them from screen
-// readers and gives each a one-line summary instead. Inner glass panels skip
-// backdrop-filter: they already sit on a blurred glass-strong panel.
-const nestedGlass = 'glass backdrop-filter-none';
-
-const MockupAnalysis = () => {
-  const { policy, bracket, annual } = ANALYSIS;
-  const tone = TONE[impactSign(annual)];
-  return (
-    <div className={`${nestedGlass} rounded-2xl p-5 text-left`}>
-      <p className="text-meta font-mono-data text-text-muted uppercase tracking-widest mb-3">{policy.title}</p>
-      <div className="space-y-3">
-        {[
-          { label: 'Monthly budget', value: formatUSD(annual / 12, { signed: true, suffix: '/mo' }) },
-          { label: 'Year 1', value: formatUSD(annual, { signed: true }) },
-          { label: '5 years, cumulative', value: formatUSD(annual * 5, { signed: true }) },
-        ].map(row => (
-          <div key={row.label} className="flex items-center justify-between">
-            <span className="text-meta text-text-muted">{row.label}</span>
-            <span className={`text-meta font-mono-data font-semibold ${tone}`}>{row.value}</span>
-          </div>
-        ))}
-      </div>
-      <div className="mt-4 p-3 rounded-xl bg-fg/4 border border-fg/8">
-        <p className="text-meta text-text-muted font-mono-data">Sample: {bracket.label} household · Confidence: medium</p>
-      </div>
-    </div>
-  );
-};
-
-const MockupDiscovery = () => (
-  <div className="space-y-2">
-    <p className="text-meta text-text-muted font-mono-data mb-1">Sample: {DISCOVERY_BRACKET.label} household</p>
-    {DISCOVERY.map(({ impact: { policy, annual }, score }) => (
-      <div key={policy.id} className={`${nestedGlass} rounded-xl p-3 flex items-center justify-between`}>
-        <div>
-          <p className="text-meta font-medium text-text-primary">{policy.title}</p>
-          <div className="flex items-center gap-2 mt-1">
-            <div className="h-1 w-16 rounded-full bg-fg/8 overflow-hidden">
-              <div className="h-full rounded-full bg-primary" style={{ width: `${score}%` }} />
-            </div>
-            <span className="text-meta text-text-muted">{score}% relevant</span>
-          </div>
-        </div>
-        <span className={`text-xs font-mono-data font-bold ${TONE[impactSign(annual)]}`}>{formatAnnual(annual)}</span>
-      </div>
-    ))}
-  </div>
-);
-
-const MockupAdvisor = () => (
-  <div className="space-y-3">
-    <div className="flex justify-end">
-      <div className="bg-primary/20 border border-primary/20 rounded-2xl rounded-tr-sm px-4 py-2.5 max-w-[80%]">
-        <p className="text-meta text-primary-300">What if my state raised its minimum wage?</p>
-      </div>
-    </div>
-    <div className="flex justify-start">
-      <div className={`${nestedGlass} rounded-2xl rounded-tl-sm px-4 py-3 max-w-[90%]`}>
-        <p className="text-meta text-text-muted leading-relaxed">
-          It depends on the household. For a sample household earning <span className="text-text-primary">{ADVISOR_MID.bracket.label}</span>, slightly
-          higher prices could cost about <span className="text-negative font-mono-data font-semibold">{formatUSD(Math.abs(ADVISOR_MID.annual))}</span> a year.
-          One earning <span className="text-text-primary">{ADVISOR_LOW.bracket.label.toLowerCase()}</span> with a minimum-wage worker could gain
-          about <span className="text-positive font-mono-data font-semibold">{formatUSD(ADVISOR_LOW.annual)}</span>...
-        </p>
-      </div>
-    </div>
-    <div className="flex items-center gap-2 pl-2">
-      <span className="w-1.5 h-1.5 rounded-full bg-primary animate-pulse" />
-      <span className="text-meta text-text-muted">Analyzing your profile...</span>
-    </div>
-  </div>
-);
-
-const MockupDashboard = () => {
-  const totals = CATEGORIES.map(c => ({ key: c.key, cat: c.label, amount: DASHBOARD.totals[c.key] }));
-  const net = totals.reduce((sum, t) => sum + t.amount, 0);
-  const scale = Math.max(1, ...totals.map(t => Math.abs(t.amount)));
-  return (
-    <div className={`${nestedGlass} rounded-2xl p-5`}>
-      <div className="text-center mb-4">
-        <p className="text-meta text-text-muted font-mono-data mb-1">Net Annual Impact</p>
-        <p className={`font-mono-data text-3xl font-bold ${TONE[impactSign(net)]}`}>{formatUSD(net, { signed: true })}</p>
-        <p className="text-meta text-text-muted mt-1">across {EXAMPLE_POLICIES.length} tracked policies · {DASHBOARD.label} sample</p>
-      </div>
-      <div className="space-y-2">
-        {totals.map(item => {
-          const sign = impactSign(item.amount);
-          return (
-            <div key={item.key}>
-              <div className="flex justify-between mb-1">
-                <span className="text-meta text-text-muted">{item.cat}</span>
-                <span className={`text-meta font-mono-data ${TONE[sign]}`}>{formatUSD(item.amount, { signed: true })}</span>
-              </div>
-              <div className="h-1.5 rounded-full bg-fg/6 overflow-hidden">
-                <div className={`h-full rounded-full ${BAR[sign]}`} style={{ width: `${Math.round((Math.abs(item.amount) / scale) * 100)}%` }} />
-              </div>
-            </div>
-          );
-        })}
-      </div>
-    </div>
-  );
-};
-
-const mockups: Record<string, React.ComponentType> = {
-  analysis: MockupAnalysis,
-  discovery: MockupDiscovery,
-  advisor: MockupAdvisor,
-  dashboard: MockupDashboard,
-};
 
 interface FeatureShowcaseProps {
   /** True when state bills are loaded (Open States is configured). */
   stateBills: boolean;
 }
 
+/**
+ * "Live product mockups as heroes": three surfaces of the real app, each a
+ * 2.5D pane in perspective beside the copy that explains it (the pane turns
+ * toward the copy; under a mouse it tilts toward the pointer and catches the
+ * light). The mockups are drawn with the app's own tokens and illustrative
+ * figures; each is decorative, with a visible caption that says what it
+ * shows and that it's an example. A server component; TiltStage is the only
+ * client code here.
+ */
 export default function FeatureShowcase({ stateBills }: FeatureShowcaseProps) {
   const features = buildFeatures(stateBills);
   return (
-    <section aria-labelledby="features-heading" className="py-32 relative">
-      <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
-        <Reveal className="text-center mb-20">
-          <p className="text-xs font-mono-data text-primary-300 uppercase tracking-widest mb-4">Features</p>
-          <h2 id="features-heading" className="font-display text-4xl sm:text-5xl font-medium text-text-primary">
-            Everything you need to
-            <br />
-            <em>understand your money</em>
-          </h2>
-        </Reveal>
+    <section aria-labelledby="features-heading" data-scene-section="features" className="relative overflow-x-clip py-24 sm:py-32">
+      <div className="mx-auto max-w-7xl px-4 sm:px-6 lg:px-8">
+        <header className="grid grid-cols-1 gap-6 lg:grid-cols-12 lg:items-end lg:gap-12">
+          <div className="lg:col-span-7">
+            <p className="flex items-center gap-3 font-mono-data text-meta uppercase tracking-[0.18em] text-muted">
+              <span aria-hidden="true" className="h-px w-8 bg-gradient-to-r from-transparent to-primary/70" />
+              Inside Politicon
+            </p>
+            <KineticHeadline id="features-heading" className="mt-5 font-display text-display-md font-medium text-ink">
+              Everything you need to <em>understand your money.</em>
+            </KineticHeadline>
+          </div>
+          <p className="max-w-md text-lg leading-relaxed text-muted lg:col-span-5 lg:justify-self-end">
+            Three surfaces of the product, shown with illustrative figures. Educational estimates, never financial
+            advice.
+          </p>
+        </header>
 
-        <div className="space-y-24">
+        <ol className="mt-20 space-y-28 sm:mt-28 sm:space-y-36">
           {features.map((feature, i) => {
-            const Icon = feature.icon;
-            const Mockup = mockups[feature.mockup];
-            const isEven = i % 2 === 0;
-
+            const Mockup = MOCKUPS[feature.id];
+            const flip = i % 2 === 1;
             return (
-              <Reveal
-                key={feature.title}
-                from={isEven ? 'left' : 'right'}
-                className="grid grid-cols-1 lg:grid-cols-2 gap-12 lg:gap-20 items-center"
-              >
-                {/* Content */}
-                <div className={!isEven ? 'lg:order-2' : ''}>
-                  <div className="flex items-center gap-3 mb-6">
-                    <div
-                      aria-hidden="true"
-                      className="w-10 h-10 rounded-2xl flex items-center justify-center"
-                      style={{ backgroundColor: toneColor(feature.tone, 0.09), border: `1px solid ${toneColor(feature.tone, 0.15)}` }}
-                    >
-                      <Icon className="w-5 h-5" style={{ color: toneColor(feature.tone) }} />
-                    </div>
-                    <span className="text-xs font-mono-data uppercase tracking-widest" style={{ color: toneColor(feature.tone) }}>
-                      {feature.tag}
-                    </span>
-                  </div>
-
-                  <h3 className="font-display text-3xl sm:text-4xl font-medium text-text-primary mb-4 leading-tight">
-                    {feature.title}
-                  </h3>
-                  <p className="text-text-muted text-base leading-relaxed mb-8">
-                    {feature.description}
+              <li key={feature.id} className="grid grid-cols-1 items-center gap-12 lg:grid-cols-12 lg:gap-16">
+                {/* The copy. */}
+                <div className={cn('lg:col-span-5', flip && 'lg:order-2')}>
+                  <p className="flex items-center gap-3 font-mono-data text-meta uppercase tracking-[0.18em]">
+                    <span className="text-muted">{String(i + 1).padStart(2, '0')}</span>
+                    <span aria-hidden="true" className="h-px w-6 bg-fg/20" />
+                    <span style={{ color: toneColor(feature.tone) }}>{feature.tag}</span>
                   </p>
+                  <h3 className="mt-5 font-display text-display-sm font-medium text-ink">
+                    {feature.title.lead} <em>{feature.title.accent}</em>
+                  </h3>
+                  <p className="mt-5 text-base leading-relaxed text-muted">{feature.description}</p>
 
-                  <ul className="space-y-3 mb-8">
-                    {feature.bullets.map(bullet => (
-                      <li key={bullet} className="flex items-center gap-3">
-                        <div
+                  <ul className="mt-7 border-t border-fg/10">
+                    {feature.bullets.map((bullet) => (
+                      <li key={bullet} className="flex items-center gap-3 border-b border-fg/10 py-3 text-sm text-ink">
+                        <span
                           aria-hidden="true"
-                          className="w-1.5 h-1.5 rounded-full flex-shrink-0"
+                          className="h-1.5 w-1.5 flex-shrink-0 rotate-45"
                           style={{ backgroundColor: toneColor(feature.tone) }}
                         />
-                        <span className="text-sm text-text-muted">{bullet}</span>
+                        {bullet}
                       </li>
                     ))}
                   </ul>
 
                   <Link
                     href={feature.href}
-                    className="inline-flex items-center gap-2 rounded-md text-sm font-medium transition-all group"
+                    className="group mt-7 inline-flex items-center gap-2 rounded-md text-sm font-medium"
                     style={{ color: toneColor(feature.tone) }}
                   >
-                    Explore feature<span className="sr-only">: {feature.title}</span>
-                    <ArrowRight className="w-4 h-4 group-hover:translate-x-1 transition-transform" aria-hidden="true" />
+                    Explore feature<span className="sr-only">: {feature.tag}</span>
+                    <ArrowRight
+                      className="h-4 w-4 transition-transform duration-300 ease-civic group-hover:translate-x-1"
+                      aria-hidden="true"
+                    />
                   </Link>
                 </div>
 
-                {/* Mockup (illustrative, so screen readers get a summary instead) */}
-                <div className={`${!isEven ? 'lg:order-1' : ''} relative`}>
-                  {/* Violet light behind every mockup: the text tones (dark gold by day) would read as a smudge on paper. */}
-                  <div
-                    aria-hidden="true"
-                    className="absolute inset-0 rounded-3xl blur-3xl opacity-20"
-                    style={{ background: 'radial-gradient(circle, rgb(var(--c-glow) / 0.33) 0%, transparent 70%)' }}
-                  />
-                  <p className="sr-only">{feature.preview}</p>
-                  <div aria-hidden="true" className="glass-strong rounded-3xl p-8 relative z-10">
-                    <p className="text-meta font-mono-data text-text-muted uppercase tracking-widest mb-5">
-                      Example · illustrative figures
-                    </p>
-                    <Mockup />
-                  </div>
-                </div>
-              </Reveal>
+                {/* The mockup (decorative) and its caption. */}
+                <figure className={cn('lg:col-span-7', flip && 'lg:order-1')}>
+                  <Mockup facing={flip ? 'right' : 'left'} />
+                  <figcaption className="mt-12 flex items-start gap-3 text-sm leading-relaxed text-muted">
+                    <Badge variant="example" className="mt-0.5 flex-shrink-0">
+                      Example
+                    </Badge>
+                    <span>
+                      {feature.caption} Illustrative figures, not a real analysis.
+                    </span>
+                  </figcaption>
+                </figure>
+              </li>
             );
           })}
-        </div>
+        </ol>
       </div>
     </section>
   );

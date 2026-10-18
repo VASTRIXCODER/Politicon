@@ -1,0 +1,90 @@
+/*
+ * The reading pages (Privacy, Terms, Disclaimer, Help) as editorial paper:
+ * a drop cap on the introduction, the FAQ's disclosures opening smoothly
+ * where the browser can animate to `auto`, and a clean black-on-white sheet
+ * when printed.
+ */
+
+/* ── The introduction's drop cap ────────────────────────────────────────── */
+
+.lede::first-letter {
+  float: left;
+  margin: 0.08em 0.1em 0 -0.02em;
+  font-family: var(--font-display), ui-serif, Georgia, serif;
+  font-size: 3.35em;
+  font-style: italic;
+  font-variation-settings: 'SOFT' 100, 'WONK' 1;
+  font-weight: 500;
+  line-height: 0.82;
+  color: rgb(var(--c-violet-text));
+}
+
+/* ── FAQ disclosures (Help) ─────────────────────────────────────────────── */
+
+/* Animate the open/close height where supported (Chrome 131+); elsewhere the
+   answer simply appears. */
+.faq {
+  interpolate-size: allow-keywords;
+}
+.faq::details-content {
+  block-size: 0;
+  overflow-y: clip;
+  transition:
+    block-size 0.42s var(--ease-civic),
+    content-visibility 0.42s var(--ease-civic) allow-discrete;
+}
+.faq[open]::details-content {
+  block-size: auto;
+}
+
+.summary {
+  list-style: none;
+}
+.summary::-webkit-details-marker {
+  display: none;
+}
+
+/* The plus turns into a cross as its answer opens. */
+.toggle {
+  transition: transform 0.35s var(--ease-civic), background-color 0.2s var(--ease-civic), border-color 0.2s var(--ease-civic);
+}
+.faq[open] .toggle {
+  transform: rotate(45deg);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .faq::details-content,
+  .toggle {
+    transition: none;
+  }
+}
+
+/* ── Print: the document alone, black on white ──────────────────────────── */
+
+@media print {
+  .sheet {
+    /* The light tokens, whatever theme is on screen. */
+    color-scheme: light;
+    --c-surface: 255 255 255;
+    --c-raised: 255 255 255;
+    --c-ink: 0 0 0;
+    --c-muted: 60 60 60;
+    --c-fg: 0 0 0;
+    --c-violet-text: 0 0 0;
+    border: 0 !important;
+    border-radius: 0 !important;
+    box-shadow: none !important;
+    background: #fff !important;
+  }
+  .sheet a {
+    color: #000;
+  }
+  /* Every answer prints, open or not. */
+  .faq::details-content {
+    block-size: auto;
+    content-visibility: visible;
+  }
+  .toggle {
+    display: none;
+  }
+}

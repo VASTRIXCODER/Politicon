@@ -11,7 +11,7 @@ export const metadata: Metadata = {
 export default function PrivacyPage() {
   return (
     <LegalPage
-      title="Privacy Policy"
+      title={<>Privacy <em>Policy</em></>}
       intro="Politicon estimates how government policies may affect your household finances. To do that we ask for a few facts about your situation. This page explains exactly what we collect, why, who processes it, how long we keep it, and how you can download or delete it."
       updated={PRIVACY_UPDATED}
     >

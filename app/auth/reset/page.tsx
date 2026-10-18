@@ -2,10 +2,13 @@
 
 import { useEffect, useId, useState } from 'react';
 import { useRouter } from 'next/navigation';
-import { Eye, EyeOff, Loader2 } from 'lucide-react';
+import { Eye, EyeOff } from 'lucide-react';
 import { createClient } from '@/lib/supabase/client';
 import Button from '@/components/ui/Button';
 import AuthCard from '@/components/auth/AuthCard';
+import LoaderMark from '@/components/auth/LoaderMark';
+import { FIELD_INPUT, FIELD_LABEL, FIELD_TOGGLE, FORM_ERROR } from '@/components/auth/fields';
+import { cn } from '@/lib/utils';
 import { endRecovery, recoveryStatus } from './actions';
 
 const MIN_LENGTH = 8;
@@ -59,18 +62,15 @@ export default function ResetPasswordPage() {
 
   if (status === 'checking') {
     return (
-      <AuthCard title="Reset your password">
-        <div role="status">
-          <Loader2 className="w-5 h-5 animate-spin text-primary" aria-hidden="true" />
-          <span className="sr-only">Checking your reset link…</span>
-        </div>
+      <AuthCard eyebrow="Account recovery" title="Reset your password">
+        <LoaderMark label="Checking your reset link…" className="py-2" />
       </AuthCard>
     );
   }
 
   if (status === 'no_session') {
     return (
-      <AuthCard title="Link expired" subtitle="This reset link is invalid or has expired. Links work once and only for about an hour.">
+      <AuthCard eyebrow="Account recovery" title="Link expired" subtitle="This reset link is invalid or has expired. Links work once and only for about an hour.">
         <Button href="/auth/forgot" variant="primary" size="lg" fullWidth>
           Request a new link
         </Button>
@@ -80,7 +80,7 @@ export default function ResetPasswordPage() {
 
   if (status === 'not_recovery') {
     return (
-      <AuthCard title="Change your password in Settings" subtitle="You're already signed in, so change your password in Settings instead.">
+      <AuthCard eyebrow="Account recovery" title="Change your password in Settings" subtitle="You're already signed in, so change your password in Settings instead.">
         <Button href="/settings" variant="primary" size="lg" fullWidth>
           Go to Settings
         </Button>
@@ -90,17 +90,17 @@ export default function ResetPasswordPage() {
 
   if (status === 'done') {
     return (
-      <AuthCard title="Password updated" subtitle="You're signed in. Taking you to your dashboard…">
+      <AuthCard eyebrow="Account recovery" title="Password updated" subtitle="You're signed in. Taking you to your dashboard…">
         <p role="status" className="sr-only">Password updated.</p>
       </AuthCard>
     );
   }
 
   return (
-    <AuthCard title="Choose a new password" subtitle="Other devices will be signed out once you save it.">
+    <AuthCard eyebrow="Account recovery" title="Choose a new password" subtitle="Other devices will be signed out once you save it.">
       <form onSubmit={save} className="space-y-4">
         <div>
-          <label htmlFor={ids.password} className="text-xs font-medium text-text-muted uppercase tracking-wider mb-2 block">New password</label>
+          <label htmlFor={ids.password} className={FIELD_LABEL}>New password</label>
           <div className="relative">
             <input
               id={ids.password}
@@ -112,7 +112,7 @@ export default function ResetPasswordPage() {
               autoComplete="new-password"
               aria-invalid={error ? true : undefined}
               aria-describedby={error ? `${ids.hint} ${ids.error}` : ids.hint}
-              className="input-glass w-full px-4 py-3.5 text-sm pr-12"
+              className={cn(FIELD_INPUT, 'pr-12')}
             />
             <button
               type="button"
@@ -120,15 +120,15 @@ export default function ResetPasswordPage() {
               aria-label="Show passwords"
               aria-pressed={show}
               aria-controls={`${ids.password} ${ids.confirm}`}
-              className="absolute right-2 top-1/2 -translate-y-1/2 p-1.5 rounded-lg text-text-muted hover:text-text-primary"
+              className={FIELD_TOGGLE}
             >
               {show ? <EyeOff className="w-4 h-4" aria-hidden="true" /> : <Eye className="w-4 h-4" aria-hidden="true" />}
             </button>
           </div>
-          <p id={ids.hint} className="text-xs text-text-muted mt-1.5">At least {MIN_LENGTH} characters.</p>
+          <p id={ids.hint} className="mt-1.5 text-xs text-muted">At least {MIN_LENGTH} characters.</p>
         </div>
         <div>
-          <label htmlFor={ids.confirm} className="text-xs font-medium text-text-muted uppercase tracking-wider mb-2 block">Confirm password</label>
+          <label htmlFor={ids.confirm} className={FIELD_LABEL}>Confirm password</label>
           <input
             id={ids.confirm}
             type={show ? 'text' : 'password'}
@@ -138,11 +138,11 @@ export default function ResetPasswordPage() {
             autoComplete="new-password"
             aria-invalid={error ? true : undefined}
             aria-describedby={error ? ids.error : undefined}
-            className="input-glass w-full px-4 py-3.5 text-sm"
+            className={FIELD_INPUT}
           />
         </div>
         {error && (
-          <div id={ids.error} role="alert" className="bg-danger/10 border border-danger/20 rounded-xl px-4 py-3">
+          <div id={ids.error} role="alert" className={FORM_ERROR}>
             <p className="text-sm text-danger">{error}</p>
           </div>
         )}

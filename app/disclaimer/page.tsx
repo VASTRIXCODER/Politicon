@@ -10,7 +10,7 @@ export const metadata: Metadata = {
 export default function DisclaimerPage() {
   return (
     <LegalPage
-      title="Disclaimer"
+      title={<em>Disclaimer</em>}
       intro="Politicon helps you understand how policies might affect your finances. It does not tell you what to do with your money or how to vote."
       updated={DISCLAIMER_UPDATED}
     >

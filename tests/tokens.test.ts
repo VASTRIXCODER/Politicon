@@ -186,3 +186,40 @@ describe('WCAG AA non-text contrast (3:1)', () => {
     }
   }
 });
+
+// Policy categories are graphics too (chart series, the explorer's tower
+// bands and legend dots), and none of them may borrow archive gold, which
+// marks the official record and nothing else.
+describe('category colours', () => {
+  const gold = (hex: string) => {
+    const [r, g, b] = hexToChannels(hex).split(' ').map((c) => Number(c) / 255);
+    const max = Math.max(r, g, b);
+    const min = Math.min(r, g, b);
+    const d = max - min;
+    if (d === 0) return false;
+    const sat = d / (1 - Math.abs(max + min - 1));
+    const hue = max === r ? (((g - b) / d) % 6) * 60 : max === g ? ((b - r) / d + 2) * 60 : ((r - g) / d + 4) * 60;
+    const h = hue < 0 ? hue + 360 : hue;
+    // Golds, ochres and mustards: a saturated hue between amber and yellow.
+    return sat > 0.3 && h >= 36 && h <= 58;
+  };
+
+  for (const theme of ['light', 'dark'] as const) {
+    const t = THEMES[theme];
+    for (const [category, hex] of Object.entries(CATEGORY_COLORS[theme])) {
+      it(`${theme}: ${category} is 3:1 on every pane`, () => {
+        for (const bg of BACKGROUNDS) expect(contrast(hex, t[bg]), bg).toBeGreaterThanOrEqual(3);
+      });
+
+      it(`${theme}: ${category} is not archive gold`, () => {
+        expect([THEMES.light.gold, THEMES.dark.gold, '#E3B341'].map((c) => c.toLowerCase())).not.toContain(hex.toLowerCase());
+        expect(gold(hex), hex).toBe(false);
+      });
+    }
+  }
+
+  it('flags the old gold housing tones', () => {
+    expect(gold('#E3B341')).toBe(true);
+    expect(gold('#B8860B')).toBe(true);
+  });
+});

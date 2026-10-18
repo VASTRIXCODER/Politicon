@@ -1,0 +1,301 @@
+/*
+ * The explorer's city: the frame around the SceneView, its server-rendered
+ * poster (CityPoster), the DOM labels and tooltip over the live 3D model,
+ * and how the focus lights them.
+ *
+ * The page's controls set data-focus-bracket and data-focus-category on
+ * .root; the selectors below light the picked district and category in the
+ * poster (the 3D scene reads the same focus as props). The bracket and
+ * category keys must match lib/explorerData.ts (tests/bracketCity.test.ts
+ * checks they all appear here).
+ */
+
+.root {
+  /* The poster's palette, from the design tokens (day). */
+  --city-paper: color-mix(in srgb, rgb(var(--c-canvas)) 74%, #e7dccb);
+  --city-paper-edge: color-mix(in srgb, rgb(var(--c-canvas)) 50%, #cfc4b2);
+  --city-acrylic: rgb(var(--c-violet));
+  --city-acrylic-line: rgb(255 255 255 / 0.95);
+  --city-acrylic-stroke: rgb(var(--c-violet) / 0.28);
+  --city-foot: color-mix(in srgb, rgb(var(--c-surface)) 86%, rgb(var(--c-ink)));
+  --city-shadow: rgb(var(--c-ink));
+  --city-lot: rgb(var(--c-violet));
+  --city-pool: rgb(var(--c-glow));
+  --city-gain-top: color-mix(in srgb, rgb(var(--c-gain-fill)) 52%, white);
+  --city-gain-lit: color-mix(in srgb, rgb(var(--c-gain-fill)) 80%, white);
+  --city-gain-shade: color-mix(in srgb, rgb(var(--c-gain-fill)) 86%, rgb(var(--c-ink)));
+  --city-loss-lit: color-mix(in srgb, rgb(var(--c-loss-fill)) 82%, white);
+  --city-loss-shade: color-mix(in srgb, rgb(var(--c-loss-fill)) 86%, rgb(var(--c-ink)));
+  --city-floor: rgb(255 255 255 / 0.62);
+  --city-label: rgb(var(--c-muted));
+  position: relative;
+}
+
+/* The Chamber: a dark board, glowing glass. */
+:global(:is([data-theme='dark'], [data-night])) .root {
+  --city-paper: color-mix(in srgb, rgb(var(--c-surface)) 88%, rgb(var(--c-violet)));
+  --city-paper-edge: color-mix(in srgb, rgb(var(--c-surface)) 70%, rgb(var(--c-violet)));
+  --city-acrylic-line: rgb(var(--c-glow) / 0.7);
+  --city-acrylic-stroke: rgb(var(--c-glow) / 0.35);
+  --city-foot: color-mix(in srgb, rgb(var(--c-canvas)) 80%, rgb(var(--c-violet)));
+  --city-shadow: #000;
+  --city-lot: rgb(var(--c-glow));
+  --city-pool: rgb(var(--c-glow));
+  --city-gain-top: color-mix(in srgb, rgb(var(--c-gain-fill)) 45%, white);
+  --city-gain-lit: color-mix(in srgb, rgb(var(--c-gain-fill)) 82%, white);
+  --city-gain-shade: color-mix(in srgb, rgb(var(--c-gain-fill)) 70%, rgb(var(--c-canvas)));
+  --city-loss-lit: color-mix(in srgb, rgb(var(--c-loss-fill)) 85%, white);
+  --city-loss-shade: color-mix(in srgb, rgb(var(--c-loss-fill)) 70%, rgb(var(--c-canvas)));
+  --city-floor: rgb(255 255 255 / 0.42);
+}
+
+/* ---- The poster -------------------------------------------------------- */
+
+.posters {
+  position: absolute;
+  inset: 0;
+}
+.svg {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  overflow: visible;
+}
+.wide {
+  display: none;
+}
+@media (min-width: 640px) {
+  .wide {
+    display: block;
+  }
+  .compact {
+    display: none;
+  }
+}
+
+.stopShadow {
+  stop-color: var(--city-shadow);
+}
+.stopPool {
+  stop-color: var(--city-pool);
+}
+.stopAcrylic {
+  stop-color: var(--city-acrylic);
+}
+
+.foot {
+  fill: var(--city-foot);
+}
+.acrylic {
+  stroke: var(--city-acrylic-stroke);
+  stroke-width: 1;
+}
+.acrylicEdge {
+  fill: none;
+  stroke: var(--city-acrylic-line);
+  stroke-width: 1.2;
+}
+.paperEdge {
+  fill: var(--city-paper-edge);
+}
+.paperTop {
+  fill: var(--city-paper);
+}
+.inlay {
+  fill: none;
+  stroke: var(--city-lot);
+  stroke-width: 0.8;
+  stroke-opacity: 0.5;
+}
+.lot {
+  fill: none;
+  stroke: var(--city-lot);
+  stroke-width: 0.8;
+  stroke-opacity: 0.32;
+  transition: stroke-opacity 0.45s var(--ease-civic);
+}
+.pool {
+  opacity: 0;
+  transition: opacity 0.45s var(--ease-civic);
+}
+
+/* Glass: three tones per tower (the top, the lit side, the side in shade). */
+.tower[data-sign='gain'] .top {
+  fill: var(--city-gain-top);
+}
+.tower[data-sign='gain'] .lit {
+  fill: var(--city-gain-lit);
+}
+.tower[data-sign='gain'] .shade {
+  fill: var(--city-gain-shade);
+}
+.tower[data-sign='loss'] .lit {
+  fill: var(--city-loss-lit);
+}
+.tower[data-sign='loss'] .shade {
+  fill: var(--city-loss-shade);
+}
+.top,
+.lit,
+.shade {
+  fill-opacity: 0.9;
+  stroke: rgb(255 255 255 / 0.5);
+  stroke-width: 0.6;
+  stroke-linejoin: round;
+}
+.floors {
+  fill: none;
+  stroke: var(--city-floor);
+  stroke-width: 0.8;
+}
+.band {
+  stroke: none;
+}
+.tower,
+.district {
+  transition: opacity 0.45s var(--ease-civic);
+}
+
+.posterLabel {
+  fill: var(--city-label);
+  font-family: var(--font-mono), ui-monospace, monospace;
+  font-size: 15px;
+  letter-spacing: 0.04em;
+  transition: fill 0.45s var(--ease-civic);
+}
+
+/* ---- Focus: a bracket dims the other districts and lights its own ------ */
+
+.root:is(
+    [data-focus-bracket='under25k'],
+    [data-focus-bracket='25to50k'],
+    [data-focus-bracket='50to75k'],
+    [data-focus-bracket='75to100k'],
+    [data-focus-bracket='100kPlus']
+  )
+  .district {
+  opacity: 0.38;
+}
+.root[data-focus-bracket='under25k'] .district[data-bracket='under25k'],
+.root[data-focus-bracket='25to50k'] .district[data-bracket='25to50k'],
+.root[data-focus-bracket='50to75k'] .district[data-bracket='50to75k'],
+.root[data-focus-bracket='75to100k'] .district[data-bracket='75to100k'],
+.root[data-focus-bracket='100kPlus'] .district[data-bracket='100kPlus'] {
+  opacity: 1;
+}
+.root[data-focus-bracket='under25k'] .district[data-bracket='under25k'] .pool,
+.root[data-focus-bracket='25to50k'] .district[data-bracket='25to50k'] .pool,
+.root[data-focus-bracket='50to75k'] .district[data-bracket='50to75k'] .pool,
+.root[data-focus-bracket='75to100k'] .district[data-bracket='75to100k'] .pool,
+.root[data-focus-bracket='100kPlus'] .district[data-bracket='100kPlus'] .pool {
+  opacity: 1;
+}
+.root[data-focus-bracket='under25k'] .district[data-bracket='under25k'] .lot,
+.root[data-focus-bracket='25to50k'] .district[data-bracket='25to50k'] .lot,
+.root[data-focus-bracket='50to75k'] .district[data-bracket='50to75k'] .lot,
+.root[data-focus-bracket='75to100k'] .district[data-bracket='75to100k'] .lot,
+.root[data-focus-bracket='100kPlus'] .district[data-bracket='100kPlus'] .lot {
+  stroke-opacity: 0.95;
+}
+.root[data-focus-bracket='under25k'] .district[data-bracket='under25k'] .posterLabel,
+.root[data-focus-bracket='25to50k'] .district[data-bracket='25to50k'] .posterLabel,
+.root[data-focus-bracket='50to75k'] .district[data-bracket='50to75k'] .posterLabel,
+.root[data-focus-bracket='75to100k'] .district[data-bracket='75to100k'] .posterLabel,
+.root[data-focus-bracket='100kPlus'] .district[data-bracket='100kPlus'] .posterLabel {
+  fill: rgb(var(--c-violet-text));
+}
+
+/* A category dims every other category's towers. */
+.root:is(
+    [data-focus-category='taxes'],
+    [data-focus-category='healthcare'],
+    [data-focus-category='housing'],
+    [data-focus-category='employment']
+  )
+  .tower {
+  opacity: 0.3;
+}
+.root[data-focus-category='taxes'] .tower[data-category='taxes'],
+.root[data-focus-category='healthcare'] .tower[data-category='healthcare'],
+.root[data-focus-category='housing'] .tower[data-category='housing'],
+.root[data-focus-category='employment'] .tower[data-category='employment'] {
+  opacity: 1;
+}
+
+/* ---- Over the live model ---------------------------------------------- */
+
+/* The live model turns under a drag (not under reduced motion, where it holds still). */
+@media (prefers-reduced-motion: no-preference) {
+  .root [data-scene-view='live'] {
+    cursor: grab;
+  }
+}
+
+/* DOM labels the scene places under each district. Hidden until the model is live (the poster has its own). */
+.labels {
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  opacity: 0;
+  transition: opacity 0.5s var(--ease-civic);
+}
+/* Phones list the districts under the box instead (the compact model is too tight to label in place). */
+@media (min-width: 640px) {
+  [data-scene-view='live'] ~ .labels {
+    opacity: 1;
+  }
+}
+.label {
+  position: absolute;
+  left: 0;
+  top: 0;
+  white-space: nowrap;
+  /* Placed by the scene; parked off-box until then. */
+  transform: translate(-999px, -999px);
+  transition:
+    color 0.45s var(--ease-civic),
+    opacity 0.3s var(--ease-civic);
+}
+
+/* The tooltip that follows the pointer over a tower. */
+.tip {
+  position: absolute;
+  left: 0;
+  top: 0;
+  pointer-events: none;
+  opacity: 0;
+  transition: opacity 0.18s var(--ease-civic);
+}
+.tip[data-shown] {
+  opacity: 1;
+}
+
+/* "Drag to turn": only with a live model, a mouse and motion allowed. */
+.hint {
+  display: none;
+}
+@media (hover: hover) and (pointer: fine) and (prefers-reduced-motion: no-preference) {
+  [data-scene-view='live'] ~ .hint {
+    display: flex;
+  }
+}
+
+/* ---- The bracket picker on a phone ---------------------------------------
+   A sideways scroller (ExplorerClient): its edges fade, and the option cut
+   at the edge peeks through the fade, wherever more options wait (the
+   data-more-* attributes follow the scroll). */
+@media not all and (min-width: 640px) {
+  .scroller[data-more-after] {
+    -webkit-mask-image: linear-gradient(to right, #000 calc(100% - 3.5rem), transparent);
+    mask-image: linear-gradient(to right, #000 calc(100% - 3.5rem), transparent);
+  }
+  .scroller[data-more-before] {
+    -webkit-mask-image: linear-gradient(to right, transparent, #000 3.5rem);
+    mask-image: linear-gradient(to right, transparent, #000 3.5rem);
+  }
+  .scroller[data-more-before][data-more-after] {
+    -webkit-mask-image: linear-gradient(to right, transparent, #000 3.5rem, #000 calc(100% - 3.5rem), transparent);
+    mask-image: linear-gradient(to right, transparent, #000 3.5rem, #000 calc(100% - 3.5rem), transparent);
+  }
+}

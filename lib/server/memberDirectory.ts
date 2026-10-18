@@ -21,15 +21,20 @@ interface AuthUserRow {
   email?: string | null;
   email_confirmed_at?: string | null;
   created_at?: string | null;
+  app_metadata?: Record<string, unknown> | null;
 }
 
+/** Accounts made by scripts/seed-accounts.mjs, which are never shown as members. */
+export const isSeeded = (u: AuthUserRow) => u.app_metadata?.seeded === true;
+
 /**
- * Confirmed accounts as masked emails, newest first. Full addresses never
- * leave this function, so they can't reach the page or its HTML.
+ * Confirmed, real accounts as masked emails, newest first. Seeded test
+ * accounts are left out, as they are from the public member count. Full
+ * addresses never leave this function, so they can't reach the page or its HTML.
  */
 export function listableMembers(users: AuthUserRow[]): ListedMember[] {
   return users
-    .filter((u) => u.email && u.email_confirmed_at)
+    .filter((u) => u.email && u.email_confirmed_at && !isSeeded(u))
     .sort((a, b) => String(b.created_at ?? '').localeCompare(String(a.created_at ?? '')))
     .slice(0, MAX_LISTED_MEMBERS)
     .flatMap((u) => {
