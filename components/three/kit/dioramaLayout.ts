@@ -8,6 +8,8 @@
  * house faces +z. A ledger column stands on y = 0 of its own position.
  */
 
+import type { Dwelling, HouseholdModel, HouseholdProp } from '@/lib/household';
+
 export type Vec3 = readonly [number, number, number];
 
 export const DIORAMA = {
@@ -109,4 +111,238 @@ export function slabShown(slab: LedgerSlab, front: number, extent: number): numb
   const reach = Math.min(1, Math.max(0, front)) * extent;
   const h = slab.outer - slab.inner;
   return h <= 0 ? 0 : Math.min(1, Math.max(0, (reach - slab.inner) / h));
+}
+
+// ---------------------------------------------------------------------------
+// A person's household (lib/household.ts) on the same plinth: the onboarding
+// diorama, the avatar and the dashboard's ledger all place it from here, the
+// 3D kit (HouseholdDiorama) and the CSS posters alike. Every piece has a
+// fixed spot, so adding one never moves another, and the ledger's spot
+// (DIORAMA.ledger) stays clear for a column or monolith beside the home.
+
+/** How far from DIORAMA.ledger nothing of the household stands. */
+export const LEDGER_CLEARANCE = 0.24;
+
+/** A building's massing, standing on the house's spot (DIORAMA.house.center) and facing +z. */
+export type DwellingSpec =
+  /** Walls under a pitched roof; two storeys get a second row of windows. */
+  | { kind: 'gabled'; width: number; depth: number; wall: number; gable: number; storeys: 1 | 2 }
+  /** A flat-roofed block with stacked windows (floors × bays on the front). */
+  | { kind: 'block'; width: number; depth: number; height: number; floors: number; bays: number }
+  /** A long, low hall with a columned porch and a lantern on the roof. */
+  | { kind: 'hall'; width: number; depth: number; height: number; bays: number };
+
+/** The building for each kind of home. `house` is the landing film's house. */
+export const DWELLINGS = {
+  house: { kind: 'gabled', width: DIORAMA.house.width, depth: DIORAMA.house.depth, wall: DIORAMA.house.wall, gable: DIORAMA.house.gable, storeys: 1 },
+  cottage: { kind: 'gabled', width: 0.46, depth: 0.4, wall: 0.25, gable: 0.25, storeys: 1 },
+  'family-home': { kind: 'gabled', width: 0.72, depth: 0.52, wall: 0.5, gable: 0.27, storeys: 2 },
+  apartment: { kind: 'block', width: 0.5, depth: 0.44, height: 0.84, floors: 4, bays: 3 },
+  campus: { kind: 'hall', width: 0.88, depth: 0.4, height: 0.4, bays: 6 },
+} as const satisfies Record<Dwelling, DwellingSpec>;
+
+/** The building's footprint half-extents (x, z) around DIORAMA.house.center, porch included. */
+export function dwellingFootprint(d: Dwelling): { halfWidth: number; front: number; back: number } {
+  const s: DwellingSpec = DWELLINGS[d];
+  return { halfWidth: s.width / 2, front: s.depth / 2 + (s.kind === 'hall' ? 0.1 : 0), back: s.depth / 2 };
+}
+
+/** The building's highest point (roof, parapet or lantern). */
+export function dwellingTop(d: Dwelling): number {
+  const s: DwellingSpec = DWELLINGS[d];
+  if (s.kind === 'gabled') return s.wall + s.gable;
+  if (s.kind === 'block') return s.height + 0.1;
+  return s.height + 0.16;
+}
+
+/** Where the grown-ups stand (by the front path), then the dependents, in front of them. */
+const FIGURE_SLOTS: { position: Vec3; rotationY: number }[] = [
+  { position: DIORAMA.figures[0].position, rotationY: DIORAMA.figures[0].rotationY },
+  { position: [0.13, 0, 0.45], rotationY: -0.8 },
+  { position: [0.06, 0, 0.64], rotationY: -0.55 },
+  { position: [0.21, 0, 0.6], rotationY: -0.75 },
+  { position: [0.14, 0, 0.77], rotationY: -0.45 },
+  { position: [0.31, 0, 0.72], rotationY: -0.7 },
+];
+
+/** Heights: a grown-up, a grown-up dependent, a child. */
+export const FIGURE_HEIGHTS = { adult: 0.19, partner: 0.18, adultDependent: 0.17, child: 0.125 } as const;
+
+/**
+ * Where each debt stands. The key lies at the doorstep, the car keeps the
+ * film's parking pad, and the rest stand around the plinth's right rim,
+ * turned toward the camera.
+ */
+export const PROP_SPOTS: Record<HouseholdProp, { position: Vec3; rotationY: number }> = {
+  'mortgage-key': { position: [-0.42, 0, 0.3], rotationY: 0.65 },
+  car: { position: DIORAMA.car.position, rotationY: DIORAMA.car.rotationY },
+  medical: { position: [0.74, 0, -0.6], rotationY: -0.9 },
+  card: { position: [0.96, 0, -0.2], rotationY: -1.05 },
+  'grad-cap': { position: [0.92, 0, 0.24], rotationY: -0.7 },
+  ledger: { position: [0.7, 0, 0.6], rotationY: -0.35 },
+  briefcase: { position: [0.44, 0, 0.86], rotationY: -0.5 },
+};
+
+export interface PlacedFigure {
+  /** A piece id (see householdPieces). */
+  id: string;
+  position: Vec3;
+  rotationY: number;
+  height: number;
+  /** A grown-up of the household, rather than a dependent. */
+  adult: boolean;
+}
+
+export interface PlacedProp {
+  id: string;
+  kind: HouseholdProp;
+  position: Vec3;
+  rotationY: number;
+}
+
+export interface HouseholdLayout {
+  dwelling: Dwelling | null;
+  figures: PlacedFigure[];
+  props: PlacedProp[];
+  state: string | null;
+}
+
+/** Nothing answered yet that the plinth can show (lib/household.ts describes this as an empty plinth). */
+export function isEmptyHousehold(m: HouseholdModel): boolean {
+  return !m.dwelling && m.dependentsCount === 0 && m.props.length === 0 && !m.state;
+}
+
+/**
+ * Where the model's pieces stand. The grown-ups appear with the first answer
+ * the plinth can show (an empty plinth has nobody on it); dependents are
+ * drawn up to MAX_FIGURES (the caption says the real count).
+ */
+export function householdLayout(m: HouseholdModel): HouseholdLayout {
+  const figures: PlacedFigure[] = [];
+  if (!isEmptyHousehold(m)) {
+    for (let i = 0; i < m.adults; i++) {
+      const slot = FIGURE_SLOTS[i];
+      figures.push({ id: `adult-${i + 1}`, ...slot, height: i ? FIGURE_HEIGHTS.partner : FIGURE_HEIGHTS.adult, adult: true });
+    }
+    for (let i = 0; i < Math.min(m.figures, FIGURE_SLOTS.length - 2); i++) {
+      const slot = FIGURE_SLOTS[i + 2];
+      const young = m.youngDependents;
+      figures.push({
+        id: `dependent-${i + 1}${young ? ':child' : ':adult'}`,
+        ...slot,
+        height: young ? FIGURE_HEIGHTS.child : FIGURE_HEIGHTS.adultDependent,
+        adult: false,
+      });
+    }
+  }
+  return {
+    dwelling: m.dwelling,
+    figures,
+    props: m.props.map((kind) => ({ id: `prop:${kind}`, kind, ...PROP_SPOTS[kind] })),
+    state: m.state,
+  };
+}
+
+/** The ids of the model's pieces: the building, each figure, each debt and the state's plaque. */
+export function householdPieces(m: HouseholdModel): string[] {
+  const l = householdLayout(m);
+  return [
+    ...(l.dwelling ? [`dwelling:${l.dwelling}`] : []),
+    ...l.figures.map((f) => f.id),
+    ...l.props.map((p) => p.id),
+    ...(l.state ? ['state'] : []),
+  ];
+}
+
+/** The piece `next` has that `previous` didn't (the first, if several), or null when nothing was added. */
+export function newestPiece(previous: HouseholdModel, next: HouseholdModel): string | null {
+  const had = new Set(householdPieces(previous));
+  return householdPieces(next).find((id) => !had.has(id)) ?? null;
+}
+
+/** Where the state's plaque sits: on the plinth's drum, facing the onboarding camera. */
+export const PLAQUE: Vec3 = (() => {
+  const r = DIORAMA.plinth.radius + 0.005;
+  const a = Math.atan2(-0.5, 0.86);
+  return [Math.sin(a) * r, -DIORAMA.plinth.height * 0.5, Math.cos(a) * r] as const;
+})();
+
+/** The ground point a piece stands on (for a pulse of light under it), or null if the model has no such piece. */
+export function piecePosition(layout: HouseholdLayout, id: string): Vec3 | null {
+  if (id === 'state') return layout.state ? [PLAQUE[0] * 0.93, 0, PLAQUE[2] * 0.93] : null;
+  if (id.startsWith('dwelling:')) return layout.dwelling ? DIORAMA.house.center : null;
+  return layout.figures.find((f) => f.id === id)?.position ?? layout.props.find((p) => p.id === id)?.position ?? null;
+}
+
+// ---------------------------------------------------------------------------
+// The household's camera, shared by the 3D scene and the posters so the two
+// frame the model the same way in any box.
+
+export interface HouseholdShot {
+  position: Vec3;
+  target: Vec3;
+  /** Vertical field of view, degrees. */
+  fov: number;
+}
+
+const unit = (x: number, y: number, z: number): Vec3 => {
+  const l = Math.hypot(x, y, z);
+  return [x / l, y / l, z / l];
+};
+
+/**
+ * From the front left and a little above (as the film's household is shot):
+ * the door, the people on the path and the debts on the right rim all face
+ * it. `frame` is what must fit in the box around the target, [width, height]
+ * in diorama units.
+ */
+export const HOUSEHOLD_CAMERA = {
+  fov: 30,
+  build: { direction: unit(-0.5, 0.4, 0.86), target: [-0.1, 0.2, 0.06] as Vec3, frame: [2.95, 2.1] as const },
+  // The avatar turns on its plinth, so it frames the whole drum from a little higher.
+  avatar: { direction: unit(-0.5, 0.56, 0.86), target: [0, 0.2, 0] as Vec3, frame: [2.85, 2.5] as const },
+} as const;
+
+/** How far the reveal pulls back (a share of the distance) and swings round toward the front (radians). */
+const REVEAL_PULL = 0.2;
+const REVEAL_SWING = 0.22;
+
+/**
+ * The camera for a box of `aspect` (width / height). `reveal` 0..1 is the
+ * finished profile's moment in the build view: the camera pulls back and
+ * swings a little toward the front.
+ */
+export function householdShot(mode: 'build' | 'avatar', aspect: number, reveal = 0): HouseholdShot {
+  const c = HOUSEHOLD_CAMERA[mode];
+  const k = Math.min(1, Math.max(0, reveal));
+  const half = Math.tan((HOUSEHOLD_CAMERA.fov * Math.PI) / 360);
+  const a = Number.isFinite(aspect) && aspect > 0 ? aspect : 1;
+  const distance = Math.max(c.frame[1] / (2 * half), c.frame[0] / (2 * half * a)) * (1 + REVEAL_PULL * k);
+  const swing = REVEAL_SWING * k;
+  const [dx, dy, dz] = c.direction;
+  const [cs, sn] = [Math.cos(swing), Math.sin(swing)];
+  const dir = unit(dx * cs + dz * sn, dy + 0.05 * k, -dx * sn + dz * cs);
+  const [tx, ty, tz] = c.target;
+  return { position: [tx + dir[0] * distance, ty + dir[1] * distance, tz + dir[2] * distance], target: c.target, fov: HOUSEHOLD_CAMERA.fov };
+}
+
+/**
+ * Projects diorama points through a shot into a box of `aspect`: x and y in
+ * 0..1 across the box (y down), and the depth in front of the camera. The
+ * same pinhole as the 3D camera, so posters drawn from it match the scene.
+ */
+export function householdProjector(shot: HouseholdShot, aspect: number) {
+  const [px, py, pz] = shot.position;
+  const f = unit(shot.target[0] - px, shot.target[1] - py, shot.target[2] - pz);
+  // right = forward × up(0,1,0); up' = right × forward.
+  const r = unit(-f[2], 0, f[0]);
+  const u: Vec3 = [r[1] * f[2] - r[2] * f[1], r[2] * f[0] - r[0] * f[2], r[0] * f[1] - r[1] * f[0]];
+  const half = Math.tan((shot.fov * Math.PI) / 360);
+  return (x: number, y: number, z: number) => {
+    const d = [x - px, y - py, z - pz];
+    const depth = d[0] * f[0] + d[1] * f[1] + d[2] * f[2];
+    const sx = (d[0] * r[0] + d[1] * r[1] + d[2] * r[2]) / (depth * half * aspect);
+    const sy = (d[0] * u[0] + d[1] * u[1] + d[2] * u[2]) / (depth * half);
+    return { x: (sx + 1) / 2, y: (1 - sy) / 2, depth };
+  };
 }
