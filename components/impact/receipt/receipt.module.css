@@ -2,9 +2,11 @@
  * "Your Policy Receipt" (/impact): a long strip of paper that feeds out of
  * a slim printer slot, with a row of punched perforations under its header
  * and above its foot, a double rule over the net, a violet stamp, and a
- * torn edge at the bottom. The paper is the theme's surface (porcelain by
- * day, night paper in the dark theme), so every pair of colours on it is a
- * checked token pair.
+ * torn edge at the bottom. The paper is the theme's surface by day; in the
+ * dark theme it is its own night paper (42 35 54: a step lighter and warmer
+ * than the night surface, so it still reads as a printed strip on the dark
+ * page; receiptModel NIGHT_PAPER, every text token on it checked in
+ * tests/impactList.test.ts).
  *
  * The print is CSS only and only ever moves things: the strip settles from
  * a slight tilt out of the slot, the lines drop into place one after
@@ -74,6 +76,12 @@
   /* The torn bottom edge: a row of teeth cut into the paper. */
   -webkit-mask: conic-gradient(from -45deg at bottom, #0000, #000 1deg 89deg, #0000 90deg) 50% / var(--tooth) 100%;
   mask: conic-gradient(from -45deg at bottom, #0000, #000 1deg 89deg, #0000 90deg) 50% / var(--tooth) 100%;
+}
+
+/* Night paper (receiptModel NIGHT_PAPER): the slot's violet light still falls on a sheet, not a panel. */
+:global([data-theme='dark']) .paper {
+  background-color: rgb(42 35 54);
+  background-image: linear-gradient(to bottom, rgb(143 117 255 / 0.1), transparent 2.25rem);
 }
 
 /* A row of punched holes across the paper: the perforation it tears along. */

@@ -18,7 +18,7 @@ import MessagePane, { TypingPane } from './MessagePane';
 import OrbDock from './OrbDock';
 import PolicyRail from './PolicyRail';
 import QuickPrompts from './QuickPrompts';
-import { GuideStatus, GuideTitle } from './ChamberTitle';
+import { DOCK_ROW, GuideStatus, GuideTitle } from './ChamberTitle';
 import { usePolicyFeed } from './usePolicyFeed';
 import { useGuideConversation } from './useGuideConversation';
 import type { ChatSession } from './types';
@@ -46,8 +46,9 @@ import type { ChatSession } from './types';
 const ConfirmDialog = dynamic(() => import('@/components/ui/ConfirmDialogWithMotion'), { ssr: false });
 
 const PANEL_HEADER = 'flex items-center justify-between gap-2 border-b border-fg/8 p-4';
-/** The side panels: night glass (they hold controls and lists, not figures). */
-const SIDE_PANEL = 'hidden h-full flex-shrink-0 flex-col overflow-hidden border-fg/8 bg-surface/70 backdrop-blur-md [@media(prefers-reduced-transparency:reduce)]:bg-surface';
+/** The side panels: night glass (they hold controls and lists, not figures). On a short screen the page scrolls,
+ *  so they stretch to the conversation's height rather than the screen's. */
+const SIDE_PANEL = 'hidden h-full flex-shrink-0 flex-col overflow-hidden border-fg/8 bg-surface/70 backdrop-blur-md [@media(max-height:599.98px)]:h-auto [@media(prefers-reduced-transparency:reduce)]:bg-surface';
 const ICON_BUTTON = 'flex h-9 w-9 flex-shrink-0 items-center justify-center rounded-full border border-fg/10 bg-fg/5 text-muted transition-colors duration-200 ease-civic hover:border-fg/20 hover:text-ink';
 
 export default function AdvisorChamber() {
@@ -155,7 +156,7 @@ export default function AdvisorChamber() {
     // The night shell (AppShell night) is exactly the screen, and the light field
     // softens a night section's edge, so the day paper would show as a thin grey
     // frame round the screen; this box asks for night past its edges ("bleed").
-    <div data-scene-night="bleed" className="flex h-full min-h-0 flex-col">
+    <div data-scene-night="bleed" className="flex min-h-0 flex-1 flex-col">
       {/* Room for the floating navigation bar. */}
       <div aria-hidden="true" className="h-[4.75rem] flex-shrink-0 sm:h-20" />
       <div className="relative flex min-h-0 flex-1">
@@ -181,7 +182,7 @@ export default function AdvisorChamber() {
         {/* The conversation. */}
         <div className="flex min-w-0 flex-1 flex-col">
           <div className="mx-auto flex min-h-0 w-full max-w-3xl flex-1 flex-col px-4 pb-3 sm:px-6">
-            <div className="flex items-center gap-2.5 py-3 sm:gap-3">
+            <div className={cn('flex items-center gap-2.5 sm:gap-3', DOCK_ROW)}>
               <button
                 type="button"
                 onClick={() => setHistoryOpen(o => !o)}
@@ -246,8 +247,10 @@ export default function AdvisorChamber() {
             {/* New messages are read out as they arrive. Opening another conversation
                 remounts the log, so its history isn't announced as new messages. The
                 log fades into the dark at its top edge (a mask), so its focus ring is
-                drawn by the frame around it, which the mask can't clip. */}
-            <div className="relative min-h-0 flex-1 rounded-xl has-[[role=log]:focus-visible]:outline has-[[role=log]:focus-visible]:outline-2 has-[[role=log]:focus-visible]:outline-offset-2 has-[[role=log]:focus-visible]:outline-focus">
+                drawn by the frame around it, which the mask can't clip. On a short screen (the page
+                scrolls, guide.module.css .main) it keeps a height of its own: the screen less the bar,
+                the composer and the disclaimer, never under 10rem, so the conversation is never a sliver. */}
+            <div className="relative min-h-0 flex-1 rounded-xl [@media(max-height:599.98px)]:h-[max(10rem,calc(100dvh-12.5rem))] [@media(max-height:599.98px)]:flex-none has-[[role=log]:focus-visible]:outline has-[[role=log]:focus-visible]:outline-2 has-[[role=log]:focus-visible]:outline-offset-2 has-[[role=log]:focus-visible]:outline-focus">
               <div
                 key={chat.logKey}
                 ref={chat.logRef}

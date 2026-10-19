@@ -9,7 +9,11 @@ import {
   shortDate,
   spokenYearly,
   yearly,
+  NIGHT_PAPER,
 } from '@/components/impact/receipt/receiptModel';
+import { readFileSync } from 'node:fs';
+import { join } from 'node:path';
+import { THEMES } from '@/lib/design/tokens';
 import PolicyReceipt from '@/components/impact/receipt/PolicyReceipt';
 import ReceiptSeal from '@/components/impact/receipt/ReceiptSeal';
 import SkylineReadout from '@/components/impact/receipt/SkylineReadout';
@@ -172,6 +176,13 @@ describe('PolicyReceipt', () => {
     expect(html).toContain('ESTIMATES · NOT ADVICE');
   });
 
+  it('never leaves the foot at $0 under its words: the count plays as it mounts, and print gets the final figure', () => {
+    const html = render({ print: true });
+    // The final figure, for print, beside the count (which plays as the receipt mounts, not on scroll).
+    expect(html).toMatch(/<span aria-hidden="true" class="hidden print:inline">\+\$990\/yr<\/span>/);
+    expect(html).toContain('print:hidden');
+  });
+
   it('prints (animates) only when asked, and keeps every line in the HTML either way', () => {
     expect(render({ print: true })).toContain('data-printing=""');
     expect(render({ print: false })).not.toContain('data-printing');
@@ -192,6 +203,38 @@ describe('PolicyReceipt', () => {
     expect(html).toContain('role="radiogroup"');
     expect(html).toContain('aria-label="Order the receipt"');
     expect(html).toContain('Largest first');
+  });
+});
+
+describe('night paper', () => {
+  const channels = (rgb: string) => rgb.split(' ').map(Number) as [number, number, number];
+  const lum = ([r, g, b]: number[]) => {
+    const f = (v: number) => {
+      const c = v / 255;
+      return c <= 0.03928 ? c / 12.92 : ((c + 0.055) / 1.055) ** 2.4;
+    };
+    return 0.2126 * f(r) + 0.7152 * f(g) + 0.0722 * f(b);
+  };
+  const contrast = (a: number[], b: number[]) => {
+    const [x, y] = [lum(a), lum(b)].sort((m, n) => n - m);
+    return (x + 0.05) / (y + 0.05);
+  };
+  const hex = (h: string) => [1, 3, 5].map((i) => parseInt(h.slice(i, i + 2), 16));
+
+  it('keeps every dark-theme text token AA on the receipt’s (and the detail slips’) night paper', () => {
+    const paper = channels(NIGHT_PAPER);
+    const t = THEMES.dark;
+    for (const token of ['ink', 'muted', 'gain', 'loss', 'violetText', 'accent', 'danger'] as const) {
+      expect(contrast(hex(t[token]), paper), token).toBeGreaterThanOrEqual(4.5);
+    }
+    // A step lighter than the night surface it sits beside, so it reads as paper.
+    expect(lum(paper)).toBeGreaterThan(lum(hex(t.surface)));
+  });
+
+  it('is the value both stylesheets paint', () => {
+    const css = (f: string) => readFileSync(join(process.cwd(), f), 'utf8');
+    expect(css('components/impact/receipt/receipt.module.css')).toContain(`rgb(${NIGHT_PAPER})`);
+    expect(css('app/impact/[policyId]/_components/detail.module.css')).toContain(`rgb(${NIGHT_PAPER})`);
   });
 });
 

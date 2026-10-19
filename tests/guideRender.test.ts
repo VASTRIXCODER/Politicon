@@ -113,6 +113,16 @@ describe('the "Your policies" rail', () => {
     expect(html).toMatch(/<button type="button"[^>]*>.*Ask about this policy<span class="sr-only">: (<!-- -->)?Working Families Tax Credit Act<\/span><\/button>/);
     expect(text(html)).toContain('Relevance 86 out of 100.');
     expect(text(html)).toMatch(/Likely helps you ?\./);
+    // The score is never a bare number: its band is printed beside it, as the feed cards print it.
+    expect(text(html)).toMatch(/86 .*· High relevance/);
+    expect(text(renderToString(h(PolicyChip, { policy: { ...CHIP, relevanceScore: 58 }, onAsk: () => {} })))).toContain('· Medium relevance');
+  });
+
+  it('an analysed chip never shows the feed’s guess beside the user’s own estimate', () => {
+    const html = renderToString(h(PolicyChip, { policy: { ...CHIP, direction: 'positive', analysedAnnual: -340 }, onAsk: () => {} }));
+    expect(text(html)).toMatch(/Your estimate −\$340\/yr costs you/);
+    expect(text(html)).not.toContain('Likely helps you');
+    expect(text(html)).not.toContain('Mixed or neutral effect');
   });
 
   it('an analysed policy shows the user’s estimate with its sign and words, in teal or amber', () => {

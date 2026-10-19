@@ -1,4 +1,3 @@
-import { CategoryImpactBar } from '@/components/charts/LazyCharts';
 import { WhatThisMeans } from '@/components/ui/SimpleMode';
 import type { Applicability } from '@/lib/applicability';
 import { formatPts } from '@/lib/format';
@@ -11,13 +10,14 @@ import { FlowView } from './visuals';
 
 /*
  * Overview: the money's path first (FlowView, the flow from the bill into
- * each part of the budget and on to the net), then the plain-English
- * summary and its assumptions, the immediate figures, the category chart,
+ * each part of the budget and on to the net; its list states every
+ * category's amount, so no separate category chart repeats it), then the
+ * plain-English summary and its assumptions beside the immediate figures,
  * the trade-offs and the first things to consider.
  */
 
-export default function OverviewTab({ a, categoryBars, simple, income, applies }: {
-  a: FullAnalysis; categoryBars: { name: string; value: number }[]; simple: boolean; income: number; applies: Applicability;
+export default function OverviewTab({ a, simple, income, applies }: {
+  a: FullAnalysis; simple: boolean; income: number; applies: Applicability;
 }) {
   return (
     <div className="space-y-6">
@@ -25,19 +25,19 @@ export default function OverviewTab({ a, categoryBars, simple, income, applies }
 
       <FlowView a={a} />
 
-      <Pane title="What this means for you">
-        <p className="max-w-3xl text-sm leading-relaxed text-muted">{a.plainEnglishSummary}</p>
-        {a.assumptions.length > 0 && (
-          <div className="mt-5 border-t border-fg/8 pt-5">
-            <h4 className="mb-2 font-mono-data text-meta font-medium uppercase tracking-[0.16em] text-muted">Assumptions behind these numbers</h4>
-            <ul className="list-disc space-y-1.5 pl-5 marker:text-muted">
-              {a.assumptions.map((x, i) => <li key={i} className="text-sm leading-relaxed text-muted">{x}</li>)}
-            </ul>
-          </div>
-        )}
-      </Pane>
-
       <div className="grid gap-6 lg:grid-cols-2">
+        <Pane title="What this means for you">
+          <p className="max-w-3xl text-sm leading-relaxed text-muted">{a.plainEnglishSummary}</p>
+          {a.assumptions.length > 0 && (
+            <div className="mt-5 border-t border-fg/8 pt-5">
+              <h4 className="mb-2 font-mono-data text-meta font-medium uppercase tracking-[0.16em] text-muted">Assumptions behind these numbers</h4>
+              <ul className="list-disc space-y-1.5 pl-5 marker:text-muted">
+                {a.assumptions.map((x, i) => <li key={i} className="text-sm leading-relaxed text-muted">{x}</li>)}
+              </ul>
+            </div>
+          )}
+        </Pane>
+
         <Pane title="Immediate Effects">
           <StatRow label="Monthly budget impact" value={money(a.immediate.monthlyBudgetImpact, '/mo')} positive={a.immediate.monthlyBudgetImpact >= 0} cue={a.immediate.monthlyBudgetImpact} />
           <StatRow label="Annual budget impact" value={money(a.immediate.annualBudgetImpact, '/yr')} positive={a.immediate.annualBudgetImpact >= 0} cue={a.immediate.annualBudgetImpact} />
@@ -52,10 +52,6 @@ export default function OverviewTab({ a, categoryBars, simple, income, applies }
           {a.immediate.spendingCategories.slice(0, 5).map((s, i) => (
             <StatRow key={i} label={s.label} value={money(s.value)} positive={s.value >= 0} cue={s.value} />
           ))}
-        </Pane>
-
-        <Pane title="Impact by Category">
-          <CategoryImpactBar data={categoryBars} height={280} title="Impact by category" />
         </Pane>
       </div>
 
@@ -90,16 +86,20 @@ export default function OverviewTab({ a, categoryBars, simple, income, applies }
       </Pane>
 
       <Pane title="Things to consider">
-        <ol className="space-y-3">
-          {a.recommendations.slice(0, 3).map((r, i) => (
-            <li key={i} className="flex items-start gap-3">
-              <span className="mt-0.5 flex h-6 w-6 flex-shrink-0 items-center justify-center rounded-full border border-primary/20 bg-primary/20" aria-hidden>
-                <span className="font-mono-data text-meta text-primary-300">{i + 1}</span>
-              </span>
-              <p className="text-sm leading-relaxed text-muted">{r.step}</p>
-            </li>
-          ))}
-        </ol>
+        {a.recommendations.length > 0 ? (
+          <ol className="space-y-3">
+            {a.recommendations.slice(0, 3).map((r, i) => (
+              <li key={i} className="flex items-start gap-3">
+                <span className="mt-0.5 flex h-6 w-6 flex-shrink-0 items-center justify-center rounded-full border border-primary/20 bg-primary/20" aria-hidden>
+                  <span className="font-mono-data text-meta text-primary-300">{i + 1}</span>
+                </span>
+                <p className="text-sm leading-relaxed text-muted">{r.step}</p>
+              </li>
+            ))}
+          </ol>
+        ) : (
+          <p className="text-sm text-muted">This analysis didn’t suggest anything to consider.</p>
+        )}
       </Pane>
     </div>
   );

@@ -8,11 +8,14 @@ import { PosterSvg, ShadowDef, SolidBox, TONE_FILL, TONE_STROKE, boxFaces, proje
  * spending category, drawn back to front, each as tall as its monthly
  * amount, teal where it saves the user money and amber where it costs more
  * (the same hue whatever the size: height carries the size), porcelain at
- * $0. Decorative (the page's heatmap prints every figure).
+ * $0. Decorative (the page's heatmap prints every figure). `focus` (a
+ * cell's id: its heatmap cell under the pointer) dims the other tiles.
  */
 
 export interface TerrainPosterProps {
   cells: readonly TerrainCell[];
+  /** The tile to light, or null. */
+  focus?: string | null;
   className?: string;
   /** Prefix for the drawing's gradient ids (only needed with two of these on one page). */
   id?: string;
@@ -20,7 +23,7 @@ export interface TerrainPosterProps {
 
 const T = TERRAIN_WORLD;
 
-export default function TerrainPoster({ cells, className, id = 'terrain' }: TerrainPosterProps) {
+export default function TerrainPoster({ cells, focus = null, className, id = 'terrain' }: TerrainPosterProps) {
   const layout = terrainLayout(cells);
   const { at, depth, width, height } = projector(terrainViewBox(layout), TERRAIN_VIEW);
   const half = T.tile / 2;
@@ -38,7 +41,7 @@ export default function TerrainPoster({ cells, className, id = 'terrain' }: Terr
           faces={boxFaces(at, t.x - half, t.x + half, 0, t.height, t.z - half, t.z + half)}
           fill={t.tone === 'neutral' ? 'fill-porcelain' : TONE_FILL[t.tone]}
           // One hue per direction, as the scene draws it; porcelain dimmed by night, as the scene's is.
-          opacity={t.tone === 'neutral' ? 0.72 : 0.9}
+          opacity={(t.tone === 'neutral' ? 0.72 : 0.9) * (focus && focus !== t.id ? 0.4 : 1)}
           edge={t.tone === 'neutral' ? 'stroke-fg/15' : TONE_STROKE[t.tone]}
         />
       ))}

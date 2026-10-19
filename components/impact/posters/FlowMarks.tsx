@@ -1,5 +1,5 @@
 import { SANKEY_VIEW, sankeyGateMarks, sankeyLayout, sankeyViewBox, type TransmissionFlow } from '@/lib/transmission';
-import { line, projector, type Pt } from '@/components/impact/posters/draw';
+import { line, placer, projector } from '@/components/impact/posters/draw';
 import { cn } from '@/lib/utils';
 
 /*
@@ -27,14 +27,9 @@ export default function FlowMarks({ flows, aspect, focus = null }: FlowMarksProp
   const layout = sankeyLayout(flows);
   const marks = sankeyGateMarks(layout);
   if (!marks.length) return null;
-  const { at, width: w, height: h } = projector(sankeyViewBox(), SANKEY_VIEW);
-  // The poster's viewBox (PosterSvg rounds it), fitted into the box ("meet"), in box heights.
-  const vw = Math.round(w);
-  const vh = Math.round(h);
-  const scale = Math.min(aspect / vw, 1 / vh);
-  const offX = (aspect - vw * scale) / 2;
-  const offY = (1 - vh * scale) / 2;
-  const place = ([x, y]: Pt) => ({ left: `${(((offX + x * scale) / aspect) * 100).toFixed(2)}%`, top: `${((offY + y * scale) * 100).toFixed(2)}%` });
+  const { at, width, height } = projector(sankeyViewBox(), SANKEY_VIEW);
+  // The poster's viewBox, fitted into the box ("meet").
+  const { vw, vh, place } = placer(width, height, aspect);
 
   return (
     <div aria-hidden="true" data-decorative="" className="pointer-events-none absolute inset-0 hidden sm:block">

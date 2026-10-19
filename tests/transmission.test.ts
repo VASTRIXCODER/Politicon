@@ -6,6 +6,9 @@ import { RADAR_LABELS } from '@/lib/simpleMode';
 import { ledgerLayout } from '@/components/three/kit/dioramaLayout';
 import {
   CRYSTAL_AXES,
+  CRYSTAL_DIRECTION,
+  crystalMarks,
+  terrainMarks,
   CRYSTAL_VIEW,
   CRYSTAL_WORLD,
   FRAME_PAD,
@@ -583,6 +586,28 @@ describe('words', () => {
     expect(heroScaleNote(-1200)).toContain('amber column hangs below its zero shelf');
     expect(describeTransmission({ netAnnualImpact: -2400 })).toContain('hanging below a raised zero shelf');
     expect(heroScaleNote(0)).toContain('No change');
+    // No official status (an unverified bill): the stage isn't guessed either way.
+    const unknown = describeTransmission({ netAnnualImpact: 1200 });
+    expect(unknown).not.toContain('isn’t law');
+    expect(unknown).toContain('isn’t checked against an official record');
+  });
+
+  it('keys the crystal: every score is a risk, higher = more at risk', () => {
+    expect(CRYSTAL_DIRECTION).toBe('Higher = more at risk');
+    expect(crystalScaleNote()).toContain('higher means more pressure on you (more at risk)');
+  });
+
+  it('puts each axis’s and tile’s number where the picture draws it', () => {
+    const marks = crystalMarks();
+    expect(marks).toHaveLength(6);
+    // The first axis points away from the viewer, on the outer ring.
+    expect(marks[0][0]).toBeCloseTo(0, 9);
+    expect(marks[0][2]).toBeCloseTo(-CRYSTAL_WORLD.radius, 9);
+    marks.forEach((m) => expect(Math.hypot(m[0], m[2])).toBeCloseTo(CRYSTAL_WORLD.radius, 9));
+    const layout = terrainLayout(terrainFromAnalysis(RICH));
+    const tiles = terrainMarks(layout);
+    expect(tiles.map((t) => t.id)).toEqual(layout.tiles.map((t) => t.id));
+    tiles.forEach((t, i) => expect(t.at).toEqual([layout.tiles[i].x, layout.tiles[i].height, layout.tiles[i].z]));
   });
 
   it('names every flow and the net', () => {

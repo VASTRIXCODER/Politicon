@@ -255,8 +255,13 @@ export default function PolicyReceipt({
                   {netWords === 'no change' ? 'No net change' : `Altogether, ${netWords}`}
                 </span>
               </p>
+              {/* The count plays with the print as the receipt mounts (not when it scrolls into view), so the
+                  foot never sits at $0 under "Altogether, saves you"; a printed page gets the final figure. */}
               <p className={cn('font-mono-data text-3xl font-semibold leading-none tracking-tight sm:text-4xl', impactTone(net))}>
-                <CountUp value={net} from={printing ? 0 : net} duration={1400} format={yearly} srLabel={spokenYearly(net)} />
+                <span className="print:hidden">
+                  <CountUp value={net} from={printing ? 0 : net} duration={1400} startOnView={false} format={yearly} srLabel={spokenYearly(net)} />
+                </span>
+                <span aria-hidden="true" className="hidden print:inline">{yearly(net)}</span>
               </p>
             </div>
 

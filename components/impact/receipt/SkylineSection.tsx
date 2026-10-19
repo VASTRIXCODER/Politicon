@@ -107,8 +107,9 @@ export default function SkylineSection({ rows, focus = null, onFocus, initialHor
         />
       </div>
 
-      <figure className="mt-4">
-        <div className="relative aspect-[4/3] w-full sm:aspect-[16/10]">
+      {/* A 16:9 box on a desktop: the frame holds the scale's full reach either way, with less dark above it. */}
+      <figure className="mt-3">
+        <div className="relative aspect-[4/3] w-full sm:aspect-[16/10] lg:aspect-[16/9]">
           <SceneView
             interactive
             className="absolute inset-0"

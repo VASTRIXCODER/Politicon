@@ -42,6 +42,27 @@ export function projector(box: ViewBox, view: SceneAngle): Projector {
   };
 }
 
+/**
+ * Where a drawing point lands in a box of the given shape (width ÷ height),
+ * as CSS percentages, the way PosterSvg fits its viewBox ("meet": centred,
+ * whole) and the scene's camera fits the same frame: for DOM marks laid over
+ * a SceneView (the scene and its poster alike), with no measuring, so they
+ * render on the server. `width`/`height` are the projector's.
+ */
+export function placer(width: number, height: number, aspect: number) {
+  // PosterSvg rounds its viewBox.
+  const vw = Math.round(width);
+  const vh = Math.round(height);
+  const scale = Math.min(aspect / vw, 1 / vh);
+  const offX = (aspect - vw * scale) / 2;
+  const offY = (1 - vh * scale) / 2;
+  return {
+    vw,
+    vh,
+    place: ([x, y]: Pt) => ({ left: `${(((offX + x * scale) / aspect) * 100).toFixed(2)}%`, top: `${((offY + y * scale) * 100).toFixed(2)}%` }),
+  };
+}
+
 const xy = ([x, y]: Pt) => `${x.toFixed(1)} ${y.toFixed(1)}`;
 
 /** A closed polygon. */

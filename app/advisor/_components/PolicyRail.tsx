@@ -1,5 +1,5 @@
 import { GripVertical, MessageSquare, Minus, Sparkles, TrendingDown, TrendingUp } from 'lucide-react';
-import { POLICY_DRAG_TYPE, type RailPolicy } from '@/components/guide/policyRail';
+import { POLICY_DRAG_TYPE, relevanceBand, type RailPolicy } from '@/components/guide/policyRail';
 import { formatUSD, impactSign, impactWords } from '@/lib/format';
 import { cn } from '@/lib/utils';
 
@@ -10,9 +10,11 @@ import { cn } from '@/lib/utils';
  * keyboard, a screen reader or a touch screen (drag and drop is a mouse
  * convenience, never the only way).
  *
- * Feed items show the feed's relevance, category and likely direction; an
- * analysed policy shows the user's own estimate, signed and in words, in
- * ledger teal (saves you) or ember amber (costs you).
+ * Feed items show the feed's relevance (its score and its band in words,
+ * as the feed cards print it), category and likely direction; an analysed
+ * policy shows the user's own estimate, signed and in words, in ledger teal
+ * (saves you) or ember amber (costs you), and never the feed's guess beside
+ * it, which could point the other way.
  */
 
 // The same relevance colours as the feed cards: never the gain/loss pair.
@@ -75,12 +77,16 @@ export function PolicyChip({ policy, onAsk, onDragState }: {
       <GripVertical aria-hidden="true" className="absolute right-2 top-3 hidden h-3.5 w-3.5 text-muted/70 [@media(pointer:fine)]:block" />
       <span className="flex flex-wrap items-center gap-1.5 pr-5">
         {policy.relevanceScore !== undefined && (
-          <span className={cn('rounded-full border px-1.5 font-mono-data text-meta', RELEVANCE_BADGE(policy.relevanceScore))}>
-            <span className="sr-only">Relevance </span>{policy.relevanceScore}<span className="sr-only"> out of 100.</span>
+          <span className={cn('rounded-full border px-1.5 text-meta', RELEVANCE_BADGE(policy.relevanceScore))}>
+            <span className="sr-only">Relevance </span>
+            <span className="font-mono-data">{policy.relevanceScore}</span>
+            <span className="sr-only"> out of 100.</span>
+            <span aria-hidden="true"> · {policy.relevance ?? relevanceBand(policy.relevanceScore)} relevance</span>
           </span>
         )}
         <span className="rounded-full border border-fg/10 bg-fg/5 px-1.5 text-meta capitalize text-muted">{policy.category.replace(/[-_]+/g, ' ')}</span>
-        <Direction d={policy.direction} />
+        {/* The feed's guess only where there is no estimate of the user's own (which states its direction in words). */}
+        {policy.analysedAnnual === undefined && <Direction d={policy.direction} />}
         {policy.source === 'analysis' && <span className="text-meta text-muted">Analyzed</span>}
       </span>
       <span className="mt-1.5 block text-sm font-medium leading-snug text-ink line-clamp-2">{policy.title}</span>

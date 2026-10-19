@@ -121,8 +121,84 @@
   background: linear-gradient(to bottom, rgb(var(--c-fg) / 0.025), rgb(var(--c-fg) / 0.01));
 }
 
+/* ---------------------------------------------------------------------------
+   Paper: the ledger and the checklist are printed slips in the receipt's
+   idiom (components/impact/receipt), so the money reads as a record, not a
+   chart. The theme's surface by day; by night its own "night paper", a step
+   lighter and warmer than the night surface (42 35 54, the receipt's too:
+   every text token on it is checked in tests/impactList.test.ts), so it still
+   reads as a printed strip on the dark page. Nothing here moves. */
+
+.paper {
+  position: relative;
+  background-color: rgb(var(--c-surface));
+  background-image: linear-gradient(to bottom, rgb(var(--c-fg) / 0.035), transparent 2.5rem);
+  border: 1px solid rgb(var(--c-fg) / 0.07);
+  box-shadow:
+    0 1px 0 rgb(255 255 255 / 0.6) inset,
+    0 18px 32px -22px rgb(21 18 31 / 0.28),
+    0 2px 4px rgb(21 18 31 / 0.05);
+}
+:global([data-theme='dark']) .paper {
+  background-color: rgb(42 35 54);
+  border-color: rgb(var(--c-fg) / 0.09);
+  box-shadow:
+    0 1px 0 rgb(255 255 255 / 0.06) inset,
+    0 22px 40px -24px rgb(0 0 0 / 0.7),
+    0 0 26px rgb(143 117 255 / 0.08);
+}
+
+/* A row of punched holes: the perforation the slip tears along. */
+.perforation {
+  height: 6px;
+  background-image: radial-gradient(circle at 50% 50%, rgb(var(--c-canvas)) 2.2px, rgb(var(--c-fg) / 0.14) 2.7px, transparent 3.2px);
+  background-size: 11px 6px;
+  background-repeat: repeat-x;
+  background-position: center;
+}
+
+/* A dotted rule between lines, as a till prints them. */
+.dotted + .dotted,
+.dottedTop {
+  background-image: linear-gradient(90deg, rgb(var(--c-fg) / 0.18) 50%, transparent 0);
+  background-size: 6px 1px;
+  background-repeat: repeat-x;
+  background-position: 0 0;
+}
+
+/* The foot: a double rule over the net. */
+.doubleRule {
+  border-top: 3px double rgb(var(--c-fg) / 0.3);
+}
+
+/* A rubber stamp in violet ink, pressed at a slight slant. */
+.stamp {
+  transform: rotate(-4deg);
+  border-width: 1.5px;
+  letter-spacing: 0.12em;
+}
+
 @media print {
   .aurora {
     display: none;
+  }
+}
+
+/* On a phone the six tabs scroll sideways: their end fades and they snap,
+   so the cut reads as "more this way"; the trailing room lets the last tab
+   (and a focused one, scrolled into view) clear the fade. */
+@media (max-width: 639.98px) {
+  .tabRail {
+    -webkit-mask-image: linear-gradient(to right, #000 calc(100% - 2.25rem), transparent);
+    mask-image: linear-gradient(to right, #000 calc(100% - 2.25rem), transparent);
+    scroll-snap-type: x proximity;
+    scroll-padding-inline: 0.25rem 2.25rem;
+  }
+  .tabRail > * {
+    scroll-snap-align: start;
+  }
+  .tabRail::after {
+    content: '';
+    flex: 0 0 1.75rem;
   }
 }

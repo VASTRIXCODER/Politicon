@@ -342,3 +342,55 @@ for (const theme of THEMES) {
     });
   });
 }
+
+/**
+ * The Chamber on short screens (WCAG 1.4.10 Reflow, 1.4.4 Resize text): it
+ * is fixed to the screen, with only the conversation scrolling, only when
+ * the screen is tall enough. Held sideways, a phone keeps a real stretch of
+ * conversation (not a sliver), and at 1280px zoomed to 400% (a 320×256
+ * viewport) the page scrolls, by the wheel too, so the composer and the AI
+ * disclaimer are always in reach.
+ */
+test.describe('App II: the Chamber reflows', () => {
+  test.beforeEach(async ({ request }) => {
+    await requireHermeticBuild(request);
+  });
+
+  test('keeps the conversation readable sideways and the composer in reach at 400% zoom @desktop-only', async ({ page, request }) => {
+    test.setTimeout(120_000);
+    const unexpected = await mockAi(page);
+    await signedInWithAnalyses(page, db(request));
+
+    await page.setViewportSize({ width: 812, height: 375 });
+    await page.goto('/advisor');
+    const composer = page.getByRole('textbox', { name: 'Message the Policy Guide' });
+    const log = page.getByRole('log', { name: 'Conversation' });
+    await expect(composer).toBeEditable({ timeout: 30_000 });
+    await settle(page);
+    const logHeight = await log.evaluate((el) => el.getBoundingClientRect().height);
+    expect(logHeight, 'the conversation at 812×375').toBeGreaterThanOrEqual(375 * 0.4);
+    // Scrolled to its foot, the page shows the conversation's end, the composer and the disclaimer together.
+    await page.mouse.move(406, 30);
+    await page.mouse.wheel(0, 2000);
+    await expect.poll(() => page.evaluate(() => window.scrollY)).toBeGreaterThan(0);
+    for (const [name, el] of [['composer', composer], ['log', log]] as const) {
+      const box = await el.boundingBox();
+      expect(box, name).not.toBeNull();
+      expect(box!.y + box!.height, `${name} bottom at 812×375`).toBeLessThanOrEqual(375 + 1);
+    }
+
+    await page.setViewportSize({ width: 320, height: 256 });
+    await page.evaluate(() => window.scrollTo(0, 0));
+    await settle(page);
+    await page.mouse.move(160, 30);
+    await page.mouse.wheel(0, 4000);
+    await expect.poll(() => page.evaluate(() => window.scrollY)).toBeGreaterThan(0);
+    const box = await composer.boundingBox();
+    expect(box).not.toBeNull();
+    expect(box!.y, 'composer top at 320×256').toBeGreaterThanOrEqual(0);
+    expect(box!.y + box!.height, 'composer bottom at 320×256').toBeLessThanOrEqual(256 + 1);
+    await expect(page.getByText('AI-generated estimate for education', { exact: false }).last()).toBeInViewport();
+    await expectNoOverflow(page, '/advisor at 320×256');
+    expect(unexpected, 'API calls nothing answered').toEqual([]);
+  });
+});

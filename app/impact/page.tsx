@@ -1,6 +1,6 @@
 'use client';
 
-import { Suspense, useCallback, useEffect, useMemo, useState } from 'react';
+import { Suspense, useCallback, useEffect, useMemo, useState, type ReactNode } from 'react';
 import dynamic from 'next/dynamic';
 import { useSearchParams } from 'next/navigation';
 import AppShell from '@/components/layout/AppShell';
@@ -99,13 +99,17 @@ function ImpactContent() {
 
   return (
     <Tabs value={tab} onValueChange={setTab}>
-      <TabList label="Impact views" className="glass mb-8 w-fit max-w-full rounded-2xl p-1">
-        {TABS.map((t) => (
-          <Tab key={t.value} value={t.value} className="px-5 py-2.5">
-            {t.label}
-          </Tab>
-        ))}
-      </TabList>
+      <ImpactHeader
+        actions={
+          <TabList label="Impact views" className="glass w-fit max-w-full rounded-2xl p-1">
+            {TABS.map((t) => (
+              <Tab key={t.value} value={t.value} className="px-5 py-2.5">
+                {t.label}
+              </Tab>
+            ))}
+          </TabList>
+        }
+      />
 
       <TabPanel value="individual">
         {loading ? (
@@ -170,20 +174,39 @@ function ImpactContent() {
   );
 }
 
+/**
+ * The page's header. Its tabs ride in it (beside the title on a desktop, under
+ * the lede below that), so the receipt and the skyline start high enough
+ * for the skyline's street to sit above the fold. The prerendered fallback
+ * shows it without them.
+ */
+function ImpactHeader({ actions }: { actions?: ReactNode }) {
+  return (
+    <PageHeader
+      eyebrow="My Impact"
+      title={
+        <>
+          What it all <em>adds up to</em>
+        </>
+      }
+      lede="Every policy you've analyzed, itemized on one receipt, and the skyline it builds over 1, 3 and 5 years. Educational estimates for your household, not advice."
+      actions={actions}
+      className="mb-8 sm:flex-col sm:items-start sm:gap-6 lg:flex-row lg:items-end lg:gap-10"
+    />
+  );
+}
+
 export default function ImpactPage() {
   return (
     <AppShell>
-      <PageHeader
-        eyebrow="My Impact"
-        title={
+      <Suspense
+        fallback={
           <>
-            What it all <em>adds up to</em>
+            <ImpactHeader />
+            <ReceiptSkeleton label="Loading your impact analysis…" />
           </>
         }
-        lede="Every policy you've analyzed, itemized on one receipt, and the skyline it builds over 1, 3 and 5 years. Educational estimates for your household, not advice."
-        className="mb-10"
-      />
-      <Suspense fallback={<ReceiptSkeleton label="Loading your impact analysis…" />}>
+      >
         <ImpactContent />
       </Suspense>
     </AppShell>

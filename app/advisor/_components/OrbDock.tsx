@@ -7,6 +7,7 @@ import { orbState } from '@/components/guide/orbVoice';
 import { useOrbVoice } from '@/components/guide/useOrbVoice';
 import styles from '@/components/guide/guide.module.css';
 import { cn } from '@/lib/utils';
+import { ORB_DOCK_SIZE } from './ChamberTitle';
 
 /**
  * The head of the conversation: the guide's orb, and beside it the page's
@@ -64,7 +65,7 @@ export default function OrbDock({ thinking, speakRef, dragging, onDropPolicy, ti
       className="flex min-w-0 flex-1 items-center gap-3 rounded-[1.75rem] sm:gap-4"
     >
       {/* data-state draws the orb's state on the dock too (a ring of light), so stills and reduced motion show it. */}
-      <div data-drop={drop} data-state={state} className={cn(styles.dock, 'size-16 flex-shrink-0 sm:size-20 lg:size-28')}>
+      <div data-drop={drop} data-state={state} className={cn(styles.dock, 'flex-shrink-0', ORB_DOCK_SIZE)}>
         <GuideOrbView className="size-full" state={state} pulse={voice.pulse} />
       </div>
       <div className="min-w-0 flex-1">

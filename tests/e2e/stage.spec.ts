@@ -175,7 +175,7 @@ test("/lab draws App II's scenes at tier 1 @desktop-only", async ({ page }) => {
   await expect(page.locator(APP_TWO_LAB)).toHaveCount(1, { timeout: 30_000 });
   const checked = await drawEach(page, (v) => v.inAppTwoLab);
   expect(checked.length).toBeGreaterThanOrEqual(14);
-  for (const scene of [/as a sheet of glass/i, /^light flows from the bill/i, /glass ribbon/i, /violet crystal/i, /terrain of/i, /skyline/i]) {
+  for (const scene of [/as a sheet of glass/i, /^(teal|amber) light (flows from the bill|drains out of your budget)/i, /glass ribbon/i, /violet crystal/i, /terrain of/i, /skyline/i]) {
     expect(checked.some((name) => scene.test(name)), `a view matching ${scene} is checked`).toBe(true);
   }
 

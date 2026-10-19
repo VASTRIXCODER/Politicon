@@ -130,7 +130,8 @@ export default function CumulativeView({ analyses, checkedIds, setCheckedIds, ch
                   {horizon}yr<span className="sr-only"> total</span>
                 </dt>
                 <dd className={cn('font-mono-data text-sm font-semibold', counted ? impactTone(total) : 'text-muted')}>
-                  {counted ? <CountUp value={total} format={signedUSD} duration={1000} /> : '—'}
+                  {/* From the real figure (no count from $0 off screen, under a caption that states it); later changes tween. */}
+                  {counted ? <CountUp value={total} from={total} format={signedUSD} duration={1000} /> : '—'}
                 </dd>
               </div>
             ))}

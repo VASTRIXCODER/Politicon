@@ -1,11 +1,14 @@
+import styles from '@/components/guide/guide.module.css';
+import { cn } from '@/lib/utils';
 import { QUICK_PROMPTS } from './types';
 
 /** Suggested general questions, one tap each (sent at once; a draft in the composer is left alone). */
 export default function QuickPrompts({ disabled, onAsk }: { disabled: boolean; onAsk: (_text: string) => void }) {
   return (
     // relative: the buttons' screen-reader text (absolutely positioned) stays inside this scroller, so the
-    // chips past the edge don't widen the Chamber (an overflow-hidden main) and shift it sideways.
-    <div role="group" aria-label="Suggested questions" className="relative -mx-1 flex min-w-0 flex-1 gap-2 overflow-x-auto px-1 pb-2 scrollbar-hide">
+    // chips past the edge don't widen the Chamber and shift it sideways. The end fades and the chips snap
+    // (styles.promptRail), so a chip cut at the edge reads as "more this way".
+    <div role="group" aria-label="Suggested questions" className={cn(styles.promptRail, 'relative -mx-1 flex min-w-0 flex-1 gap-2 overflow-x-auto px-1 pb-2 scrollbar-hide')}>
       {QUICK_PROMPTS.map(p => {
         const Icon = p.icon;
         return (

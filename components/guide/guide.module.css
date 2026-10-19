@@ -277,3 +277,41 @@
 .side {
   transition: width 0.24s var(--ease-civic), opacity 0.2s var(--ease-civic);
 }
+
+/* ---------------------------------------------------------------------------
+   The Chamber's <main> (app/advisor/page.tsx): exactly the screen, with only
+   the conversation scrolling, when the screen is tall enough for the orb,
+   the questions, a useful stretch of conversation and the composer at once.
+   On a shorter one (a phone held sideways, a phone with its keyboard open,
+   a desktop zoomed to 400%) the page scrolls instead and the conversation
+   keeps a floor of its own (AdvisorChamber), so nothing is ever out of
+   reach (WCAG 1.4.10 Reflow). */
+
+.main {
+  min-height: 100vh;
+  min-height: 100dvh;
+}
+@media (min-height: 600px) {
+  .main {
+    height: 100vh;
+    height: 100dvh;
+    overflow: hidden;
+  }
+}
+
+/* The suggested questions scroll sideways: their end fades and they snap,
+   so a chip cut at the edge reads as "more this way"; the trailing room
+   lets the last one scroll clear of the fade. */
+.promptRail {
+  -webkit-mask-image: linear-gradient(to right, #000 calc(100% - 2.5rem), transparent);
+  mask-image: linear-gradient(to right, #000 calc(100% - 2.5rem), transparent);
+  scroll-snap-type: x proximity;
+  scroll-padding-inline: 0.25rem 2.5rem;
+}
+.promptRail > * {
+  scroll-snap-align: start;
+}
+.promptRail::after {
+  content: '';
+  flex: 0 0 2rem;
+}

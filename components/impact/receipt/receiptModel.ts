@@ -90,3 +90,12 @@ export function latestDate(lines: readonly Pick<ReceiptLine, 'created_at'>[]): s
   }
   return shortDate(iso);
 }
+
+/**
+ * The receipt's paper in the dark theme (and the detail page's ledger and
+ * checklist slips): a step lighter and warmer than the night surface
+ * (23 17 48), as RGB channels, the value receipt.module.css and
+ * detail.module.css use. Every text token on it is checked for AA in
+ * tests/impactList.test.ts.
+ */
+export const NIGHT_PAPER = '42 35 54';

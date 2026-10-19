@@ -23,6 +23,9 @@ import { paintTone, toneGlass } from '@/components/three/scenes/parts/toneGlass'
  * porcelain at $0. Height carries the size, colour the sign; the page states
  * both.
  *
+ * `focus` (a cell's id: its heatmap cell under the pointer) lights that
+ * tile from within and dims the rest, matching the numbers over the view.
+ *
  * The camera drifts slowly while motion is allowed; under reduced (or
  * paused) motion it is one composed still frame. Decorative: the page lists
  * every category (describeTerrain, terrainScaleNote, the heatmap itself).
@@ -31,11 +34,13 @@ import { paintTone, toneGlass } from '@/components/three/scenes/parts/toneGlass'
 export interface SpendingTerrainProps {
   /** From terrainFromAnalysis (lib/transmission.ts). [] draws the empty slab. */
   cells: readonly TerrainCell[];
+  /** The tile to light (its cell's id), or null. */
+  focus?: string | null;
 }
 
 const T = TERRAIN_WORLD;
 
-export default function SpendingTerrain({ cells }: SpendingTerrainProps) {
+export default function SpendingTerrain({ cells, focus = null }: SpendingTerrainProps) {
   const animated = useAnimated(30);
   const p = useScenePalette();
   const invalidate = useThree((s) => s.invalidate);
@@ -73,12 +78,13 @@ export default function SpendingTerrain({ cells }: SpendingTerrainProps) {
     slabMaterial.color.set(p.night ? mixHex(p.surface, p.violet, 0.07) : p.porcelain);
     slabMaterial.emissive.set(p.night ? p.surface : p.porcelain);
     slabMaterial.emissiveIntensity = p.night ? 0.25 : 0.1;
+    const lit = focus && layout.tiles.some((t) => t.id === focus) ? focus : null;
     layout.tiles.forEach((t, i) => {
       const m = tileMaterials[i];
-      if (m) paintTone(m, p, t.tone, { glow: 0.4 });
+      if (m) paintTone(m, p, t.tone, lit ? (t.id === lit ? { glow: 1 } : { glow: 0.2, opacity: 0.4 }) : { glow: 0.4 });
     });
     invalidate();
-  }, [p, layout, tileMaterials, slabMaterial, invalidate]);
+  }, [p, layout, tileMaterials, slabMaterial, focus, invalidate]);
 
   return (
     <>

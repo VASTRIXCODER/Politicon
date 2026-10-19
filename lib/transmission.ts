@@ -316,11 +316,20 @@ export function heroInEffect(status: string | null | undefined): boolean {
   return String(status ?? '').trim().toLowerCase() === 'enacted';
 }
 
-/** What the hero picture shows (its SceneView label). */
+/**
+ * What the hero picture shows (its SceneView label). `status` is the
+ * official record's; without one (a bill not checked against its record)
+ * the words say the stage isn't known rather than guessing it.
+ */
 export function describeTransmission({ netAnnualImpact, status, title }: { netAnnualImpact: number; status?: string | null; title?: string | null }): string {
   const net = whole(netAnnualImpact);
   const bill = title?.trim() ? `“${title.trim()}” as a sheet of glass` : 'The bill as a sheet of glass';
-  const law = heroInEffect(status) ? '' : ' It isn’t law, so this is what it would mean if enacted.';
+  const known = String(status ?? '').trim() !== '';
+  const law = heroInEffect(status)
+    ? ''
+    : known
+      ? ' It isn’t law, so this is what it would mean if enacted.'
+      : ' Its stage isn’t checked against an official record, so this is what it would mean if enacted.';
   if (!net) return `${bill} on a plinth beside an empty column of light resting on its zero shelf: no change to your budget a year.${law}`;
   const column =
     net > 0
@@ -976,9 +985,25 @@ export function describeCrystal(axes: readonly CrystalAxis[]): string {
   return `A violet crystal shaped by six vulnerability scores, reaching further out where the pressure is higher: ${list(items)}. Highest: ${list(highest)}.`;
 }
 
-/** The crystal's scale in words (for its caption). */
+/** Which way the scores run, in words (the crystal's key: every label reads as a risk, "Income Stability 38" included). */
+export const CRYSTAL_DIRECTION = 'Higher = more at risk';
+
+/** The crystal's scale in words (for its caption): which way the scores run first, then the scale. */
 export function crystalScaleNote(): string {
-  return 'Each point of the crystal reaches out along its axis as far as the score, on a linear scale from 0 at the centre to 100 at the outer ring; the guide rings mark 25, 50 and 75.';
+  return 'Every score is a risk score: higher means more pressure on you (more at risk), so the crystal reaches further out where you are more exposed. Each point reaches out along its axis as far as the score, on a linear scale from 0 at the centre to 100 at the outer ring; the guide rings mark 25, 50 and 75.';
+}
+
+/**
+ * Where each axis's number sits over the crystal (world points, on the
+ * guide plane): the outer ring's vertex at the end of the axis's spoke, the
+ * same place whatever the score, so the numbers stay put and clear of the
+ * gem. In the axes' order (the caption numbers its rows the same way).
+ */
+export function crystalMarks(n = CRYSTAL_AXES.length): Vec3[] {
+  return Array.from({ length: n }, (_, i): Vec3 => {
+    const [x, z] = crystalDirection(i, n);
+    return [x * CRYSTAL_WORLD.radius, 0, z * CRYSTAL_WORLD.radius];
+  });
 }
 
 // ===========================================================================
@@ -1128,6 +1153,15 @@ export function terrainScaleNote(cells: readonly TerrainCell[]): string {
   if (!cells.length) return 'No spending categories in this analysis.';
   if (!scale) return 'Every category is $0 a month, so every tile lies flat.';
   return `Each tile rises as far as its monthly amount on one linear scale (the tallest possible is ${formatUSD(scale.max)} a month); teal saves you money, amber costs more, and flat porcelain is no change.`;
+}
+
+/**
+ * Where each tile's number sits over the terrain (world points): the middle
+ * of the tile's top, in the cells' order (the heatmap beside it numbers its
+ * cells the same way).
+ */
+export function terrainMarks(layout: TerrainLayout): { id: string; tone: TransmissionTone; at: Vec3 }[] {
+  return layout.tiles.map((t) => ({ id: t.id, tone: t.tone, at: [t.x, t.height, t.z] as Vec3 }));
 }
 
 /** A cell's figure as the page prints it: "+$12 a month (saves you)". */

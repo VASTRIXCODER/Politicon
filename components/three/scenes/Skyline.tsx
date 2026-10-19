@@ -133,7 +133,7 @@ function SkylineRig({ layout, animated }: { layout: SkylineLayout; animated: boo
 // along its front edge), the glass well under it when any cost is in reach,
 // and the porcelain foot, over a soft shadow.
 
-function SkylinePlinth({ layout }: { layout: SkylineLayout }) {
+function SkylinePlinth({ layout, clear }: { layout: SkylineLayout; clear: boolean }) {
   const p = useScenePalette();
   const sx = layout.halfX * 2;
   const sz = layout.halfZ * 2;
@@ -183,7 +183,9 @@ function SkylinePlinth({ layout }: { layout: SkylineLayout }) {
     mats.inlay.opacity = p.night ? 0.8 : 0.6;
     mats.well.color.set('#FFFFFF');
     mats.well.opacity = p.night ? 0.07 : 0.1;
-  }, [mats, p]);
+    // While a cost is lit, the street's vellum clears a little, so the lit glass under it shows.
+    mats.street.opacity = clear ? 0.55 : 0.9;
+  }, [mats, p, clear]);
 
   return (
     <>
@@ -487,7 +489,7 @@ export default function Skyline({ towers, horizon, reach, focus = null, onFocus 
     <>
       <SkylineRig layout={layout} animated={animated} />
       <StudioLights />
-      <SkylinePlinth layout={layout} />
+      <SkylinePlinth layout={layout} clear={!!focus && layout.lots.some((l) => l.id === focus && l.dir === -1)} />
       <Towers layout={layout} focus={focus} animated={animated} onFocus={onFocus} />
       {layout.tags && <Tags layout={layout} />}
       <PostFX />

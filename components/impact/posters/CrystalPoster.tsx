@@ -9,10 +9,14 @@ import { PlinthArt, PosterSvg, ShadowDef, line, path, projector, r1, S } from '@
  * 25, 50, 75 and 100 and its six axes, the faceted violet gem drawn back to
  * front with its facets lit from the upper left, and a bead at each score.
  * Decorative (the page's caption names the axes and their scores).
+ * `focus` (an axis's key: its caption row under the pointer) lights its
+ * spoke and its bead.
  */
 
 export interface CrystalPosterProps {
   axes: readonly CrystalAxis[];
+  /** The axis to light, or null. */
+  focus?: string | null;
   className?: string;
   /** Prefix for the drawing's gradient ids (only needed with two of these on one page). */
   id?: string;
@@ -22,7 +26,7 @@ const W = CRYSTAL_WORLD;
 /** Where the poster's light comes from (upper left, in front). */
 const LIGHT: Vec3 = [-0.42, 0.78, 0.46];
 
-export default function CrystalPoster({ axes, className, id = 'crystal' }: CrystalPosterProps) {
+export default function CrystalPoster({ axes, focus = null, className, id = 'crystal' }: CrystalPosterProps) {
   const { at, depth, width, height } = projector(crystalViewBox(), CRYSTAL_VIEW);
   const n = axes.length || 6;
   const layout = crystalLayout(axes);
@@ -41,6 +45,7 @@ export default function CrystalPoster({ axes, className, id = 'crystal' }: Cryst
     })
     .sort((x, y) => x.z - y.z);
   const [sx, sy] = at([0, W.plinth.y, 0]);
+  const lit = axes.findIndex((x) => x.axis === focus);
 
   return (
     <PosterSvg width={width} height={height} className={className}>
@@ -67,10 +72,11 @@ export default function CrystalPoster({ axes, className, id = 'crystal' }: Cryst
           <path key={i} d={f.d} fillOpacity={f.opacity} />
         ))}
       </g>
+      {lit >= 0 && <path d={line([at([0, 0, 0]), ring(1)[lit]])} fill="none" className="stroke-primary" strokeWidth={2.5} strokeLinecap="round" />}
       {axes.length > 0 &&
         layout.girdle.map(([x, z], i) => {
           const [cx, cy] = at([x, 0, z]);
-          return <circle key={i} cx={r1(cx)} cy={r1(cy)} r={r1(0.03 * S)} className="fill-primary stroke-raised" strokeWidth={1.5} />;
+          return <circle key={i} cx={r1(cx)} cy={r1(cy)} r={r1((i === lit ? 0.05 : 0.03) * S)} className="fill-primary stroke-raised" strokeWidth={1.5} />;
         })}
     </PosterSvg>
   );

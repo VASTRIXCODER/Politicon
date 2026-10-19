@@ -1,3 +1,13 @@
+/**
+ * The orb's size at the head of the Chamber (OrbDock, and the prerendered
+ * fallback, so the hand-off doesn't jump): smaller on a short screen, the
+ * largest only on a large and tall one, so the conversation keeps its room.
+ */
+export const ORB_DOCK_SIZE = 'size-16 sm:size-20 [@media(min-width:1024px)_and_(min-height:800px)]:size-28 [@media(max-height:599.98px)]:size-10';
+
+/** The head row's padding: tighter on a short screen. */
+export const DOCK_ROW = 'py-3 [@media(max-height:599.98px)]:py-1.5';
+
 /** The page's one h1 ("AI Policy Guide"), with the display face's italic violet accent. */
 export function GuideTitle() {
   return (

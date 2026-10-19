@@ -124,10 +124,12 @@ export function paintTower(m: MeshPhysicalMaterial, tones: TowerTones, night: bo
   m.color.copy(tone);
   m.emissive.copy(tone);
   // Lit from within in its own colour (so the violet lights don't turn the hue); the focused tower brightens.
-  m.emissiveIntensity = (night ? 0.5 : 0.26) * (0.2 + 0.8 * full) + lift * (night ? 0.5 : 0.3);
+  // A lit cost hangs under the street, seen through its glass well: it is lifted further, so it shows as lit.
+  const boost = gain ? 1 : 2.2;
+  m.emissiveIntensity = (night ? 0.5 : 0.26) * (0.2 + 0.8 * full) + lift * (night ? 0.5 : 0.3) * boost;
   // Nearly opaque, so the night behind doesn't tint it; a dimmed tower is darker (less light from within), the same hue.
   m.opacity = Math.min(0.97, 0.7 + 0.18 * full + lift * 0.3);
   const rim = m.userData.rim as SkylineGlassUniforms;
   rim.uRimColor.value.copy(gain ? tones.gainRim : tones.lossRim);
-  rim.uRimStrength.value = 0.85 * (0.4 + 0.6 * full) + lift * 1.1;
+  rim.uRimStrength.value = 0.85 * (0.4 + 0.6 * full) + lift * 1.1 * boost;
 }

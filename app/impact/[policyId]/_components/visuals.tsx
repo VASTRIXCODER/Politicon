@@ -1,6 +1,6 @@
 'use client';
 
-import { useId, useMemo, useState } from 'react';
+import { useId, useMemo, useRef, useState } from 'react';
 import SceneView from '@/components/three/SceneView';
 import TransmissionHero from '@/components/three/scenes/TransmissionHero.lazy';
 import FlowSankey from '@/components/three/scenes/FlowSankey.lazy';
@@ -13,13 +13,19 @@ import RibbonPoster from '@/components/impact/posters/RibbonPoster';
 import CrystalPoster from '@/components/impact/posters/CrystalPoster';
 import TerrainPoster from '@/components/impact/posters/TerrainPoster';
 import FlowMarks from '@/components/impact/posters/FlowMarks';
+import ViewMarks, { MARK_BADGE } from '@/components/impact/posters/ViewMarks';
 import { SpendingHeatmap } from '@/components/charts/StaticCharts';
 import { formatUSD, impactWords } from '@/lib/format';
 import {
+  CRYSTAL_DIRECTION,
+  CRYSTAL_VIEW,
   RIBBON_LEGEND,
+  TERRAIN_VIEW,
   ribbonBandShare,
   crystalFromAnalysis,
+  crystalMarks,
   crystalScaleNote,
+  crystalViewBox,
   describeCrystal,
   describeFlows,
   describeRibbon,
@@ -32,7 +38,10 @@ import {
   ribbonScaleNote,
   ribbonUncertainty,
   terrainFromAnalysis,
+  terrainLayout,
+  terrainMarks,
   terrainScaleNote,
+  terrainViewBox,
   type TransmissionTone,
 } from '@/lib/transmission';
 import { cn } from '@/lib/utils';
@@ -51,8 +60,9 @@ import { Chamber, Kicker, LegendItem } from './parts';
  *
  * None of these views take pointer input; the one control (the timeline's
  * month) is a DOM range input, so the keyboard reaches everything. (Pointing
- * at a row of the flow's list lights its channel: a convenience, the
- * numbers beside the channels say the same to everyone.)
+ * at a row of the flow's list, the crystal's scores or the terrain's
+ * heatmap lights the same thing in the picture: a convenience; the numbers
+ * laid over the views, matching the rows' numbers, say the same to everyone.)
  */
 
 /** A channel's number badge: its direction's colour as a ring and a tint. */
@@ -68,6 +78,7 @@ const TONE_TEXT: Record<TransmissionTone, string> = {
 };
 
 const yearly = (n: number) => formatUSD(n, { signed: true, suffix: '/yr' });
+const toneOfValue = (n: number): TransmissionTone => (Math.round(n) > 0 ? 'gain' : Math.round(n) < 0 ? 'loss' : 'neutral');
 
 /** The legend every money picture shares: the two directions, in words. */
 function MoneyLegend({ neutral }: { neutral?: string }) {
@@ -95,11 +106,13 @@ export function NoPicture({ children }: { children: string }) {
 // ---------------------------------------------------------------------------
 
 export function HeroView({ a }: { a: FullAnalysis }) {
-  // The gold seal is the official record's: only a verified record gets it.
+  // The gold seal is the official record's: only a verified record gets it. So is the stage: an
+  // unverified analysis's status is the model's guess, so it never lights the column "in effect".
   const verified = !!a.record?.verified;
-  const props = { netAnnualImpact: a.netAnnualImpact, status: a.status, title: a.policyTitle, verified };
+  const status = verified ? a.status : undefined;
+  const props = { netAnnualImpact: a.netAnnualImpact, status, title: a.policyTitle, verified };
   return (
-    <SceneView eager className="aspect-[10/9] w-full lg:aspect-[16/9]" label={describeTransmission(props)} poster={<TransmissionPoster netAnnualImpact={a.netAnnualImpact} status={a.status} verified={verified} />}>
+    <SceneView eager className="aspect-[10/9] w-full lg:aspect-[16/9]" label={describeTransmission(props)} poster={<TransmissionPoster netAnnualImpact={a.netAnnualImpact} status={status} verified={verified} />}>
       <TransmissionHero {...props} />
     </SceneView>
   );
@@ -224,6 +237,7 @@ export function RibbonView({ a, simple }: { a: FullAnalysis; simple: boolean }) 
   // The month picked out (null: the whole year, nothing lit).
   const [focus, setFocus] = useState<number | null>(null);
   const sliderId = useId();
+  const slider = useRef<HTMLInputElement>(null);
   const { uncertainty, rated } = ribbonUncertainty(a.confidenceScore);
   const first = points[0];
   const last = points[points.length - 1];
@@ -258,17 +272,26 @@ export function RibbonView({ a, simple }: { a: FullAnalysis; simple: boolean }) 
             <div className="mt-4">
               <div className="flex items-baseline justify-between gap-3">
                 <label htmlFor={sliderId} className="text-sm font-medium text-ink">Look at a month</label>
-                {focus !== null && (
-                  <button
-                    type="button"
-                    onClick={() => setFocus(null)}
-                    className="-my-1 inline-flex min-h-6 items-center rounded-md px-1 text-meta font-medium text-primary-300 underline-offset-2 hover:underline"
-                  >
-                    Show the whole year
-                  </button>
-                )}
+                {/* Always mounted, so pressing it never drops focus: it hands focus to the month control
+                    and goes quiet (aria-disabled) while the whole year is shown. */}
+                <button
+                  type="button"
+                  aria-disabled={focus === null || undefined}
+                  onClick={() => {
+                    if (focus === null) return;
+                    setFocus(null);
+                    slider.current?.focus();
+                  }}
+                  className={cn(
+                    '-my-1 inline-flex min-h-6 items-center rounded-md px-1 text-meta font-medium underline-offset-2',
+                    focus === null ? 'cursor-default text-muted' : 'text-primary-300 hover:underline'
+                  )}
+                >
+                  Show the whole year
+                </button>
               </div>
               <input
+                ref={slider}
                 id={sliderId}
                 type="range"
                 min={first.month}
@@ -279,20 +302,25 @@ export function RibbonView({ a, simple }: { a: FullAnalysis; simple: boolean }) 
                 aria-valuetext={valueText(focus ?? last.month)}
                 className="mt-2 h-6 w-full cursor-pointer accent-primary"
               />
+              {/* The running total with its own words, then (a month picked) that month's change on its own line, in its own tone. */}
               <p className="mt-2 flex flex-wrap items-baseline justify-between gap-x-3 gap-y-1">
                 <span className="font-mono-data text-meta uppercase tracking-[0.16em] text-muted">
                   {focus === null ? `By month ${shown.month}` : `Month ${shown.month}`}
                 </span>
-                <span className={cn('font-mono-data text-base font-semibold', TONE_TEXT[shown.value > 0 ? 'gain' : shown.value < 0 ? 'loss' : 'neutral'])}>
+                <span className={cn('font-mono-data text-base font-semibold', TONE_TEXT[toneOfValue(shown.value)])}>
                   {formatUSD(shown.value, { signed: true })} so far
                   <span className="ml-1.5 text-meta font-normal text-muted">· {impactWords(shown.value)}</span>
-                  {focus !== null && (
-                    <span className="ml-2 text-meta font-normal text-muted">
-                      {formatUSD(shown.delta, { signed: true })} that month ({impactWords(shown.delta)})
-                    </span>
-                  )}
                 </span>
               </p>
+              {focus !== null && (
+                <p className="mt-1 flex flex-wrap items-baseline justify-between gap-x-3 gap-y-1">
+                  <span className="font-mono-data text-meta uppercase tracking-[0.16em] text-muted">This month</span>
+                  <span className={cn('font-mono-data text-sm font-semibold', TONE_TEXT[toneOfValue(shown.delta)])}>
+                    {formatUSD(shown.delta, { signed: true })}
+                    <span className="ml-1.5 text-meta font-normal">· {impactWords(shown.delta)}</span>
+                  </span>
+                </p>
+              )}
             </div>
           )}
         </>
@@ -317,8 +345,16 @@ export function RibbonView({ a, simple }: { a: FullAnalysis; simple: boolean }) 
 // Economic context: the vulnerability crystal and the spending terrain
 // ---------------------------------------------------------------------------
 
+/** The crystal's box shape (its aspect-square class), for the axis numbers laid over it. */
+const CRYSTAL_ASPECT = 1;
+
 export function CrystalView({ a, simple }: { a: FullAnalysis; simple: boolean }) {
   const axes = useMemo(() => crystalFromAnalysis(a, { simple }), [a, simple]);
+  const listId = useId();
+  // The score pointed at: its spoke lights in the view.
+  const [hover, setHover] = useState<string | null>(null);
+  const marks = useMemo(() => crystalMarks(axes.length).map((at, i) => ({ id: axes[i].axis, at, tone: 'violet' as const })), [axes]);
+  const box = useMemo(crystalViewBox, []);
   return (
     <Chamber
       caption={
@@ -326,22 +362,39 @@ export function CrystalView({ a, simple }: { a: FullAnalysis; simple: boolean })
           <Kicker>{simple ? 'Where the pressure is' : 'The vulnerability crystal'}</Kicker>
           <p className="mt-1.5 text-xs leading-relaxed text-muted [text-wrap:pretty]">{crystalScaleNote()}</p>
           {axes.length > 0 && (
-            <dl className="mt-3 grid grid-cols-1 gap-x-5 gap-y-1.5 min-[420px]:grid-cols-2">
-              {axes.map((x) => (
-                <div key={x.axis} className="flex items-baseline justify-between gap-3">
-                  <dt className="min-w-0 text-meta text-muted">{x.label}</dt>
-                  <dd className="font-mono-data text-sm font-semibold text-ink">{x.score}<span className="text-meta font-normal text-muted">/100</span></dd>
-                </div>
-              ))}
-            </dl>
+            <>
+              {/* The list's key: every score below reads as a risk ("Income Stability 38" is moderately at risk, not stable). */}
+              <p id={listId} className="mt-3 font-mono-data text-meta uppercase tracking-[0.14em] text-muted">
+                Risk scores, out of 100 · {CRYSTAL_DIRECTION.toLowerCase()}
+              </p>
+              <dl aria-labelledby={listId} className="mt-2 grid grid-cols-1 gap-x-5 gap-y-0.5 min-[420px]:grid-cols-2" onPointerLeave={() => setHover(null)}>
+                {axes.map((x, i) => (
+                  <div
+                    key={x.axis}
+                    onPointerEnter={() => setHover(x.axis)}
+                    className={cn('-mx-1.5 flex items-baseline justify-between gap-3 rounded-md px-1.5 py-1 transition-colors duration-200 ease-civic', hover === x.axis && 'bg-fg/5')}
+                  >
+                    <dt className="flex min-w-0 items-baseline gap-2 text-meta text-muted">
+                      {/* The axis's number over the view (ViewMarks). */}
+                      <span aria-hidden="true" className={cn(MARK_BADGE, 'translate-y-[0.2rem] border-primary-300 bg-primary/15')}>{i + 1}</span>
+                      <span className="min-w-0">{x.label}</span>
+                    </dt>
+                    <dd className="font-mono-data text-sm font-semibold text-ink">{x.score}<span className="text-meta font-normal text-muted">/100</span></dd>
+                  </div>
+                ))}
+              </dl>
+            </>
           )}
         </>
       }
     >
       {axes.length > 0 ? (
-        <SceneView className="aspect-square w-full" label={describeCrystal(axes)} poster={<CrystalPoster axes={axes} />}>
-          <VulnerabilityCrystal axes={axes} />
-        </SceneView>
+        <div className="relative">
+          <SceneView className="aspect-square w-full" label={describeCrystal(axes)} poster={<CrystalPoster axes={axes} focus={hover} />}>
+            <VulnerabilityCrystal axes={axes} focus={hover} />
+          </SceneView>
+          <ViewMarks marks={marks} box={box} view={CRYSTAL_VIEW} aspect={CRYSTAL_ASPECT} focus={hover} />
+        </div>
       ) : (
         <NoPicture>This analysis has no vulnerability scores, so there is no crystal to draw.</NoPicture>
       )}
@@ -356,8 +409,18 @@ export function CrystalView({ a, simple }: { a: FullAnalysis; simple: boolean })
  * two panes saying the same thing. The heatmap's tokens follow the night
  * plate, so its teal, amber and text stay AA there.
  */
+/** The terrain's box shape (its aspect-[4/3] class), for the tile numbers laid over it. */
+const TERRAIN_ASPECT = 4 / 3;
+
 export function TerrainView({ a, title, lede }: { a: FullAnalysis; title?: string; lede?: string }) {
   const cells = useMemo(() => terrainFromAnalysis(a), [a]);
+  // The heatmap cell pointed at: its tile lights in the view.
+  const [hover, setHover] = useState<string | null>(null);
+  const layout = useMemo(() => terrainLayout(cells), [cells]);
+  const box = useMemo(() => terrainViewBox(layout), [layout]);
+  const marks = useMemo(() => terrainMarks(layout), [layout]);
+  // The heatmap prints the terrain's own cells (one per category, in the same order), numbered as the tiles are.
+  const items = useMemo(() => cells.map((c) => ({ id: c.id, category: c.label, dollarImpact: c.value })), [cells]);
   return (
     <Chamber
       side
@@ -371,7 +434,7 @@ export function TerrainView({ a, title, lede }: { a: FullAnalysis; title?: strin
             <>
               <MoneyLegend neutral="Flat porcelain: no change" />
               <div className="mt-4">
-                <SpendingHeatmap items={a.spendingVelocity} />
+                <SpendingHeatmap items={items} numbered focus={hover} onFocus={setHover} />
               </div>
             </>
           )}
@@ -379,9 +442,12 @@ export function TerrainView({ a, title, lede }: { a: FullAnalysis; title?: strin
       }
     >
       {cells.length > 0 ? (
-        <SceneView className="aspect-[4/3] w-full" label={describeTerrain(cells)} poster={<TerrainPoster cells={cells} />}>
-          <SpendingTerrain cells={cells} />
-        </SceneView>
+        <div className="relative">
+          <SceneView className="aspect-[4/3] w-full" label={describeTerrain(cells)} poster={<TerrainPoster cells={cells} focus={hover} />}>
+            <SpendingTerrain cells={cells} focus={hover} />
+          </SceneView>
+          <ViewMarks marks={marks} box={box} view={TERRAIN_VIEW} aspect={TERRAIN_ASPECT} focus={hover} />
+        </div>
       ) : (
         <NoPicture>This analysis has no spending categories, so there is no terrain to draw.</NoPicture>
       )}

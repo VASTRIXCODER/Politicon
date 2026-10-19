@@ -41,7 +41,9 @@ export interface TransmissionHeaderProps {
 export default function TransmissionHeader({ a, analyzedAt, profileChips }: TransmissionHeaderProps) {
   const path = useMemo(() => billPath(a.record, { billNumber: a.billNumber, region: a.record?.region }), [a.record, a.billNumber]);
   const record = recordFacts(a, path.origin);
-  const confidence = confidenceLabel(a.confidenceScore);
+  const rated = confidenceLabel(a.confidenceScore);
+  // The words carry the level; a low one is said in ink, never the caution ochre (which reads as the record's gold).
+  const confidence = { ...rated, tone: rated.tone === 'text-caution' ? 'text-muted' : rated.tone };
   const net = netReadout(a.netAnnualImpact);
 
   return (
@@ -71,7 +73,8 @@ export default function TransmissionHeader({ a, analyzedAt, profileChips }: Tran
 
         <div className="mt-4 flex flex-wrap items-center gap-2">
           <Badge variant="primary">{titleCase(a.category)}</Badge>
-          <StatusBadge status={a.status} />
+          {/* The stage only from the official record: an unverified analysis's status is the model's guess. */}
+          {record.verified && <StatusBadge status={a.status} />}
           <span className={cn('ml-1 flex items-center gap-1 font-mono-data text-meta', confidence.tone)}>
             <Sparkles className="h-3 w-3" aria-hidden /> {confidence.label}
             {a.confidenceScore ? <> · {a.confidenceScore}/100<span className="sr-only"> (model-rated)</span></> : null}
@@ -126,7 +129,15 @@ export default function TransmissionHeader({ a, analyzedAt, profileChips }: Tran
             <p className="mt-1 text-meta text-muted">The stage is shown only for a bill checked against its official record.</p>
           )}
           <div className="mt-4 border-t border-fg/8 pt-3">
-            <PolicyProvenance record={a.record} snapshotLabel />
+            {record.verified ? (
+              <PolicyProvenance record={a.record} snapshotLabel />
+            ) : (
+              // Said in neutral ink: the caution ochre beside it would read as the record's gold.
+              <p className="flex items-start gap-1.5 text-meta text-muted">
+                <Info className="mt-px h-3.5 w-3.5 flex-shrink-0" aria-hidden />
+                <span>Not verified against an official source — details may be incomplete or out of date. Check the official record before relying on it.</span>
+              </p>
+            )}
           </div>
         </div>
       </div>
