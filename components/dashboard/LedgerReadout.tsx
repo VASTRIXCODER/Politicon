@@ -53,14 +53,23 @@ const countLabel = (s: LedgerSlab) => (s.combined ? `${s.policies} ${s.policies 
 /** The category's policies pull both ways: what they save and cost before netting, or null. */
 const offsets = (s: LedgerSlab) => (s.gross && s.gross.saves > 0 && s.gross.costs > 0 ? s.gross : null);
 
-/** "Saves you $1,240 a year · about $103 a month" (the month only where it isn't a rounding of nothing). */
-function netWords(net: number): string {
+/**
+ * "Saves you $1,240 a year · about $103 a month" (the month only where it
+ * isn't a rounding of nothing). Each part keeps its words together and the
+ * "·" trails the first, so a narrow line breaks between the parts, never
+ * inside one or before the dot.
+ */
+function NetWords({ net }: { net: number }) {
   const words = impactWords(net);
-  if (words === 'no change') return 'No net change a year';
+  if (words === 'no change') return <>No net change a year</>;
   const abs = Math.abs(net);
-  // Non-breaking inside each part, so a narrow line breaks after the "·", never before it.
-  const month = abs >= 120 ? `\u00a0· ${`about ${formatUSD(abs / 12)} a month`.replace(/ /g, '\u00a0')}` : '';
-  return `${words.charAt(0).toUpperCase()}${words.slice(1)} ${formatUSD(abs)} a year${month}`;
+  const year = `${words.charAt(0).toUpperCase()}${words.slice(1)} ${formatUSD(abs)} a year`;
+  if (abs < 120) return <>{year}</>;
+  return (
+    <>
+      <span className="whitespace-nowrap">{year} ·</span> <span className="whitespace-nowrap">about {formatUSD(abs / 12)} a month</span>
+    </>
+  );
 }
 
 function Title({ as: Tag, id }: { as: 'h2' | 'h3'; id: string }) {
@@ -235,7 +244,9 @@ export default function LedgerReadout({ model, focus = null, onFocus, loading = 
       <p className={cn('mt-2 font-mono-data text-4xl font-semibold leading-none tracking-tight sm:text-5xl', tone)}>
         <CountUp value={model.net} duration={1600} format={(n) => formatUSD(n, { signed: true })} suffix="/yr" srLabel={`${formatUSD(model.net, { signed: true })} a year`} />
       </p>
-      <p className={cn('mt-2 text-sm font-medium [text-wrap:balance]', tone)}>{netWords(model.net)}</p>
+      <p className={cn('mt-2 text-sm font-medium', tone)}>
+        <NetWords net={model.net} />
+      </p>
       <p className="mt-1 text-meta text-muted">
         Across {policies(model.analysed)} you analyzed · educational estimates
         {status && <span className="block">{status}</span>}

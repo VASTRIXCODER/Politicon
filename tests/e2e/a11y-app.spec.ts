@@ -72,8 +72,10 @@ async function expectNoOverflowAt375(page: Page, ready: () => Promise<void>) {
 /**
  * Tabs through the whole page, forward and then back (backward is where a
  * control lands at the top of the viewport), and lists every focused control
- * the floating bar covers (WCAG 2.4.11, Focus Not Obscured). A control taller
- * than the room under the bar only needs to show below it.
+ * the floating bar covers (WCAG 2.4.11, Focus Not Obscured): any point of it
+ * where the bar's pill, not the control, is what's on top. Something drawn
+ * over the bar (the skip link) isn't covered. A control taller than the room
+ * under the bar only needs to show below it.
  */
 async function focusUnderTheBar(page: Page): Promise<string[]> {
   const hidden: string[] = [];
@@ -84,17 +86,31 @@ async function focusUnderTheBar(page: Page): Promise<string[]> {
       const bar = document.querySelector('nav[aria-label="Main"] > div');
       if (!el || el === document.body || !bar || el.closest('nav')) return null;
       const box = el.getBoundingClientRect();
-      const under = bar.getBoundingClientRect();
+      const pill = bar.getBoundingClientRect();
       if (box.width === 0 && box.height === 0) return null;
       const name = (el.getAttribute('aria-label') || el.textContent || el.tagName).trim().replace(/\s+/g, ' ').slice(0, 60);
-      const tall = box.height > window.innerHeight - under.bottom - 16;
-      const clear = tall ? box.bottom > under.bottom + 8 : box.top >= under.bottom - 0.5 || box.bottom <= under.top;
-      return clear ? null : `${name} [${Math.round(box.top)}–${Math.round(box.bottom)} under a bar ending at ${Math.round(under.bottom)}]`;
+      const where = `${name} [${Math.round(box.top)}–${Math.round(box.bottom)} under a bar ending at ${Math.round(pill.bottom)}]`;
+      if (box.height > window.innerHeight - pill.bottom - 16) return box.bottom > pill.bottom + 8 ? null : where;
+      // Where the control and the pill overlap, is the pill on top anywhere?
+      const x0 = Math.max(box.left, pill.left) + 1;
+      const x1 = Math.min(box.right, pill.right) - 1;
+      const y0 = Math.max(box.top, pill.top) + 1;
+      const y1 = Math.min(box.bottom, pill.bottom) - 1;
+      if (x1 < x0 || y1 < y0) return null;
+      for (let i = 0; i <= 4; i++) {
+        for (let j = 0; j <= 2; j++) {
+          const hit = document.elementFromPoint(x0 + ((x1 - x0) * i) / 4, y0 + ((y1 - y0) * j) / 2);
+          if (hit && bar.contains(hit) && !el.contains(hit)) return where;
+        }
+      }
+      return null;
     });
     if (r) hidden.push(`${key} #${step}: ${r}`);
   };
-  await page.evaluate(() => window.scrollTo({ top: 0, behavior: 'instant' as ScrollBehavior }));
-  await page.locator('body').focus();
+  await page.evaluate(() => {
+    window.scrollTo({ top: 0, behavior: 'instant' as ScrollBehavior });
+    (document.activeElement as HTMLElement | null)?.blur();
+  });
   let steps = 0;
   for (; steps < 160; steps++) {
     await check('Tab', steps);
