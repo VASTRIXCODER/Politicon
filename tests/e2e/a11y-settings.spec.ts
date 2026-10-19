@@ -114,7 +114,7 @@ for (const theme of THEMES) {
       await expect(page.locator('html')).toHaveAttribute('data-theme', theme);
       await expectNoSeriousViolations(page, testInfo, 'settings');
       // With unsaved changes too: the save bar follows the screen.
-      await page.locator('main#main').getByRole('radiogroup', { name: 'Annual Household Income' }).getByRole('radio', { name: '$75,000 – $100,000' }).click();
+      await page.locator('main#main').getByRole('radiogroup', { name: 'Annual household income' }).getByRole('radio', { name: '$75,000 – $100,000' }).click();
       await expect(page.locator('main#main').getByText('Unsaved changes', { exact: true })).toBeVisible();
       await settle(page);
       await expectNoSeriousViolations(page, testInfo, 'settings-unsaved');
@@ -123,14 +123,14 @@ for (const theme of THEMES) {
       await expectNoOverflowAt375(page);
 
       // The irreversible step, in its dialog: starts in the typed confirmation, and Escape gives focus back.
-      const trigger = page.getByRole('button', { name: 'Delete Account', exact: true });
+      const trigger = page.getByRole('button', { name: 'Delete account', exact: true });
       await trigger.scrollIntoViewIfNeeded();
       await trigger.click();
       const dialog = page.getByRole('alertdialog', { name: 'Delete your account?' });
       await expect(dialog).toBeVisible();
       await expect(dialog.getByLabel('Type DELETE to confirm')).toBeFocused();
       await expect(dialog.getByLabel('Your password')).toBeVisible();
-      await expect(dialog.getByRole('button', { name: 'Permanently Delete My Account' })).toBeVisible();
+      await expect(dialog.getByRole('button', { name: 'Permanently delete my account' })).toBeVisible();
       await settle(page);
       await expectNoSeriousViolations(page, testInfo, 'delete-dialog');
       const { overflow, culprits } = await horizontalOverflow(page);
@@ -186,7 +186,7 @@ test.describe('settings focus, never hidden', () => {
     await openSettings(page);
     const main = page.locator('main#main');
     // Unsaved changes: the save bar follows the screen.
-    await main.getByRole('radiogroup', { name: 'Annual Household Income' }).getByRole('radio', { name: '$75,000 – $100,000' }).click();
+    await main.getByRole('radiogroup', { name: 'Annual household income' }).getByRole('radio', { name: '$75,000 – $100,000' }).click();
     await expect(main.getByText('Unsaved changes', { exact: true })).toBeVisible();
     await expect(saveBarPosition(page)).resolves.toBe('sticky');
 
@@ -202,7 +202,7 @@ test.describe('settings focus, never hidden', () => {
     await openSettings(page);
     const main = page.locator('main#main');
     // The chosen tile takes a Highlight rim, and its dot is drawn again in the text colour.
-    const income = main.getByRole('radiogroup', { name: 'Annual Household Income' });
+    const income = main.getByRole('radiogroup', { name: 'Annual household income' });
     const chosen = income.getByRole('radio', { name: '$50,000 – $75,000' });
     const other = income.getByRole('radio', { name: '$75,000 – $100,000' });
     const rim = (tile: Locator) => tile.evaluate((el) => getComputedStyle(el).borderTopWidth);
@@ -212,7 +212,22 @@ test.describe('settings focus, never hidden', () => {
     expect(await drawnMarks(chosen)).toBe(1);
     expect(await drawnMarks(other)).toBe(0);
     // A pressed toggle (a debt) too.
-    expect(await rim(main.getByRole('button', { name: 'Mortgage', pressed: true }))).toBe('2px');
+    const mortgage = main.getByRole('button', { name: 'Mortgage', pressed: true });
+    expect(await rim(mortgage)).toBe('2px');
+    // Its own check (onboarding's mark, which onboarding shows alone) stands out from its box
+    // whichever way the contrast theme leans against the page's light theme: a dark contrast
+    // theme over a light page once drew it black on the black box.
+    await expect(page.locator('html')).toHaveAttribute('data-theme', 'light');
+    for (const colorScheme of ['light', 'dark'] as const) {
+      await page.emulateMedia({ forcedColors: 'active', reducedMotion: 'reduce', colorScheme });
+      const [stroke, box] = await mortgage.evaluate((el) => {
+        const check = el.querySelector('svg');
+        return check?.parentElement ? [getComputedStyle(check).stroke, getComputedStyle(check.parentElement).backgroundColor] : ['no check', ''];
+      });
+      expect(stroke, `the check on its box, under a ${colorScheme} contrast theme`).not.toBe(box);
+      expect(stroke).not.toBe('no check');
+    }
+    await page.emulateMedia({ forcedColors: 'active', reducedMotion: 'reduce', colorScheme: 'light' });
     // The current section is underlined in the section nav.
     const current = page.getByRole('navigation', { name: 'Settings sections' }).locator('a[aria-current="location"] span.block').first();
     expect(await current.evaluate((el) => getComputedStyle(el).textDecorationLine)).toBe('underline');

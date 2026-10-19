@@ -98,7 +98,7 @@ export function NoAnalysis({
           {generating ? 'Generating…' : legacy ? 'Generate full analysis' : 'Generate analysis'}
         </Button>
         <Button href="/dashboard" variant="ghost" className={cn('px-5', TINT_BUTTON)}>
-          Back to Dashboard
+          Back to dashboard
         </Button>
       </div>
     </div>

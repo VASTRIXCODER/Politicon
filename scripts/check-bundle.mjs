@@ -72,12 +72,16 @@ const LAZY_3D_UNBUDGETED_ROUTES = new Set(['/lab']);
 // (R4: the impact page's transmission, the receipt's skyline; R5: the
 // guide's orb), each held to the per-page budget above.
 //
+// Final phase (R7, 2026-10-19): every planned scene has landed and the total
+// measured 512.9 kB, so the cap came down from 620 kB to about 15% above
+// that. Every other budget here has less than 15% headroom and stays as it is.
+//
 // NOTE: the redesign plan set "about 300 kB gzip for the stage and the shared
 // kit". The stage alone is close to that, and these budgets are this file's
-// numbers, not the plan's: the 430 kB per-page budget and the 620 kB cap (up
-// from R0's 473 kB total) need the owner's sign-off, listed under Known
-// issues in the App I PR, as R0's were in its PR.
-const LAZY_3D_TOTAL_BUDGET_KB = 620;
+// numbers, not the plan's: the 430 kB per-page budget and this cap (up from
+// R0's 473 kB total) need the owner's sign-off, listed under Known issues in
+// the App I PR, as R0's were in its PR.
+const LAZY_3D_TOTAL_BUDGET_KB = 590;
 
 // Strings that survive minification and only three.js / R3F contain.
 const THREE_SIGNATURES = ['__THREE__', 'isWebGLRenderer', '__r3f'];

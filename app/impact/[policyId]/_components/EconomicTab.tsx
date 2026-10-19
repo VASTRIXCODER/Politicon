@@ -7,7 +7,7 @@ import { CHART_DESCRIPTIONS } from '@/lib/simpleMode';
 import { crystalFromAnalysis } from '@/lib/transmission';
 import type { FullAnalysis } from '@/types';
 import {
-  CAPEX_LABEL, LEVERAGE_LABEL, PROFIT_LABEL, better, money, pct, radarData, simpleSummary, titleCase, waterfallLevels,
+  CAPEX_LABEL, LEVERAGE_LABEL, PROFIT_LABEL, better, money, pct, radarData, sentenceCase, simpleSummary, waterfallLevels,
 } from './detailModel';
 import { Pane, SectorIndicator, StatRow } from './parts';
 import { CrystalView, NoPicture, TerrainView } from './visuals';
@@ -31,7 +31,7 @@ export default function EconomicTab({ a, simple, income, applies }: { a: FullAna
   const scored = crystalFromAnalysis(a).length > 0;
   // A score of 0 is what a missing one becomes: shown as not rated, never as good news.
   const uncertainty = macro.economicUncertaintyScore;
-  const vulnerabilityTitle = simple ? 'Where this hits you hardest' : 'Your Vulnerability Profile';
+  const vulnerabilityTitle = simple ? 'Where this hits you hardest' : 'Your vulnerability profile';
   const vulnerabilityLede = simple ? CHART_DESCRIPTIONS.radar : 'How exposed you are to this policy across six dimensions (higher = more pressure).';
 
   return (
@@ -39,14 +39,14 @@ export default function EconomicTab({ a, simple, income, applies }: { a: FullAna
       {simple && <WhatThisMeans text={simpleSummary(a, 'macro')} />}
 
       <Pane
-        title={simple ? 'How this reaches your wallet' : 'Economic Transmission'}
+        title={simple ? 'How this reaches your wallet' : 'Economic transmission'}
         lede={simple ? CHART_DESCRIPTIONS.waterfall : 'How the policy flows from the macro economy, through your employment sector, down to your personal finances.'}
       >
         <TransmissionWaterfall levels={waterfall} />
       </Pane>
 
       <div className="grid gap-6 lg:grid-cols-2">
-        <Pane title={simple ? 'The big picture' : 'Macroeconomic Indicators'}>
+        <Pane title={simple ? 'The big picture' : 'Macroeconomic indicators'}>
           <StatRow label={simple ? 'How healthy the economy gets' : 'GDP impact'} value={pct(macro.gdpImpactPct)} positive={better(macro.gdpImpactPct)} />
           <StatRow label={simple ? 'How fast prices rise' : 'Inflation (CPI/PCE)'} value={pct(macro.inflationImpactPct)} positive={better(macro.inflationImpactPct, 'down')} />
           <StatRow label={simple ? 'How unpredictable things get' : 'Economic uncertainty'} value={uncertainty > 0 ? `${uncertainty}/100` : 'Not rated'} positive={uncertainty > 0 ? uncertainty <= 50 : undefined} />
@@ -56,7 +56,7 @@ export default function EconomicTab({ a, simple, income, applies }: { a: FullAna
           {macro.balanceOfPaymentsEffect && <p className="mt-2 text-xs leading-relaxed text-muted">{macro.balanceOfPaymentsEffect}</p>}
         </Pane>
 
-        <Pane title={simple ? 'Your industry’s health' : `Sector Response — ${titleCase(corporate.sector)}`}>
+        <Pane title={simple ? 'Your industry’s health' : `Sector response — ${sentenceCase(corporate.sector)}`}>
           {simple && <WhatThisMeans text={simpleSummary(a, 'corporate')} />}
           <div className="mt-3 space-y-2.5">
             <SectorIndicator label={simple ? 'Hiring & investment' : 'Capital expenditure'} value={CAPEX_LABEL[corporate.capexDirection].text} dir={CAPEX_LABEL[corporate.capexDirection].dir} />
@@ -90,11 +90,11 @@ export default function EconomicTab({ a, simple, income, applies }: { a: FullAna
       {/* Spending: the terrain of tiles, with the heatmap that prints every category's figure as its caption. */}
       <TerrainView
         a={a}
-        title={simple ? 'What gets cheaper or pricier' : 'Spending Category Pressure'}
+        title={simple ? 'What gets cheaper or pricier' : 'Spending category pressure'}
         lede={simple ? CHART_DESCRIPTIONS.heatmap : 'Monthly dollar pressure per spending category — teal saves you money, amber costs more.'}
       />
 
-      <Pane title={simple ? 'The bottom line for you' : 'Personal Financial Data'}>
+      <Pane title={simple ? 'The bottom line for you' : 'Personal financial data'}>
         <div className="grid gap-x-8 sm:grid-cols-2">
           <div>
             <StatRow label={simple ? 'Spendable money each month' : 'Disposable income'} value={money(personal.disposableIncomeMonthly, '/mo')} positive={better(personal.disposableIncomeMonthly)} cue={personal.disposableIncomeMonthly} kind="income" />

@@ -109,7 +109,7 @@ export async function settingsReady(page: Page, { complete = true } = {}) {
   await settle(page);
 }
 
-/** The save bar (glass, holding "Save Financial Profile"). */
+/** The save bar (glass, holding "Save financial profile"). */
 export const saveBar = (page: Page) => page.locator('main#main [data-settings-overlay]');
 
 /**

@@ -1,4 +1,4 @@
-import { ExternalLink, ShieldAlert, ShieldCheck } from 'lucide-react';
+import { ExternalLink, Info, ShieldCheck } from 'lucide-react';
 import { formatRecordDate } from '@/lib/recordDate';
 import type { PolicyRecord } from '@/types';
 
@@ -12,7 +12,8 @@ const SOURCE_LABEL: Record<string, string> = {
  * action, when it was captured and a link), or a clear note that it wasn't
  * verified. With snapshotLabel the latest action is labelled as the status
  * when the analysis was made, since an analysis keeps the record it was based on.
- * The record's shield is archive gold, the colour kept for official records.
+ * The record's shield is archive gold, the colour kept for official records;
+ * the unverified note is neutral ink (a note on the source, not a warning).
  * Dates print the same on the server and in any time zone.
  */
 export default function PolicyProvenance({ record, compact = false, snapshotLabel = false }: {
@@ -20,8 +21,8 @@ export default function PolicyProvenance({ record, compact = false, snapshotLabe
 }) {
   if (!record || !record.verified) {
     return (
-      <p className="flex items-start gap-1.5 text-meta text-caution">
-        <ShieldAlert className="w-3.5 h-3.5 flex-shrink-0 mt-px" aria-hidden />
+      <p className="flex items-start gap-1.5 text-meta text-muted">
+        <Info className="w-3.5 h-3.5 flex-shrink-0 mt-px" aria-hidden />
         <span>Not verified against an official source{compact ? '' : ' — details may be incomplete or out of date. Check the official record before relying on it.'}</span>
       </p>
     );

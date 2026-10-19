@@ -108,7 +108,7 @@ export default function AdvisorChamber() {
         }, 0);
       });
     } else {
-      showToast('Could not delete the conversation. Please try again.', 'error');
+      showToast('We couldn’t delete the conversation. Please try again.', 'error');
     }
   };
 
@@ -150,13 +150,11 @@ export default function AdvisorChamber() {
   const conversationList = (
     <ConversationList sessions={chat.sessions} loading={chat.sessionsLoading} activeId={chat.activeSessionId} onOpen={openSession} onDelete={askDelete} />
   );
-  const railHint = 'Drag a policy onto the light, or choose Ask about this policy.';
+  const railHint = 'Drag a policy onto the light, or choose “Ask about this policy”.';
 
   return (
-    // The night shell (AppShell night) is exactly the screen, and the light field
-    // softens a night section's edge, so the day paper would show as a thin grey
-    // frame round the screen; this box asks for night past its edges ("bleed").
-    <div data-scene-night="bleed" className="flex min-h-0 flex-1 flex-col">
+    // The night shell (AppShell night) asks the stage for night past the screen's edges ("bleed").
+    <div className="flex min-h-0 flex-1 flex-col">
       {/* Room for the floating navigation bar. */}
       <div aria-hidden="true" className="h-[4.75rem] flex-shrink-0 sm:h-20" />
       <div className="relative flex min-h-0 flex-1">
@@ -170,7 +168,7 @@ export default function AdvisorChamber() {
           {/* Full width while the panel opens and closes, so nothing reflows. */}
           <div className="flex h-full w-[16.5rem] flex-col">
             <div className={PANEL_HEADER}>
-              <h2 id={historyTitleId} className="flex-1 font-display text-base font-medium text-ink">Chat History</h2>
+              <h2 id={historyTitleId} className="flex-1 font-display text-base font-medium text-ink">Chat history</h2>
               {newConversationButton}
             </div>
             <div className="min-h-0 flex-1 overflow-y-auto p-2" aria-busy={chat.sessionsLoading || undefined}>
@@ -326,7 +324,7 @@ export default function AdvisorChamber() {
         open={historySheet}
         onClose={closeHistorySheet}
         titleId={historySheetTitleId}
-        title="Chat History"
+        title="Chat history"
         closeLabel="Close chat history"
         returnFocusRef={historySheetButtonRef}
         hideFrom="md"
@@ -340,7 +338,7 @@ export default function AdvisorChamber() {
         onClose={closeRailSheet}
         titleId={railSheetTitleId}
         title="Your policies"
-        hint="Choose Ask about this policy to ask the guide."
+        hint="Choose “Ask about this policy” to ask the guide."
         closeLabel="Close your policies"
         returnFocusRef={railSheetButtonRef}
         hideFrom="lg"

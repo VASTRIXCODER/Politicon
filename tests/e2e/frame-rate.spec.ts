@@ -72,8 +72,9 @@ test('/lab with the 3D stage at tier 1', async ({ page }) => {
   const response = await page.goto('/lab?fx=1');
   test.skip(response?.status() === 404, '/lab is not served on the production deployment');
   await expect(page.locator('html')).toHaveAttribute('data-stage', 'ready', { timeout: 45_000 });
-  // The night section: a dome, particles and the field's night mask, all live.
-  const night = page.locator('[data-scene-night]');
+  // The night section: a dome, particles and the field's night mask, all live. (The lab has a
+  // night pane in several sections now; this is the section of its own, as stage.spec.ts finds it.)
+  const night = page.locator('section[aria-labelledby="lab-night"][data-scene-night]');
   await night.scrollIntoViewIfNeeded();
   await expect(night.locator('[data-scene-view]')).toHaveAttribute('data-scene-view', 'live', { timeout: 45_000 });
   expect(await probe(page, '/lab night section (tier 1)')).toBeLessThanOrEqual(P95_BUDGET_MS);

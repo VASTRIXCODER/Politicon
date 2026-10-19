@@ -1,4 +1,5 @@
 import type { Config } from 'tailwindcss';
+import { DARK_VARIANT } from './lib/design/tokens';
 
 // Every colour is a CSS variable from styles/tokens.css (RGB channels), so one
 // class works in the light theme, the dark theme and data-night sections.
@@ -11,8 +12,10 @@ const config: Config = {
     './components/**/*.{ts,tsx}',
     './lib/**/*.{ts,tsx}',
   ],
-  // `dark:` applies to the dark theme and inside cinematic night sections.
-  darkMode: ['selector', ':is([data-theme="dark"], [data-night])'],
+  // `dark:` applies where the nearest theme zone is night, as the tokens do:
+  // the dark theme and night sections, but not a day island inside them
+  // (DARK_VARIANT, lib/design/tokens.ts).
+  darkMode: ['variant', DARK_VARIANT],
   theme: {
     extend: {
       colors: {

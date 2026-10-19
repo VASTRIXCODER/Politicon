@@ -123,7 +123,7 @@ function YearlyLedger({ a, simple }: { a: FullAnalysis; simple: boolean }) {
             </span>
           </p>
           <p className="mt-4 max-w-3xl text-meta leading-relaxed text-muted [text-wrap:pretty]">
-            Bars run from a centre line at $0 on one linear scale: the longest is {formatUSD(ledger.largest)} a year, teal to the right
+            Bars run from a center line at $0 on one linear scale: the longest is {formatUSD(ledger.largest)} a year, teal to the right
             saves you money, amber to the left costs you. Share is each line&apos;s part of all the money that moves, gains and costs
             counted together ({formatUSD(ledger.gross)} a year).
           </p>

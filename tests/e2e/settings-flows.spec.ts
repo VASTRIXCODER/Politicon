@@ -28,7 +28,7 @@ test.beforeEach(async ({ request }) => {
 const main = (page: Page) => page.locator('main#main');
 /** The page's toast announcements: successes politely (status), errors assertively (alert). */
 const announced = (page: Page, role: 'status' | 'alert') => page.locator(`[data-settings-toast] [role="${role}"]`);
-const income = (page: Page) => main(page).getByRole('radiogroup', { name: 'Annual Household Income' });
+const income = (page: Page) => main(page).getByRole('radiogroup', { name: 'Annual household income' });
 
 /** The focused element is `name`, its centre on screen and not under a bar or the toast. */
 async function expectFocusInView(page: Page, name: string | RegExp) {
@@ -55,7 +55,7 @@ test('saves the profile with the keyboard: the PUT, the toast, the row, and focu
 
   await income(page).getByRole('radio', { name: '$100,000 – $150,000' }).click();
   await expect(main(page).getByText('Unsaved changes', { exact: true })).toBeVisible();
-  const save = main(page).getByRole('button', { name: 'Save Financial Profile' });
+  const save = main(page).getByRole('button', { name: 'Save financial profile' });
   await save.focus();
   const put = page.waitForResponse((r) => new URL(r.url()).pathname === '/api/profile' && r.request().method() === 'PUT');
   await page.keyboard.press('Enter');
@@ -65,7 +65,7 @@ test('saves the profile with the keyboard: the PUT, the toast, the row, and focu
 
   // Focus stays on the button (busy, not disabled, while saving), and the bar stays where it was.
   await expect(save).toBeFocused();
-  await expectFocusInView(page, /^Save Financial Profile$/);
+  await expectFocusInView(page, /^Save financial profile$/);
   await expectToastClearOfBar(page);
 
   const [row] = await database.select<{ income_range: string; filing_status: string }>('user_profiles', `select=income_range,filing_status&id=eq.${userId}`);
@@ -93,8 +93,8 @@ test('discards unsaved changes: the answer reverts, and focus lands on Save, sti
   await expect(chosen).toHaveAttribute('aria-checked', 'true');
   await expect(other).toHaveAttribute('aria-checked', 'false');
   await expect(main(page).getByText('No unsaved changes')).toBeVisible();
-  await expect(main(page).getByRole('button', { name: 'Save Financial Profile' })).toBeFocused();
-  await expectFocusInView(page, /^Save Financial Profile$/);
+  await expect(main(page).getByRole('button', { name: 'Save financial profile' })).toBeFocused();
+  await expectFocusInView(page, /^Save financial profile$/);
   expect(unexpected, 'API calls nothing answered').toEqual([]);
 });
 
@@ -105,13 +105,41 @@ test('keeps the toast clear of the save bar while there are unsaved changes', as
 
   // Save, then change another answer while the success toast is still up.
   await income(page).getByRole('radio', { name: '$100,000 – $150,000' }).click();
-  await main(page).getByRole('button', { name: 'Save Financial Profile' }).click();
+  await main(page).getByRole('button', { name: 'Save financial profile' }).click();
   await expect(announced(page, 'status')).toContainText(SAVED);
   await income(page).getByRole('radio', { name: '$75,000 – $100,000' }).click();
   await expect(main(page).getByText('Unsaved changes', { exact: true })).toBeVisible();
   const discard = main(page).getByRole('button', { name: 'Discard changes' });
   await discard.focus();
   await expectFocusInView(page, /Discard changes/);
+  await expectToastClearOfBar(page);
+  expect(unexpected, 'API calls nothing answered').toEqual([]);
+});
+
+test('keeps the toast clear of the save bar once the page scrolls the bar down to the bottom edge @desktop-only', async ({ page, request }) => {
+  test.setTimeout(120_000);
+  // Incomplete, so Save answers with the error toast (the bar keeps its size, so only a scroll can move the toast).
+  const { unexpected } = await settingsAccount(page, request, { top_financial_concerns: [] });
+  await openSettings(page, '', { complete: false });
+
+  // The last answer, changed with the end of the form near the top of the screen: the save bar
+  // turns sticky in its own place, in the upper half, where it isn't in the toast's way.
+  await saveBar(page).evaluate((el) => window.scrollBy({ top: el.getBoundingClientRect().top - window.innerHeight * 0.35, behavior: 'instant' }));
+  await main(page).locator('[data-field="investments"]').getByRole('radio', { name: 'No investments' }).click();
+  await expect(main(page).getByText('Unsaved changes', { exact: true })).toBeVisible();
+  const placed = await saveBar(page).boundingBox();
+  expect(placed!.y + placed!.height / 2, 'the save bar starts in the upper half of the screen').toBeLessThan((page.viewportSize()?.height ?? 0) / 2);
+
+  // Back up the page: now the bar rides the bottom edge of the screen.
+  await page.evaluate(() => window.scrollBy({ top: -500, behavior: 'instant' }));
+  const fromBottom = async () => {
+    const b = await saveBar(page).boundingBox();
+    return b ? Math.round((page.viewportSize()?.height ?? 0) - (b.y + b.height)) : -1;
+  };
+  await expect.poll(fromBottom, { message: 'the save bar rides the bottom edge' }).toBeLessThanOrEqual(24);
+
+  await main(page).getByRole('button', { name: 'Save financial profile' }).click();
+  await expect(announced(page, 'alert')).toHaveText(INCOMPLETE);
   await expectToastClearOfBar(page);
   expect(unexpected, 'API calls nothing answered').toEqual([]);
 });
@@ -125,8 +153,8 @@ test('refuses an incomplete profile: no PUT, the toast, and focus on the first m
   });
   await openSettings(page, '', { complete: false });
 
-  await expect(saveBar(page)).toContainText('1 answer needed: Top Financial Concerns');
-  await main(page).getByRole('button', { name: 'Save Financial Profile' }).click();
+  await expect(saveBar(page)).toContainText('1 answer needed: Top financial concerns');
+  await main(page).getByRole('button', { name: 'Save financial profile' }).click();
   await expect(announced(page, 'alert')).toHaveText(INCOMPLETE);
   const concerns = main(page).locator('[data-field="topFinancialConcerns"]');
   await expect(concerns.getByRole('button').first()).toBeFocused();
@@ -149,17 +177,22 @@ test('shows an email link’s notice, cleans it from the address and lands on Ac
   expect(unexpected, 'API calls nothing answered').toEqual([]);
 });
 
-test('saves the first name to the header and the profile, focus kept on the button @desktop-only', async ({ page, request }) => {
+test('saves the first name to the header and the profile, then focus goes back to the field @desktop-only', async ({ page, request }) => {
   test.setTimeout(120_000);
   const { unexpected, database, userId } = await settingsAccount(page, request);
   await openSettings(page, '#account');
 
-  await main(page).getByLabel('First Name').fill('Robin');
-  const button = main(page).getByRole('button', { name: 'Save Changes' });
+  const field = main(page).getByLabel('First name');
+  const button = main(page).getByRole('button', { name: 'Save name' });
+  // Like "Change email" and "Update password", it waits until there's something to send.
+  await expect(button).toBeDisabled();
+  await field.fill('Robin');
   await button.focus();
   await page.keyboard.press('Enter');
-  await expect(announced(page, 'status')).toContainText('Profile updated successfully');
-  await expect(button).toBeFocused();
+  await expect(announced(page, 'status')).toContainText('Name saved.');
+  // The button waits again (the name is saved), so focus goes back to the field.
+  await expect(field).toBeFocused();
+  await expect(button).toBeDisabled();
   // The header's chip says whose settings these are.
   await expect(main(page).getByText('Signed in as').locator('..')).toContainText('Robin');
   const [row] = await database.select<{ first_name: string }>('user_profiles', `select=first_name&id=eq.${userId}`);
@@ -172,17 +205,17 @@ test('changes the password after the current one checks out, then focus goes bac
   const { unexpected } = await settingsAccount(page, request);
   await openSettings(page, '#account');
 
-  const update = main(page).getByRole('button', { name: 'Update Password' });
+  const update = main(page).getByRole('button', { name: 'Update password' });
   await expect(update).toBeDisabled();
-  await main(page).getByLabel('Current Password').fill(PASSWORD);
-  await main(page).getByLabel('New Password', { exact: true }).fill('N3w-horse-battery!');
-  await main(page).getByLabel('Confirm New Password').fill('N3w-horse-battery!');
+  await main(page).getByLabel('Current password').fill(PASSWORD);
+  await main(page).getByLabel('New password', { exact: true }).fill('N3w-horse-battery!');
+  await main(page).getByLabel('Confirm new password').fill('N3w-horse-battery!');
   await expect(main(page).getByText('Password strength: Strong')).toBeVisible();
   await update.focus();
   await page.keyboard.press('Enter');
   await expect(announced(page, 'status')).toContainText('Password updated. Other devices have been signed out.');
-  await expect(main(page).getByLabel('Current Password')).toBeFocused();
-  await expect(main(page).getByLabel('New Password', { exact: true })).toHaveValue('');
+  await expect(main(page).getByLabel('Current password')).toBeFocused();
+  await expect(main(page).getByLabel('New password', { exact: true })).toHaveValue('');
   await expect(update).toBeDisabled();
   expect(unexpected, 'API calls nothing answered').toEqual([]);
 });
@@ -192,13 +225,13 @@ test('the delete dialog’s safety catch: the typed DELETE, a wrong password, an
   const { unexpected, database, userId } = await settingsAccount(page, request);
   await openSettings(page, '#account');
 
-  const trigger = main(page).getByRole('button', { name: 'Delete Account', exact: true });
+  const trigger = main(page).getByRole('button', { name: 'Delete account', exact: true });
   await trigger.click();
   const dialog = page.getByRole('alertdialog', { name: 'Delete your account?' });
   await expect(dialog).toBeVisible();
   const confirm = dialog.getByLabel('Type DELETE to confirm');
   const password = dialog.getByLabel('Your password');
-  const go = dialog.getByRole('button', { name: 'Permanently Delete My Account' });
+  const go = dialog.getByRole('button', { name: 'Permanently delete my account' });
 
   // Nothing typed: the reason shows beside the field, which takes focus.
   await go.click();

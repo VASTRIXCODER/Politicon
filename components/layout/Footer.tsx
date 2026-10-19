@@ -5,9 +5,9 @@ import { SUPPORT_EMAIL } from '@/lib/legal';
 
 const footerLinks = {
   Product: [
-    { label: 'How It Works', href: '/#how-it-works' },
+    { label: 'How it works', href: '/#how-it-works' },
     { label: 'AI Policy Guide', href: '/advisor' },
-    { label: 'Impact Dashboard', href: '/impact' },
+    { label: 'My Impact', href: '/impact' },
   ],
   Support: [
     { label: 'Help & FAQ', href: '/help' },
@@ -97,7 +97,7 @@ export default function Footer() {
 
         <div className="mt-16 flex flex-col gap-3 border-t border-fg/8 pt-6 text-meta text-muted sm:flex-row sm:items-center sm:justify-between">
           <p>&copy; {new Date().getFullYear()} Politicon. All rights reserved.</p>
-          <p>Financial impact estimates are for informational purposes only. Not financial advice.</p>
+          <p>Impact figures are educational estimates, not financial, tax or legal advice.</p>
         </div>
       </div>
 

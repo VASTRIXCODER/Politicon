@@ -9,6 +9,7 @@ import {
   type ThemeName,
   type ThemeTokens,
 } from '@/lib/design/tokens';
+import { deltaE2000, deltaE2000Lab, isGoldHue } from './colorMath';
 
 /*
  * styles/tokens.css mirrors lib/design/tokens.ts by hand (CSS can't import
@@ -227,5 +228,46 @@ describe('category colours', () => {
   it('keeps the gold fill a gold in both themes', () => {
     expect(gold(THEMES.light.goldFill)).toBe(true);
     expect(gold(THEMES.dark.goldFill)).toBe(true);
+  });
+});
+
+// Caution (warnings, low-confidence notes) must never read as the official
+// record's archive gold, nor as a cost, nor as an error: its own terracotta,
+// a clearly different colour from each (CIEDE2000: 10 or more reads as
+// another colour at a glance; gold is kept twice that far).
+describe('caution is its own colour', () => {
+  it('measures colour difference with CIEDE2000 (Sharma, Wu & Dalal reference pairs)', () => {
+    expect(deltaE2000Lab([50, 2.6772, -79.7751], [50, 0, -82.7485])).toBeCloseTo(2.0425, 3);
+    expect(deltaE2000Lab([50, -1.3802, -84.2814], [50, 0, -82.7485])).toBeCloseTo(1.0, 3);
+    expect(deltaE2000Lab([50, 2.5, 0], [73, 25, -18])).toBeCloseTo(27.1492, 3);
+    expect(deltaE2000Lab([2.0776, 0.0795, -1.135], [0.9033, -0.0636, -0.5514])).toBeCloseTo(0.9082, 3);
+    expect(deltaE2000('#123456', '#123456')).toBe(0);
+  });
+
+  for (const theme of ['light', 'dark'] as const) {
+    const t = THEMES[theme];
+
+    it(`${theme}: caution is far from archive gold, text and fill (ΔE00 ≥ 20)`, () => {
+      for (const gold of [t.gold, t.goldFill, THEMES.light.gold, THEMES.dark.gold]) {
+        expect(deltaE2000(t.caution, gold), gold).toBeGreaterThanOrEqual(20);
+      }
+      expect(isGoldHue(t.caution), t.caution).toBe(false);
+    });
+
+    it(`${theme}: caution is distinct from the cost amber, text and fill (ΔE00 ≥ 10)`, () => {
+      expect(deltaE2000(t.caution, t.loss)).toBeGreaterThanOrEqual(10);
+      expect(deltaE2000(t.caution, t.lossFill)).toBeGreaterThanOrEqual(10);
+    });
+
+    it(`${theme}: caution is distinct from danger (ΔE00 ≥ 10)`, () => {
+      expect(deltaE2000(t.caution, t.danger)).toBeGreaterThanOrEqual(10);
+    });
+  }
+
+  it('flags the old ochre cautions as gold', () => {
+    // What caution was before: it read as the record's gold.
+    expect(deltaE2000('#7E5F07', THEMES.light.gold)).toBeLessThan(5);
+    expect(deltaE2000('#E8C35A', THEMES.dark.gold)).toBeLessThan(10);
+    expect(isGoldHue('#7E5F07')).toBe(true);
   });
 });

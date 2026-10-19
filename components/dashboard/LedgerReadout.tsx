@@ -75,7 +75,7 @@ function NetWords({ net }: { net: number }) {
 function Title({ as: Tag, id }: { as: 'h2' | 'h3'; id: string }) {
   return (
     <Tag id={id} className="font-display text-2xl font-medium text-ink sm:text-3xl">
-      Your <em>Ledger</em>
+      Your <em>ledger</em>
     </Tag>
   );
 }

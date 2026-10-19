@@ -78,10 +78,10 @@ export default function PrivacyPage() {
 
       <Section title="Your choices">
         <ul className="list-disc pl-5 space-y-2">
-          <li><strong>Download your data:</strong> Settings → Security → Download my data.</li>
-          <li><strong>Edit your profile:</strong> Settings → Financial Profile. Your feed rebuilds from the new answers.</li>
+          <li><strong>Download your data:</strong> Settings → Account → Download my data.</li>
+          <li><strong>Edit your profile:</strong> Settings → Profile. Your feed rebuilds from the new answers.</li>
           <li><strong>Delete an analysis or conversation:</strong> from its page or the conversation list.</li>
-          <li><strong>Delete your account:</strong> Settings → Security → Delete Account. This permanently removes your profile, analyses, feed and conversations, and takes your account&apos;s email address off the update list.</li>
+          <li><strong>Delete your account:</strong> Settings → Account → Delete account. This permanently removes your profile, analyses, feed and conversations, and takes your account&apos;s email address off the update list.</li>
           <li><strong>Leave the update list:</strong> email us from the address you signed up with and we&apos;ll remove it.</li>
         </ul>
         <p>Depending on where you live, you may have further rights to access, correct or delete your data. Email us and we&apos;ll respond within 30 days.</p>

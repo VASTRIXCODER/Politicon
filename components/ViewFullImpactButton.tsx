@@ -6,7 +6,9 @@ import { ExternalLink, Loader2 } from 'lucide-react';
 import Button from '@/components/ui/Button';
 import { createClient } from '@/lib/supabase/client';
 import { apiFetch } from '@/lib/api';
+import { playCue } from '@/lib/sound';
 import { cn } from '@/lib/utils';
+import { navigateWithMorph } from '@/lib/viewTransition';
 
 interface ViewFullImpactButtonProps {
   policyId: string;
@@ -31,9 +33,26 @@ const VARIANT_STYLES: Record<NonNullable<ViewFullImpactButtonProps['variant']>, 
   card: 'w-full min-h-10 gap-1.5 whitespace-nowrap px-3 py-2 text-xs',
 };
 
-// Shared "View Full Impact" link used in advisor chat bubbles, dashboard
+/** A click that asks the browser for something else: a new tab or window, a download. */
+const isModifiedClick = (e: MouseEvent) => e.button !== 0 || e.metaKey || e.ctrlKey || e.shiftKey || e.altKey;
+
+/**
+ * Opens the detail page from a click on `from`: an airy whoosh (lib/sound:
+ * silent unless sound is on) and, where the browser can, the docket card's
+ * bill sheet around `from` morphs into the page's hero (lib/viewTransition).
+ * Returns true when the morph has taken the navigation over; otherwise the
+ * caller navigates as usual.
+ */
+export function openImpact(from: Element | null, href: string, push: (_href: string) => void): boolean {
+  playCue('whoosh');
+  return navigateWithMorph(from, href, () => push(href));
+}
+
+// Shared "View full impact" link used in advisor chat bubbles, dashboard
 // feed cards, and impact page cards. It is a real link to /impact/<id>, so it
 // can be opened in a new tab; the detail page handles every state itself.
+// Opening it in this tab whooshes, and from a docket card the card's sheet
+// morphs into the page's hero (openImpact).
 //
 // On a plain click (unless `analyzed` is set):
 //   1. Look up an existing analysis for (user, policy_id) in analyzed_policies.
@@ -44,7 +63,7 @@ export default function ViewFullImpactButton({
   policyId,
   policyTitle,
   variant = 'compact',
-  label = 'View Full Impact',
+  label = 'View full impact',
   analyzed = false,
   className,
 }: ViewFullImpactButtonProps) {
@@ -52,19 +71,31 @@ export default function ViewFullImpactButton({
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const target = `/impact/${encodeURIComponent(policyId)}`;
+  const push = (href: string) => router.push(href);
+
+  // An analysis exists: the link goes straight there (the morph, where it runs, takes the click over).
+  function openAnalyzed(e: MouseEvent<HTMLAnchorElement>) {
+    if (isModifiedClick(e)) return;
+    if (openImpact(e.currentTarget, target, push)) e.preventDefault();
+  }
 
   async function handleClick(e: MouseEvent<HTMLAnchorElement>) {
     // New tab/window and other modified clicks keep the browser's default.
-    if (e.button !== 0 || e.metaKey || e.ctrlKey || e.shiftKey || e.altKey) return;
+    if (isModifiedClick(e)) return;
     e.preventDefault();
     if (loading) return;
+    // The link itself, for the morph (currentTarget is gone once the event is over).
+    const link = e.currentTarget;
+    const open = () => {
+      if (!openImpact(link, target, push)) push(target);
+    };
     setLoading(true);
     setError(null);
     try {
       const supabase = createClient();
       const { data: { user } } = await supabase.auth.getUser();
       if (!user) {
-        router.push(target);
+        open();
         return;
       }
 
@@ -83,7 +114,7 @@ export default function ViewFullImpactButton({
         // it shows progress for a running job.
         const hasResult = !!existing?.analysis_title || !!existing?.legacy;
         if (existing && (hasResult || existing.generation_status === 'pending')) {
-          router.push(target);
+          open();
           return;
         }
       } catch (err) {
@@ -93,7 +124,7 @@ export default function ViewFullImpactButton({
       // No existing analysis -> start one (it runs in the background) and open
       // the detail page, which shows progress until it's ready.
       const res = await apiFetch('/api/analyze', { body: { policyId } });
-      if (res.ok) router.push(target);
+      if (res.ok) open();
       else setError(res.message);
     } catch (err) {
       console.error('View full impact error:', err);
@@ -109,14 +140,14 @@ export default function ViewFullImpactButton({
     <span className={cn('inline-flex flex-col gap-1', variant === 'card' && 'flex-1', className)}>
       <Button
         href={target}
-        onClick={analyzed ? undefined : handleClick}
+        onClick={analyzed ? openAnalyzed : handleClick}
         aria-busy={loading || undefined}
         variant="ghost"
         size="sm"
         className={cn(TINT, VARIANT_STYLES[variant])}
         icon={loading ? <Loader2 className={`${iconSize} motion-safe:animate-spin`} /> : <ExternalLink className={iconSize} />}
       >
-        {loading ? (variant === 'chat' ? 'Preparing analysis...' : 'Loading...') : label}
+        {loading ? (variant === 'chat' ? 'Preparing analysis…' : 'Loading…') : label}
         <span className="sr-only">: {policyTitle}</span>
       </Button>
       {error && <span role="alert" className="text-meta text-danger">{error}</span>}

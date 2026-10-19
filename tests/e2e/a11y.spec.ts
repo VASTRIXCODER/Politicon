@@ -29,7 +29,16 @@ const KNOWN: Record<string, KnownIssue[]> = {};
 // (they are otherwise transparent until scrolled to, and axe skips them).
 test.use({ contextOptions: { reducedMotion: 'reduce' } });
 
-const PAGES = [...PUBLIC_PAGES, { path: MISSING_PATH, h1: NOT_FOUND_H1 }];
+// Besides the public pages and the 404: the two screens an email link opens.
+// The reset page without a recovery session (what anyone else sees: the
+// link has expired), and the confirmation page for a sign-up link (the token
+// is only used when its button is pressed, so opening it changes nothing).
+const EMAIL_LINK_PAGES = [
+  { path: '/auth/reset', h1: /link expired/i },
+  { path: '/auth/confirm?token_hash=e2e-a11y-token&type=signup', h1: /confirm your email/i },
+];
+
+const PAGES = [...PUBLIC_PAGES, ...EMAIL_LINK_PAGES, { path: MISSING_PATH, h1: NOT_FOUND_H1 }];
 
 // Both themes must pass: light is the default, dark is the saved choice
 // (lib/theme.ts applies it before first paint).

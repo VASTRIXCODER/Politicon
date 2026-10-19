@@ -66,7 +66,7 @@ export default function CityLegend() {
       title: 'The band: its category',
       body: (
         <>
-          A thin band at each tower&rsquo;s far end, in the colour of its category:{' '}
+          A thin band at each tower&rsquo;s far end, in the color of its category:{' '}
           {CATEGORIES.map((c, i) => (
             <Fragment key={c.key}>
               <span className="whitespace-nowrap">

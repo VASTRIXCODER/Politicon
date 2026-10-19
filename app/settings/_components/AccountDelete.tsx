@@ -8,7 +8,7 @@ import { AccountRow } from './AccountParts';
 import { SettingsPane } from './SettingsSection';
 
 /*
- * Account → Delete Account: a danger pane with one button. The irreversible
+ * Account → Delete account: a danger pane with one button. The irreversible
  * part (what goes, typing DELETE, the password) happens in a ConfirmDialog
  * (AccountDeleteDialog), which loads the first time the button is pointed
  * at, focused or pressed, so it stays out of the page's first load.
@@ -36,7 +36,7 @@ export default function AccountDelete({ hasPassword }: { hasPassword: boolean })
 
   return (
     <SettingsPane tone="danger">
-      <AccountRow title="Delete Account" description="Permanently delete your account and all data" tone="danger">
+      <AccountRow title="Delete account" description="Permanently delete your account and all data" tone="danger">
         <div className="flex flex-col items-start gap-3">
           <p className="text-sm leading-relaxed text-muted">
             Your analyzed policies, chat history and financial profile are deleted with it. You&apos;ll be asked to confirm.
@@ -54,7 +54,7 @@ export default function AccountDelete({ hasPassword }: { hasPassword: boolean })
             icon={<Trash2 className="h-4 w-4" />}
             className="border-danger/35 text-danger hover:border-danger/60 hover:bg-danger/5 dark:border-danger/40"
           >
-            Delete Account
+            Delete account
           </Button>
         </div>
       </AccountRow>

@@ -70,41 +70,63 @@ async function expectNoOverflowAt375(page: Page, ready: () => Promise<void>) {
 }
 
 /**
+ * Whether the focused control is covered by the floating bar (WCAG 2.4.11,
+ * Focus Not Obscured): any point of it where the bar's pill, not the
+ * control, is what's on top. Something drawn over the bar (the skip link)
+ * isn't covered. A control taller than the room under the bar only needs to
+ * show below it. Returns where it is when it's covered, null otherwise.
+ * Self-contained, as it runs in the page (page.evaluate).
+ */
+async function focusCoveredByBar(): Promise<string | null> {
+  // Two frames, so what focus moves (the skip link sliding in, a scroll into view) has landed.
+  await new Promise((done) => requestAnimationFrame(() => requestAnimationFrame(done)));
+  const el = document.activeElement as HTMLElement | null;
+  const bar = document.querySelector('nav[aria-label="Main"] > div');
+  if (!el || el === document.body || !bar || el.closest('nav')) return null;
+  const box = el.getBoundingClientRect();
+  const pill = bar.getBoundingClientRect();
+  if (box.width === 0 && box.height === 0) return null;
+  const name = (el.getAttribute('aria-label') || el.textContent || el.tagName).trim().replace(/\s+/g, ' ').slice(0, 60);
+  const where = `${name} [${Math.round(box.top)}–${Math.round(box.bottom)} under a bar ending at ${Math.round(pill.bottom)}]`;
+  if (box.height > window.innerHeight - pill.bottom - 16) return box.bottom > pill.bottom + 8 ? null : where;
+  // Where the control and the pill overlap, is the pill on top anywhere? Not counting points
+  // outside the control's rounded corners, which let what's behind them through (the skip
+  // link's do). The radius is the one drawn: a rounded-full pill computes to 9999px, but its
+  // corners are never more than half its height (or width) across.
+  const r = Math.min(parseFloat(getComputedStyle(el).borderTopRightRadius) || 0, box.height / 2, box.width / 2);
+  const outsideCorner = (x: number, y: number) => {
+    // The nearest point of the box inset by r: further than r from it is past the curve (less a pixel of anti-aliasing).
+    const cx = Math.min(Math.max(x, box.left + r), box.right - r);
+    const cy = Math.min(Math.max(y, box.top + r), box.bottom - r);
+    return r > 1 && Math.hypot(x - cx, y - cy) > r - 1;
+  };
+  const x0 = Math.max(box.left, pill.left) + 1;
+  const x1 = Math.min(box.right, pill.right) - 1;
+  const y0 = Math.max(box.top, pill.top) + 1;
+  const y1 = Math.min(box.bottom, pill.bottom) - 1;
+  if (x1 < x0 || y1 < y0) return null;
+  for (let i = 0; i <= 4; i++) {
+    for (let j = 0; j <= 2; j++) {
+      const x = x0 + ((x1 - x0) * i) / 4;
+      const y = y0 + ((y1 - y0) * j) / 2;
+      if (outsideCorner(x, y)) continue;
+      const hit = document.elementFromPoint(x, y);
+      if (hit && bar.contains(hit) && !el.contains(hit)) return where;
+    }
+  }
+  return null;
+}
+
+/**
  * Tabs through the whole page, forward and then back (backward is where a
  * control lands at the top of the viewport), and lists every focused control
- * the floating bar covers (WCAG 2.4.11, Focus Not Obscured): any point of it
- * where the bar's pill, not the control, is what's on top. Something drawn
- * over the bar (the skip link) isn't covered. A control taller than the room
- * under the bar only needs to show below it.
+ * the floating bar covers (focusCoveredByBar).
  */
 async function focusUnderTheBar(page: Page): Promise<string[]> {
   const hidden: string[] = [];
   const check = async (key: 'Tab' | 'Shift+Tab', step: number) => {
     await page.keyboard.press(key);
-    const r = await page.evaluate(() => {
-      const el = document.activeElement as HTMLElement | null;
-      const bar = document.querySelector('nav[aria-label="Main"] > div');
-      if (!el || el === document.body || !bar || el.closest('nav')) return null;
-      const box = el.getBoundingClientRect();
-      const pill = bar.getBoundingClientRect();
-      if (box.width === 0 && box.height === 0) return null;
-      const name = (el.getAttribute('aria-label') || el.textContent || el.tagName).trim().replace(/\s+/g, ' ').slice(0, 60);
-      const where = `${name} [${Math.round(box.top)}–${Math.round(box.bottom)} under a bar ending at ${Math.round(pill.bottom)}]`;
-      if (box.height > window.innerHeight - pill.bottom - 16) return box.bottom > pill.bottom + 8 ? null : where;
-      // Where the control and the pill overlap, is the pill on top anywhere?
-      const x0 = Math.max(box.left, pill.left) + 1;
-      const x1 = Math.min(box.right, pill.right) - 1;
-      const y0 = Math.max(box.top, pill.top) + 1;
-      const y1 = Math.min(box.bottom, pill.bottom) - 1;
-      if (x1 < x0 || y1 < y0) return null;
-      for (let i = 0; i <= 4; i++) {
-        for (let j = 0; j <= 2; j++) {
-          const hit = document.elementFromPoint(x0 + ((x1 - x0) * i) / 4, y0 + ((y1 - y0) * j) / 2);
-          if (hit && bar.contains(hit) && !el.contains(hit)) return where;
-        }
-      }
-      return null;
-    });
+    const r = await page.evaluate(focusCoveredByBar);
     if (r) hidden.push(`${key} #${step}: ${r}`);
   };
   await page.evaluate(() => {
@@ -141,6 +163,34 @@ test.describe('keyboard focus and the floating bar', () => {
       expect(unexpected, 'API calls nothing answered').toEqual([]);
     });
   }
+
+  // The walk's own check, held to a control it must catch: /policies' search box, a
+  // rounded-full pill (radius 9999px), scrolled up under the bar with focus on it.
+  test('the check sees a pill-shaped control under the floating bar', { tag: '@desktop-only' }, async ({ page, request }) => {
+    test.setTimeout(120_000);
+    const unexpected = await mockAi(page);
+    const database = db(request);
+    const userId = await newAccount(page, database);
+    await seedProfileAndAnalyses(database, userId);
+    await page.goto('/policies?fx=0');
+    await expect(page.locator('[data-feed-card]')).toHaveCount(FEED.length, { timeout: 30_000 });
+    await settle(page);
+    await page.setViewportSize({ width: 1280, height: 560 });
+    const search = page.getByRole('searchbox', { name: 'Search your policies' });
+    await search.focus();
+    expect(await search.evaluate((el) => getComputedStyle(el).borderTopRightRadius)).toBe('9999px');
+    // Scrolled a little first, so the bar has taken its scrolled place; then the search box's middle onto the bar's.
+    await page.evaluate(() => window.scrollBy({ top: 40, behavior: 'instant' as ScrollBehavior }));
+    await settle(page);
+    await page.evaluate(() => {
+      const box = document.getElementById('policy-search')!.getBoundingClientRect();
+      const pill = document.querySelector('nav[aria-label="Main"] > div')!.getBoundingClientRect();
+      window.scrollBy({ top: box.top + box.height / 2 - (pill.top + pill.height / 2), behavior: 'instant' as ScrollBehavior });
+    });
+    await expect(search).toBeFocused();
+    expect(await page.evaluate(focusCoveredByBar), 'the search box, under the bar, is reported').toMatch(/under a bar ending at/);
+    expect(unexpected, 'API calls nothing answered').toEqual([]);
+  });
 });
 
 for (const theme of THEMES) {

@@ -299,7 +299,7 @@ describe('LedgerReadout', () => {
     // A category of two policies is said to be a net.
     expect(html).toContain(': net, saves you $920 a year, from 2 policies');
     expect(html).toContain('View as table');
-    expect(html).toMatch(/<h2[^>]*>Your <em>Ledger<\/em><\/h2>/);
+    expect(html).toMatch(/<h2[^>]*>Your <em>ledger<\/em><\/h2>/);
   });
 
   it('shows what a category’s policies save and cost when they pull both ways', () => {

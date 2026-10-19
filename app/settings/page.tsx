@@ -135,7 +135,7 @@ export default function SettingsPage() {
     return (
       <AppShell mainClassName="flex min-h-[70vh] items-center justify-center">
         <Surface role="alert" pad="lg" className="max-w-md text-center">
-          <h1 className="mb-2 font-display text-2xl font-medium text-ink">We couldn&apos;t load your settings</h1>
+          <h1 className="mb-2 font-display text-2xl font-medium text-ink">We couldn’t load your settings</h1>
           <p className="mb-6 text-sm text-muted">Nothing has been changed. Check your connection and try again.</p>
           <Button variant="secondary" onClick={() => loadProfile()} icon={<RefreshCw className="h-4 w-4" />}>
             Try again
@@ -151,8 +151,8 @@ export default function SettingsPage() {
 
   return (
     <AppShell>
-      {/* While the profile's save bar follows the screen, the toast rises above it (viewportClearance.ts). */}
-      <div data-settings-toast="" className="contents [&>.fixed]:mb-[var(--settings-bottom-clearance,0px)]">{toast}</div>
+      {/* While the profile's save bar follows the screen, the toast rises above it (useToastClearance in ProfileSection). */}
+      <div data-settings-toast="" className="contents">{toast}</div>
 
       <PageHeader
         eyebrow="Your account"
@@ -192,7 +192,7 @@ export default function SettingsPage() {
               // Starting over belongs with the profile it rebuilds.
               <Surface pad="none" variant="outline" className="flex flex-col gap-4 px-5 py-5 sm:flex-row sm:items-center sm:justify-between sm:px-7">
                 <div>
-                  <h3 className="text-[0.9375rem] font-semibold text-ink">Re-run Onboarding</h3>
+                  <h3 className="text-[0.9375rem] font-semibold text-ink">Re-run onboarding</h3>
                   <p className="mt-1 text-sm text-muted">Walk through the full profile setup again from scratch</p>
                 </div>
                 <Button href="/onboarding" variant="ghost" size="sm" icon={<RefreshCw className="h-3.5 w-3.5" />} className="flex-shrink-0 self-start sm:self-auto">

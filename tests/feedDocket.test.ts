@@ -99,10 +99,10 @@ describe('PolicyFeedCard (the docket card)', () => {
     expect(title).toContain(`id="${labelledBy}"`);
   });
 
-  it('offers "Analyze Impact", then "Analyzing..." while it runs, and "Ask the Guide"', () => {
-    expect(text(card(VERIFIED))).toMatch(/Analyze Impact.*Ask the Guide/);
+  it('offers "Analyze impact", then "Analyzing…" while it runs, and "Ask the Policy Guide"', () => {
+    expect(text(card(VERIFIED))).toMatch(/Analyze impact.*Ask the Policy Guide/);
     const busy = card(VERIFIED, { analyzing: true });
-    expect(text(busy)).toContain('Analyzing...');
+    expect(text(busy)).toContain('Analyzing…');
     expect(busy).toMatch(/<button[^>]*disabled=""[^>]*aria-busy="true"|<button[^>]*aria-busy="true"[^>]*disabled=""/);
     expect(text(card(VERIFIED))).toContain('Not relevant to me');
   });
@@ -120,6 +120,9 @@ describe('PolicyFeedCard (the docket card)', () => {
     expect(html).not.toMatch(/class="[^"]*seal/);
     expect(text(html)).toContain('Stage not shown');
     expect(text(html)).toContain('Not verified against an official source');
+    // Said neutrally, as on the detail page: no warning colour beside the card's cost amber.
+    expect(html).toMatch(/<span class="[^"]*border-dashed border-fg\/20[^"]*text-muted"><svg[\s\S]*?<\/svg> Unverified<\/span>/);
+    expect(html).not.toMatch(/text-caution|border-caution/);
     expect(text(html)).not.toMatch(/became law|enacted/i);
     // No sheet travels a path it has no record of.
     expect(element(html, 'data-bill-path=""')).not.toMatch(/class="[^"]*sheet/);
@@ -140,7 +143,7 @@ describe('PolicyFeedCard (the docket card)', () => {
     expect(t).toMatch(/Latest action \(Sep 15, 2026\)\s*:\s*Referred to the Committee on Ways and Means\./);
   });
 
-  it('after analysis: the signed figure with words, one "Analyzed" label, and "View Full Impact"', () => {
+  it('after analysis: the signed figure with words, one "Analyzed" label, and "View full impact"', () => {
     const html = card(VERIFIED, { analyzed: true, impact: 1200 });
     const t = text(html);
     expect(t).toContain('+$1,200/yr for you');
@@ -148,8 +151,8 @@ describe('PolicyFeedCard (the docket card)', () => {
     expect(html).toMatch(/<p[^>]*text-gain[^>]*>(<svg[\s\S]*?<\/svg>)?\+\$1,200\/yr<!-- --> for you<\/p>/);
     expect(t).toContain('saves you money');
     expect(t.match(/analyzed/gi)).toHaveLength(1);
-    expect(t).toContain('View Full Impact');
-    expect(t).not.toContain('Analyze Impact');
+    expect(t).toContain('View full impact');
+    expect(t).not.toContain('Analyze impact');
 
     const cost = text(card(VERIFIED, { analyzed: true, impact: -300 }));
     expect(cost).toContain('−$300/yr for you');
@@ -216,6 +219,15 @@ describe('BillPath', () => {
 });
 
 describe('PolicyProvenance', () => {
+  it('says an unverified source in neutral ink, a note rather than a warning', () => {
+    for (const compact of [false, true]) {
+      const html = renderToString(h(PolicyProvenance, { record: UNVERIFIED.record, compact }));
+      expect(text(html)).toContain('Not verified against an official source');
+      expect(html).toContain('text-muted');
+      expect(html).not.toMatch(/text-caution|text-gold/);
+    }
+  });
+
   it('marks the official record in gold and prints dates the same in every time zone', () => {
     const html = renderToString(h(PolicyProvenance, { record: VERIFIED.record }));
     expect(html).toMatch(/text-gold/);

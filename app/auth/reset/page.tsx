@@ -80,7 +80,7 @@ export default function ResetPasswordPage() {
 
   if (status === 'not_recovery') {
     return (
-      <AuthCard eyebrow="Account recovery" title="Change your password in Settings" subtitle="You're already signed in, so change your password in Settings instead.">
+      <AuthCard eyebrow="Account recovery" title="Change your password in Settings" subtitle="You’re already signed in, so change your password in Settings instead.">
         <Button href="/settings" variant="primary" size="lg" fullWidth>
           Go to Settings
         </Button>
@@ -90,7 +90,7 @@ export default function ResetPasswordPage() {
 
   if (status === 'done') {
     return (
-      <AuthCard eyebrow="Account recovery" title="Password updated" subtitle="You're signed in. Taking you to your dashboard…">
+      <AuthCard eyebrow="Account recovery" title="Password updated" subtitle="You’re signed in. Taking you to your dashboard…">
         <p role="status" className="sr-only">Password updated.</p>
       </AuthCard>
     );

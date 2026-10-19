@@ -1,0 +1,93 @@
+/*
+ * The signed-in pages' entrance (PageEnter.tsx, used by their template.tsx):
+ * when a page arrives by a client-side navigation, its <main> rises 8px into
+ * place as it fades in, and a faint band of violet light sweeps once across
+ * the room behind the panes. Never on a first load (the server's HTML shows
+ * at once), never on '/', the marketing and auth pages, Settings or
+ * onboarding (no template: the last two open on a full-page loader).
+ *
+ * Only <main> moves: the bar, the ambient field and the 3D stage stay put,
+ * and the animation ends at full opacity (fill: backwards), so nothing is
+ * left transparent. PageEnter leaves it out under reduced motion and "Pause
+ * motion"; the rules at the end are a second guard.
+ */
+
+/* The template's wrapper adds no box of its own. */
+.root {
+  display: contents;
+}
+
+.enter :global(#main) {
+  animation: page-enter 280ms var(--ease-civic) backwards;
+}
+
+@keyframes page-enter {
+  from {
+    opacity: 0;
+    translate: 0 8px;
+  }
+}
+
+/* The sweep: over the ambient field and the 3D stage (z 0), under the page's
+   panes (z-content, 10), so it never crosses text. Decorative only. */
+.sweep {
+  position: fixed;
+  inset: 0;
+  z-index: 1;
+  overflow: hidden;
+  pointer-events: none;
+}
+
+.sweep::before {
+  content: '';
+  position: absolute;
+  inset-block: 0;
+  left: 0;
+  width: 55%;
+  background: linear-gradient(
+    100deg,
+    transparent,
+    rgb(var(--c-violet) / 0.1) 42%,
+    rgb(var(--c-glow) / 0.07) 58%,
+    transparent
+  );
+  animation: page-sweep 300ms var(--ease-civic) both;
+}
+
+@keyframes page-sweep {
+  from {
+    opacity: 0;
+    translate: -100% 0;
+  }
+  35% {
+    opacity: 1;
+  }
+  to {
+    opacity: 0;
+    translate: 190% 0;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .enter :global(#main) {
+    animation: none;
+  }
+  .sweep {
+    display: none;
+  }
+}
+
+:global(html[data-motion='paused']) .enter :global(#main) {
+  animation: none;
+}
+
+:global(html[data-motion='paused']) .sweep {
+  display: none;
+}
+
+/* Forced colours drop decorative light. */
+@media (forced-colors: active) {
+  .sweep {
+    display: none;
+  }
+}

@@ -10,7 +10,7 @@ import ThemeChoice from '@/components/ui/ThemeChoice';
 import { useMotionPaused } from '@/lib/motion';
 import { playCue, useSoundEnabled } from '@/lib/sound';
 import { cn } from '@/lib/utils';
-import { ChoiceMark, FORCED_SELECTED } from './ProfileFields';
+import { ChoiceMark } from './ProfileFields';
 import { SettingsPane } from './SettingsSection';
 
 /*
@@ -126,9 +126,10 @@ export function Switch({ checked, onCheckedChange, labelledBy, describedBy }: {
 }
 
 /**
- * Turns the interface sounds on or off. Turning them on plays one soft chime
- * to confirm it, inside the click (which is what lets the browser start
- * audio at all); turning them off is silent.
+ * Turns the interface sounds on or off. Turning them on starts the audio
+ * inside the click (setSoundEnabled: that's what lets the browser play it at
+ * all) and plays one soft chime to confirm it, a moment later if the
+ * synthesizer's chunk is still on its way; turning them off is silent.
  */
 export function setSoundEffects(next: boolean, setOn: (_on: boolean) => void) {
   setOn(next);
@@ -158,7 +159,7 @@ export default function Experience() {
           description="Light, dark, or the same as your device's setting."
           descriptionId={ids.themeHint}
         >
-          <ThemeChoice />
+          <ThemeChoice describedBy={ids.themeHint} />
         </PreferenceRow>
 
         <PreferenceRow
@@ -167,7 +168,7 @@ export default function Experience() {
           description="3D scenes and moving light. Reduced keeps them simpler on this device; Off shows still pictures instead."
           descriptionId={ids.effectsHint}
         >
-          <EffectsChoice labelledBy={ids.effects} />
+          <EffectsChoice labelledBy={ids.effects} describedBy={ids.effectsHint} />
         </PreferenceRow>
 
         <PreferenceRow
@@ -206,8 +207,9 @@ export default function Experience() {
               if (v) setReadingMode(v);
             }}
             className="grid grid-cols-1 gap-3 sm:grid-cols-2"
-            optionClassName={(selected) => tileClass(selected, cn('p-5', selected && FORCED_SELECTED))}
-            renderOption={(o, selected) => {
+            optionClassName={(selected) => tileClass(selected, 'p-5')}
+            // Each card is named by its title alone and described by its sentence (RadioGroup's ids).
+            renderOption={(o, selected, optionIds) => {
               const opt = READING_MODES.find((r) => r.value === o.value)!;
               const Icon = opt.icon;
               return (
@@ -217,8 +219,8 @@ export default function Experience() {
                     <Icon aria-hidden="true" className={cn('h-5 w-5', selected ? 'text-primary-300' : 'text-muted')} strokeWidth={1.75} />
                     <ChoiceMark on={selected} />
                   </span>
-                  <span className="mt-3 block text-sm font-semibold text-ink">{opt.label}</span>
-                  <span className="mt-1 block text-sm font-normal leading-relaxed text-muted">{opt.description}</span>
+                  <span id={optionIds.label} className="mt-3 block text-sm font-semibold text-ink">{opt.label}</span>
+                  <span id={optionIds.description} className="mt-1 block text-sm font-normal leading-relaxed text-muted">{opt.description}</span>
                 </>
               );
             }}

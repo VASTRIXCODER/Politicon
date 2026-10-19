@@ -52,7 +52,7 @@ const SEAL_LABEL: Record<string, string> = {
 };
 
 function time(t: Date | string) {
-  return new Date(t).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+  return new Date(t).toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit' });
 }
 
 export default function MessagePane({ message, sessionId, onRetry }: {

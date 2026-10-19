@@ -117,23 +117,23 @@ export const PROFILE_INCOMPLETE_MESSAGE = 'Please answer every required field be
 export const FIELD_LABELS: Record<ProfileField, string> = {
   state: 'State',
   city: 'City (optional)',
-  ageRange: 'Age Range',
-  educationStage: 'Education Level',
-  employmentStatus: 'Employment Status',
-  occupationCategory: 'Occupation Category',
-  incomeRange: 'Annual Household Income',
-  filingStatus: 'Tax Filing Status',
-  housingSituation: 'Housing Situation',
-  homeValueBand: 'Home Value (optional)',
-  debtTypes: 'Debt Types (select all that apply)',
+  ageRange: 'Age range',
+  educationStage: 'Education level',
+  employmentStatus: 'Employment status',
+  occupationCategory: 'Occupation category',
+  incomeRange: 'Annual household income',
+  filingStatus: 'Tax filing status',
+  housingSituation: 'Housing situation',
+  homeValueBand: 'Home value (optional)',
+  debtTypes: 'Debt types (select all that apply)',
   hasDependents: 'Dependents',
   dependentsCount: 'How many',
   dependentAgeBands: 'Ages (optional)',
-  topFinancialConcerns: `Top Financial Concerns (up to ${MAX_CONCERNS})`,
+  topFinancialConcerns: `Top financial concerns (up to ${MAX_CONCERNS})`,
   investments: 'Investments (optional)',
 };
 
-/** A label without its "(optional)"-style note, for lists ("State, Age Range"). */
+/** A label without its "(optional)"-style note, for lists ("State, Age range"). */
 export const fieldName = (f: ProfileField) => FIELD_LABELS[f].replace(/\s*\(.*\)$/, '');
 
 /**

@@ -374,7 +374,7 @@ export default function OnboardingPage() {
       <RadioGroup options={EDUCATION_LEVELS} value={p.educationStage} onChange={v => set('educationStage', v)} className="grid gap-2.5" />
     </Question>,
 
-    <Question key="emp" title={<>What&apos;s your <em>work situation</em>?</>}>
+    <Question key="emp" title={<>What’s your <em>work situation</em>?</>}>
       <RadioGroup options={EMPLOYMENT_STATUSES} value={p.employmentStatus} onChange={v => set('employmentStatus', v)} className="grid grid-cols-1 gap-2.5 sm:grid-cols-2" />
     </Question>,
 
@@ -390,7 +390,7 @@ export default function OnboardingPage() {
       <RadioGroup options={FILING_STATUSES} value={p.filingStatus} onChange={v => set('filingStatus', v)} className="grid gap-2.5" />
     </Question>,
 
-    <Question key="housing" title={<>What&apos;s your <em>housing situation</em>?</>}>
+    <Question key="housing" title={<>What’s your <em>housing situation</em>?</>}>
       <RadioGroup options={HOUSING_SITUATIONS} value={p.housingSituation} onChange={v => set('housingSituation', v)} className="grid grid-cols-1 gap-2.5 sm:grid-cols-2" />
       {isHomeowner(p.housingSituation) && (
         <div className={cn('mt-8', styles.enter)}>

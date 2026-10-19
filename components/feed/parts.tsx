@@ -1,4 +1,4 @@
-import { ArrowDownRight, ArrowUpRight, Minus } from 'lucide-react';
+import { ArrowDownRight, ArrowUpRight, Info, Minus } from 'lucide-react';
 import { formatUSD, impactSign, impactWords } from '@/lib/format';
 import { cn } from '@/lib/utils';
 import type { DiscoveredPolicy } from '@/types';
@@ -16,7 +16,9 @@ const SOURCE_LABEL: Record<string, string> = {
 /**
  * The card's record header: where the bill comes from and the chamber it
  * started in. A point of archive gold marks a verified official record; any
- * other policy gets an "Unverified" chip instead, never the seal.
+ * other policy gets an "Unverified" chip instead, never the seal. The chip
+ * is neutral, as on the detail page: unverified isn't wrong, and in a
+ * warning colour above the card's cost amber it would read as part of the cost.
  */
 export function RecordHeader({ policy, origin }: { policy: DiscoveredPolicy; origin: string | null }) {
   const verified = !!policy.record?.verified;
@@ -27,8 +29,8 @@ export function RecordHeader({ policy, origin }: { policy: DiscoveredPolicy; ori
       {verified ? (
         <span aria-hidden="true" data-decorative="" className={styles.seal} />
       ) : (
-        <span className="rounded-full border border-dashed border-caution/50 px-2 py-px normal-case tracking-normal text-caution">
-          Unverified
+        <span className="inline-flex items-center gap-1 rounded-full border border-dashed border-fg/20 px-2 py-px normal-case tracking-normal text-muted">
+          <Info className="h-3 w-3" aria-hidden /> Unverified
         </span>
       )}
       <span className="min-w-0 break-words">

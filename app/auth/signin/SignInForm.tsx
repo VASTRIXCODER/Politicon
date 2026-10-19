@@ -147,7 +147,7 @@ export default function SignInForm() {
         )}
 
         <Button type="submit" variant="primary" fullWidth size="lg" disabled={loading}>
-          {loading ? 'Signing in...' : 'Sign in'}
+          {loading ? 'Signing in…' : 'Sign in'}
         </Button>
       </form>
 

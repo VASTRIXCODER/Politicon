@@ -322,7 +322,7 @@ export default function LabClient() {
           </Specimen>
 
           <Specimen title="Glass material" note="Tier 2: transmission (refracts the bars). Tier 1: physical glass with a fresnel rim, no extra pass.">
-            <SceneView className="aspect-square" poster={<GlassPoster />} label="A glass knot in front of coloured bars">
+            <SceneView className="aspect-square" poster={<GlassPoster />} label="A glass knot in front of colored bars">
               <SceneCamera position={[0, 0, 3.6]} fov={30} />
               <StudioLights />
               <GlassSpecimen />

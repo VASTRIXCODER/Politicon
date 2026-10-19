@@ -24,15 +24,12 @@ export type Choice = { value: string; label: string };
 export const PREFER_NOT: Choice = { value: '', label: 'Prefer not to say' };
 
 /**
- * A chosen tile in forced colours (Windows High Contrast), which drop its
- * light, its shadow and its mark's fill: a Highlight rim (with ChoiceMark's
- * drawn dot or check) keeps the choice visible.
+ * A choice tile sized to its label; at least 44px tall, wrapping when the
+ * label is longer than the row. A chosen one keeps a Highlight rim in forced
+ * colours (tileClass), with ChoiceMark's dot or check drawn again.
  */
-export const FORCED_SELECTED = 'forced-colors:border-2 forced-colors:border-[color:Highlight]';
-
-/** A choice tile sized to its label; at least 44px tall, wrapping when the label is longer than the row. */
 const choiceClass = (selected: boolean) =>
-  tileClass(selected, cn('inline-flex w-auto max-w-full min-h-11 items-center gap-2.5 py-2.5 pl-3.5 pr-4 text-sm', selected && FORCED_SELECTED));
+  tileClass(selected, 'inline-flex w-auto max-w-full min-h-11 items-center gap-2.5 py-2.5 pl-3.5 pr-4 text-sm');
 
 const ROW = 'flex flex-wrap gap-2';
 

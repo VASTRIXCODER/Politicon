@@ -137,7 +137,8 @@ describe('AppShell', () => {
 
   it('turns the whole page to night, for the tokens and for the stage', () => {
     const html = renderToString(h(AppShell, { hideNav: true, night: true, mainClassName: 'max-w-3xl', children: 'x' }));
-    expect(html).toMatch(/^<div class="[^"]*bg-canvas[^"]*" data-night="" data-scene-night="">/);
+    // The night runs past the page's edges (a full-bleed night section).
+    expect(html).toMatch(/^<div class="[^"]*bg-canvas[^"]*" data-night="" data-scene-night="bleed">/);
     // The caller's width wins over the default column.
     expect(html).toMatch(/<main id="main" tabindex="-1" class="[^"]*max-w-3xl/);
     expect(html).not.toMatch(/<main[^>]*max-w-7xl/);

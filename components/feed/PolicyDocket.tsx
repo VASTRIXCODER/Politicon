@@ -1,8 +1,8 @@
 'use client';
 
 import { Children, isValidElement, useLayoutEffect, useRef, type ReactNode } from 'react';
+import { rustleDocket } from '@/components/feed/cues';
 import { prefersLessMotion } from '@/lib/motion';
-import { playCue } from '@/lib/sound';
 import { cn } from '@/lib/utils';
 
 export interface PolicyDocketProps {
@@ -21,9 +21,6 @@ const LAYOUT = {
 const EASE = 'cubic-bezier(.2,.7,.2,1)';
 /** Cards arriving together fan in one after another, up to this many steps. */
 const MAX_STAGGER = 6;
-/** At most one rustle in this long (typing a search re-fans the docket on every key). */
-const RUSTLE_GAP_MS = 900;
-let lastRustle = -Infinity;
 
 type Positions = Map<string, { x: number; y: number }>;
 
@@ -45,9 +42,10 @@ function measure(root: HTMLElement): Positions {
  * off the stack, one after another: FLIP with the Web Animations API,
  * transforms only, so nothing reflows mid-flight and no text is ever
  * transparent. The first cards fan in once when the docket appears. With
- * reduced motion or "Pause motion" the list simply changes. An optional
- * paper rustle accompanies a re-fan (lib/sound: off unless the visitor
- * turned sound on).
+ * reduced motion or "Pause motion" the list simply changes. A change the
+ * visitor made (a filter, a dismissal) brings an optional paper rustle,
+ * moving or not (./cues: off unless the visitor turned sound on); one the
+ * feed makes on its own stays quiet.
  *
  * The cards stay direct children (no wrappers), so each card can find its
  * neighbours when it's dismissed and move keyboard focus to one of them.
@@ -56,6 +54,8 @@ export default function PolicyDocket({ children, layout = 'stack', className }: 
   const ref = useRef<HTMLDivElement>(null);
   /** Where every card was at the last change, kept current by the ResizeObserver below. */
   const placed = useRef<Positions | null>(null);
+  /** The cards shown at the last change, by key (null until the docket first appears). */
+  const shown = useRef<string | null>(null);
   const keys = Children.toArray(children)
     .map((child) => (isValidElement(child) ? String(child.key) : ''))
     .join('|');
@@ -80,10 +80,12 @@ export default function PolicyDocket({ children, layout = 'stack', className }: 
     const before = placed.current;
     const after = measure(root);
     placed.current = after;
+    // Not on the first fan-in: only when the set of cards changes.
+    if (shown.current !== null && shown.current !== keys) rustleDocket();
+    shown.current = keys;
     if (prefersLessMotion() || typeof root.animate !== 'function') return;
 
     let entering = 0;
-    let moved = 0;
     for (const el of Array.from(root.children)) {
       if (!(el instanceof HTMLElement)) continue;
       const key = el.dataset.docketKey;
@@ -104,16 +106,10 @@ export default function PolicyDocket({ children, layout = 'stack', className }: 
       const dx = was.x - now.x;
       const dy = was.y - now.y;
       if (Math.abs(dx) < 1 && Math.abs(dy) < 1) continue;
-      moved++;
       el.animate([{ transform: `translate(${dx}px, ${dy}px)` }, { transform: 'translate(0, 0)' }], {
         duration: 520,
         easing: EASE,
       });
-    }
-    const at = performance.now();
-    if (before && (entering || moved) && at - lastRustle > RUSTLE_GAP_MS) {
-      lastRustle = at;
-      playCue('rustle');
     }
   }, [keys]);
 

@@ -38,7 +38,7 @@ export function InsightPane({ insight, loading }: InsightPaneProps) {
   return (
     <section aria-labelledby="dashboard-snapshot">
       <h2 id="dashboard-snapshot" className="mb-4 font-display text-xl font-medium text-ink">
-        Your Policy <em>Snapshot</em>
+        Your policy <em>snapshot</em>
       </h2>
       {loading ? (
         <Surface variant="glass" pad="sm" role="status">
@@ -70,15 +70,15 @@ export function GuidePane() {
         <IconTile icon={MessageSquare} size="sm" className="mt-0.5" />
         <div className="min-w-0">
           <h2 id="dashboard-guide" className="font-display text-lg font-medium text-ink">
-            Ask the AI <em>Policy Guide</em>
+            Your <em>Policy Guide</em>
           </h2>
           <p className="mt-1 text-sm leading-relaxed text-muted">
-            Get answers about how any policy affects your specific situation.
+            AI answers about how any policy affects your specific situation.
           </p>
         </div>
       </div>
       <Button href="/advisor" variant="ghost" fullWidth className="mt-5" icon={<ArrowRight className="h-4 w-4" />} iconPosition="end">
-        Start chatting
+        Ask the Policy Guide
       </Button>
     </Surface>
   );

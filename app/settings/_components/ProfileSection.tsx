@@ -1,10 +1,12 @@
 'use client';
 
 import { useEffect, useId, useMemo, useRef, useState, type ReactNode } from 'react';
-import { AlertTriangle, Check, RefreshCw, Save, Undo2 } from 'lucide-react';
+import dynamic from 'next/dynamic';
+import { Check, Info, RefreshCw, Save, Undo2 } from 'lucide-react';
 import Button from '@/components/ui/Button';
 import PageHeader from '@/components/ui/PageHeader';
 import Surface from '@/components/ui/Surface';
+import { useToastClearance } from '@/components/ui/Toast';
 import styles from '@/components/onboarding/onboarding.module.css';
 import { householdFromProfile } from '@/lib/household';
 import {
@@ -14,13 +16,17 @@ import {
 } from '@/lib/profileOptions';
 import { cn } from '@/lib/utils';
 import { ChoiceRadios, ChoiceToggles, Field, PREFER_NOT, StageIndex, StagePane } from './ProfileFields';
+import { useUnsavedChanges } from './unsavedChanges';
 import ProfileHousehold from './ProfileHousehold';
 import {
   FIELD_LABELS, PROFILE_STAGES, fieldName, householdInput, missingFields, sameAnswers, stageFields, toggleDebt, togglePick,
   type ChoiceField, type ProfileDraft, type ProfileField, type ProfileStageId,
 } from './ProfileModel';
 import { SECTION_SCROLL_MARGIN } from './SettingsSection';
-import { useBottomClearance } from './viewportClearance';
+
+// The leave-page warning loads just after the page does (nothing is unsaved
+// before the person changes something), so it stays out of the first load.
+const LeaveGuard = dynamic(() => import('./LeaveGuard'), { ssr: false, loading: () => null });
 
 /*
  * Settings → "Your household": the financial profile editor. Every answer
@@ -37,7 +43,9 @@ import { useBottomClearance } from './viewportClearance';
  * view) until the person moves on: focus leaves it, or they point, scroll or
  * touch elsewhere. While it follows the screen it's one of the bars the page
  * keeps keyboard focus clear of (viewportClearance.ts), and the page's toast
- * rises above it. No animation library: what moves here is CSS.
+ * rises above it. While there are unsaved changes, leaving the page asks
+ * first (LeaveGuard, which this section hosts for the whole page, loaded
+ * just after it). No animation library: what moves here is CSS.
  */
 
 export interface ProfileSectionProps {
@@ -131,6 +139,7 @@ export default function ProfileSection({ profile, saving, onSave, id = 'profile'
   };
   const sectionLinks = PROFILE_STAGES.map((s) => ({ id: s.id, href: `#${id}-${s.id}`, label: s.label, missing: missingIn(s.id) }));
   const dirty = !sameAnswers(draft, saved);
+  useUnsavedChanges(dirty);
 
   // The bar follows the screen while there are unsaved changes, and stays put
   // for a beat after a save or a discard, until the person moves on.
@@ -156,7 +165,7 @@ export default function ProfileSection({ profile, saving, onSave, id = 'profile'
       el?.removeEventListener('focusout', focusLeft);
     };
   }, [held]);
-  useBottomClearance(bar, stuck);
+  useToastClearance(bar, stuck);
   useEffect(() => {
     onStuckChange?.(stuck);
   }, [stuck, onStuckChange]);
@@ -228,10 +237,11 @@ export default function ProfileSection({ profile, saving, onSave, id = 'profile'
       <div className="mt-8 grid gap-5 xl:grid-cols-[minmax(0,1fr)_17rem] xl:gap-8">
         {/* The form comes first in the page's order (and Tab order); the preview and index after it, though they show above it on narrower screens. */}
         <div ref={form} className="row-start-2 min-w-0 space-y-4 xl:col-start-1 xl:row-start-1">
-          <div role="note" className="relative overflow-hidden rounded-tile border border-caution/25 bg-caution/6 py-3.5 pl-5 pr-4">
-            <span aria-hidden="true" className="absolute inset-y-0 left-0 w-1 bg-caution" />
+          {/* A note, not a warning: violet ink, as on the detail page (caution is kept for answers that are missing). */}
+          <div role="note" className="relative overflow-hidden rounded-tile border border-primary/25 bg-primary/[0.06] py-3.5 pl-5 pr-4">
+            <span aria-hidden="true" className="absolute inset-y-0 left-0 w-1 bg-primary" />
             <p className="flex gap-3 text-sm leading-relaxed text-ink">
-              <AlertTriangle className="mt-0.5 h-4 w-4 flex-shrink-0 text-caution" aria-hidden="true" />
+              <Info className="mt-0.5 h-4 w-4 flex-shrink-0 text-primary-300" aria-hidden="true" />
               <span>Changes here directly affect how the AI calculates your policy impact. Keep this accurate for best results.</span>
             </p>
           </div>
@@ -246,7 +256,7 @@ export default function ProfileSection({ profile, saving, onSave, id = 'profile'
                 aria-describedby={joinIds(needs('state') && neededId('state'))}
                 className={INPUT}
               >
-                <option value="">— Select —</option>
+                <option value="">Select…</option>
                 {US_STATES.map((s) => <option key={s} value={s}>{s}</option>)}
               </select>
             </Field>
@@ -433,12 +443,13 @@ export default function ProfileSection({ profile, saving, onSave, id = 'profile'
                 icon={saving ? <RefreshCw className="h-4 w-4 animate-spin" /> : <Save className="h-4 w-4" />}
                 className="px-5 py-2.5 max-sm:flex-1"
               >
-                {saving ? 'Saving…' : 'Save Financial Profile'}
+                {saving ? 'Saving…' : 'Save financial profile'}
               </Button>
             </div>
           </Surface>
 
           {footer}
+          <LeaveGuard />
         </div>
 
         {/* Above the form on narrower screens; beside it on wide ones, staying in view while it scrolls. */}

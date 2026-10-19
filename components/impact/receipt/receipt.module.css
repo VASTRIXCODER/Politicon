@@ -61,7 +61,7 @@
 }
 :global([data-theme='dark']) .lift,
 :global([data-night]) .lift {
-  filter: drop-shadow(0 22px 30px rgb(0 0 0 / 0.5)) drop-shadow(0 0 26px rgb(143 117 255 / 0.16));
+  filter: drop-shadow(0 22px 30px rgb(0 0 0 / 0.5)) drop-shadow(0 0 26px rgb(var(--c-violet) / 0.16));
 }
 
 .paper {
@@ -81,7 +81,7 @@
 /* Night paper (receiptModel NIGHT_PAPER): the slot's violet light still falls on a sheet, not a panel. */
 :global([data-theme='dark']) .paper {
   background-color: rgb(42 35 54);
-  background-image: linear-gradient(to bottom, rgb(143 117 255 / 0.1), transparent 2.25rem);
+  background-image: linear-gradient(to bottom, rgb(var(--c-violet) / 0.1), transparent 2.25rem);
 }
 
 /* A row of punched holes across the paper: the perforation it tears along. */

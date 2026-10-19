@@ -47,7 +47,7 @@ export default function NotFound() {
               Error 404
             </p>
             <h1 className="font-display text-display-md font-medium text-ink">
-              We couldn&apos;t find <em>that page</em>
+              We couldn’t find <em>that page</em>
             </h1>
             <p className="mt-5 max-w-[34rem] text-base leading-relaxed text-muted sm:text-lg">
               This page got lost in committee. The link may be out of date, or the page may have moved.

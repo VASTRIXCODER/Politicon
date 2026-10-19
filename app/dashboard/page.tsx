@@ -29,7 +29,7 @@ import styles from './_components/dashboard.module.css';
 
 const DASHBOARD_TABS = [
   { id: 'analyzed', label: 'Your feed', icon: Newspaper },
-  { id: 'cumulative', label: 'Cumulative Impact', icon: Layers },
+  { id: 'cumulative', label: 'Cumulative impact', icon: Layers },
 ] as const;
 
 type DashboardTab = (typeof DASHBOARD_TABS)[number]['id'];

@@ -11,7 +11,7 @@ import { AccountRow, FIELD, FieldLabel, WAITING_SUBMIT } from './AccountParts';
 import { PASSWORD_MIN_LENGTH, passwordChangeProblem, passwordStrength, type StrengthLabel } from './settingsModel';
 
 /*
- * Account → Change Password. Re-authenticates with the current password
+ * Account → Change password. Re-authenticates with the current password
  * first (so a hijacked session can't change it), then updates it and signs
  * every other device out. Accounts that only sign in with a provider have no
  * current password to give, so they set one directly.
@@ -99,12 +99,12 @@ export default function AccountPassword({ email, hasPassword, notify }: {
         const { error: reauthError } = await supabase.auth.signInWithPassword({ email, password: currentPassword });
         if (reauthError) {
           const wrongPassword = reauthError.code === 'invalid_credentials' || reauthError.status === 400;
-          notify(wrongPassword ? 'Your current password is incorrect' : friendlyAuthError(reauthError, 'Your current password is incorrect'), 'error');
+          notify(wrongPassword ? 'Your current password is incorrect.' : friendlyAuthError(reauthError, 'Your current password is incorrect.'), 'error');
           return;
         }
       }
       const { error } = await supabase.auth.updateUser({ password: newPassword });
-      if (error) { notify(friendlyAuthError(error, 'Failed to update password'), 'error'); return; }
+      if (error) { notify(friendlyAuthError(error, 'We couldn’t update your password. Please try again.'), 'error'); return; }
       // Any other device signed in with the old password is signed out.
       await supabase.auth.signOut({ scope: 'others' });
       // The fields empty (and the button waits for new ones): focus goes back to the first.
@@ -114,18 +114,18 @@ export default function AccountPassword({ email, hasPassword, notify }: {
       setConfirmPassword('');
       notify('Password updated. Other devices have been signed out.', 'success');
     } catch (err: unknown) {
-      notify(friendlyAuthError(err, 'Failed to update password'), 'error');
+      notify(friendlyAuthError(err, 'We couldn’t update your password. Please try again.'), 'error');
     } finally {
       setLoading(false);
     }
   };
 
   return (
-    <AccountRow title="Change Password" titleId={ids.title} description="Choose a strong password you don't use elsewhere">
+    <AccountRow title="Change password" titleId={ids.title} description="Choose a strong password you don't use elsewhere">
       <div className="space-y-4">
         {hasPassword && (
           <div>
-            <FieldLabel htmlFor={ids.currentPassword}>Current Password</FieldLabel>
+            <FieldLabel htmlFor={ids.currentPassword}>Current password</FieldLabel>
             <input
               ref={firstField}
               id={ids.currentPassword}
@@ -140,7 +140,7 @@ export default function AccountPassword({ email, hasPassword, notify }: {
         )}
         <div className="grid gap-4 sm:grid-cols-2">
           <div>
-            <FieldLabel htmlFor={ids.newPassword}>New Password</FieldLabel>
+            <FieldLabel htmlFor={ids.newPassword}>New password</FieldLabel>
             <input
               ref={hasPassword ? undefined : firstField}
               id={ids.newPassword}
@@ -155,7 +155,7 @@ export default function AccountPassword({ email, hasPassword, notify }: {
             />
           </div>
           <div>
-            <FieldLabel htmlFor={ids.confirmPassword}>Confirm New Password</FieldLabel>
+            <FieldLabel htmlFor={ids.confirmPassword}>Confirm new password</FieldLabel>
             <input
               id={ids.confirmPassword}
               type="password"
@@ -186,7 +186,7 @@ export default function AccountPassword({ email, hasPassword, notify }: {
             icon={loading ? <RefreshCw className="h-4 w-4 animate-spin" /> : <Lock className="h-4 w-4" />}
             className={cn(!loading && incomplete && WAITING_SUBMIT)}
           >
-            {loading ? 'Saving…' : 'Update Password'}
+            {loading ? 'Saving…' : 'Update password'}
           </Button>
         </div>
       </div>

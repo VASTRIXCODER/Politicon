@@ -2,6 +2,9 @@ import { Clock, MessageSquare, Trash2 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import type { ChatSession } from './types';
 
+/** When a conversation was last saved, as the app writes dates: "Oct 19, 2026". */
+const savedOn = (at: string) => new Date(at).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' });
+
 /**
  * The saved conversations, newest first: open one, or delete it (the page
  * asks first). Shared by the side panel (tablets and up) and the bottom
@@ -26,7 +29,7 @@ export default function ConversationList({ sessions, loading, activeId, onOpen, 
     return (
       <div className="p-4 text-center">
         <MessageSquare className="mx-auto mb-2 h-6 w-6 text-muted" aria-hidden="true" />
-        <p className="text-xs text-muted">No conversations yet. Start chatting!</p>
+        <p className="text-xs text-muted">No conversations yet. Your first question starts one.</p>
       </div>
     );
   }
@@ -48,7 +51,7 @@ export default function ConversationList({ sessions, loading, activeId, onOpen, 
               <span className="block truncate text-xs font-medium text-ink">{session.title}</span>
               <span className="mt-1 flex items-center gap-1">
                 <Clock className="h-2.5 w-2.5 text-muted" aria-hidden="true" />
-                <span className="text-meta text-muted">{new Date(session.updated_at || session.created_at).toLocaleDateString()}</span>
+                <span className="text-meta text-muted">{savedOn(session.updated_at || session.created_at)}</span>
               </span>
             </button>
             <button

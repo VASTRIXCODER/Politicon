@@ -7,7 +7,7 @@ import { formatUSD, impactTone } from '@/lib/format';
 import type { PolicyAnalysisRow } from './dashboardModel';
 
 /*
- * The "Cumulative Impact" view: each recent analysis as a bar on one linear
+ * The "Cumulative impact" view: each recent analysis as a bar on one linear
  * scale (the largest amount fills the track), the same amounts added up over
  * 1, 3 and 5 years, and the portfolio insight. The running totals hold each
  * yearly estimate flat; they are arithmetic, not a forecast, and the table

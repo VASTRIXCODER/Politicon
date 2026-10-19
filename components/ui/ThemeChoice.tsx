@@ -14,11 +14,19 @@ const OPTIONS = [
 /**
  * The Light / Dark / System choice, for settings. Its own module (not part of
  * the navbar's ThemeToggle), so the radio group stays out of every page's
- * first load.
+ * first load. Named "Theme"; `describedBy` links it to the visible sentence
+ * that explains the choice, read after the name.
  */
-export default function ThemeChoice({ className }: { className?: string }) {
+export default function ThemeChoice({ className, describedBy }: { className?: string; describedBy?: string }) {
   const [preference, setPreference] = useThemePreference();
   return (
-    <SegmentedControl label="Theme" value={preference} onValueChange={setPreference} options={OPTIONS} className={className} />
+    <SegmentedControl
+      label="Theme"
+      describedBy={describedBy}
+      value={preference}
+      onValueChange={setPreference}
+      options={OPTIONS}
+      className={className}
+    />
   );
 }

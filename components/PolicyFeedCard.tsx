@@ -1,6 +1,6 @@
 'use client';
 
-import { useId, useMemo, useRef, useState, type RefObject } from 'react';
+import { useEffect, useId, useMemo, useRef, useState, type RefObject } from 'react';
 import { TrendingUp, MessageSquare, Check, Loader2 } from 'lucide-react';
 import Badge from '@/components/ui/Badge';
 import Button from '@/components/ui/Button';
@@ -9,11 +9,14 @@ import Spotlight from '@/components/ui/Spotlight';
 import PolicyProvenance from '@/components/PolicyProvenance';
 import ViewFullImpactButton from '@/components/ViewFullImpactButton';
 import BillPath from '@/components/feed/BillPath';
+import { analysisLanded, rustleDocket } from '@/components/feed/cues';
 import { ImpactChip, ReasonChips, RecordHeader, RelevanceMeter } from '@/components/feed/parts';
 import { useSheetTilt } from '@/components/feed/useSheetTilt';
 import styles from '@/components/feed/docket.module.css';
 import { billPath } from '@/lib/billPath';
+import { playCue } from '@/lib/sound';
 import { cn } from '@/lib/utils';
+import { morphSource } from '@/lib/viewTransition';
 import type { DiscoveredPolicy } from '@/types';
 
 type FeedPolicy = DiscoveredPolicy;
@@ -29,7 +32,11 @@ const TINT = 'bg-primary/10 hover:bg-primary/20 border-primary/25 text-primary-3
  * user's own estimate once analysed, and its actions.
  *
  * Under a mouse the sheet tilts a little and a light follows the pointer;
- * touch screens, reduced motion and "Pause motion" keep it still.
+ * touch screens, reduced motion and "Pause motion" keep it still. "View full
+ * impact" morphs the sheet into the detail page's hero where the browser can
+ * (lib/viewTransition). Optional sounds (silent unless the visitor turned
+ * sound on): a warm chime when the analysis this card started lands, a paper
+ * rustle as a dismissed card leaves the docket.
  */
 export default function PolicyFeedCard({ policy, analyzed, impact, onAnalyze, onAskAdvisor, onDismiss, analyzingIds, focusWhenEmptyRef }: {
   policy: FeedPolicy;
@@ -55,6 +62,13 @@ export default function PolicyFeedCard({ policy, analyzed, impact, onAnalyze, on
     [policy.record, policy.billNumber, policy.region]
   );
 
+  // The analysis this card started has landed ("Analyzed" appears): a warm chime.
+  const wasAnalyzing = useRef(isAnalyzing);
+  useEffect(() => {
+    if (analysisLanded(wasAnalyzing.current, isAnalyzing, analyzed)) playCue('chime');
+    wasAnalyzing.current = isAnalyzing;
+  }, [isAnalyzing, analyzed]);
+
   async function dismiss() {
     if (dismissing) return;
     // Captured while this card is still in the list: whether it holds focus,
@@ -70,6 +84,7 @@ export default function PolicyFeedCard({ policy, analyzed, impact, onAnalyze, on
       setDismissing(false);
       return;
     }
+    rustleDocket({ deliberate: true });
     // The card is about to unmount. Keep keyboard users in place: focus the
     // next card's title (else the previous one's, else the list heading).
     if (!hadFocus) return;
@@ -81,7 +96,7 @@ export default function PolicyFeedCard({ policy, analyzed, impact, onAnalyze, on
 
   return (
     <div ref={cardRef} data-feed-card="" data-docket-key={policy.id} className={styles.card} role="article" aria-labelledby={titleId}>
-      <div ref={sheetRef} className={cn(styles.sheet, 'flex flex-col p-5 sm:p-6')}>
+      <div ref={sheetRef} {...morphSource('bill-sheet')} className={cn(styles.sheet, 'flex flex-col p-5 sm:p-6')}>
         <Spotlight />
 
         {/* The record header. */}
@@ -153,7 +168,7 @@ export default function PolicyFeedCard({ policy, analyzed, impact, onAnalyze, on
                 className={cn('min-h-10 flex-1 basis-[9.5rem] gap-1.5 whitespace-nowrap px-3 py-2 text-xs', TINT)}
                 icon={isAnalyzing ? <Loader2 className="h-3 w-3 motion-safe:animate-spin" /> : <TrendingUp className="h-3 w-3" />}
               >
-                {isAnalyzing ? 'Analyzing...' : 'Analyze Impact'}
+                {isAnalyzing ? 'Analyzing…' : 'Analyze impact'}
               </Button>
             )}
             <Button
@@ -164,7 +179,7 @@ export default function PolicyFeedCard({ policy, analyzed, impact, onAnalyze, on
               className="min-h-10 flex-1 basis-[9.5rem] gap-1.5 whitespace-nowrap px-3 py-2 text-xs font-normal text-muted hover:text-ink"
               icon={<MessageSquare className="h-3 w-3" />}
             >
-              Ask the Guide
+              Ask the Policy Guide
             </Button>
           </div>
           <div className="mt-3 flex items-center justify-end gap-2 text-meta">
