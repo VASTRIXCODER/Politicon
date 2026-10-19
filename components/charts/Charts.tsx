@@ -226,7 +226,10 @@ export function ImpactDonut({ data, height = 300, title = 'Share of impact by ca
             isAnimationActive={animate}
             animationDuration={1000}
           >
-            {cleaned.map((d, i) => <Cell key={i} fill={d.color || p.series[i % p.series.length]} />)}
+            {/* Recharts gives every sector role="img": each one needs its own name (WCAG 1.1.1). */}
+            {cleaned.map((d, i) => (
+              <Cell key={i} fill={d.color || p.series[i % p.series.length]} aria-label={`${d.name}: ${fmtYearly(d.signed)}, ${share(d.value)} of the total`} />
+            ))}
           </Pie>
           <Tooltip content={<PaneTooltip />} isAnimationActive={animate} />
           <Legend verticalAlign="bottom" iconType="circle" formatter={legendLabel} />
@@ -352,11 +355,14 @@ export function BeforeAfterBar({ items, unit = '%', height = 260, title = 'Befor
 // ===========================================================================
 // 6. Cumulative stacked bar — combined category impacts, stacked by policy
 // ===========================================================================
-export function CumulativeStackedBar({ data, series, height = 320, title = 'Combined impact by category' }: {
+export function CumulativeStackedBar({ data, series, height = 320, title = 'Combined impact by category', colors }: {
   data: Record<string, number | string>[]; series: { key: string; name: string }[]; height?: number; title?: string;
+  /** One colour per series, cycled (default: the palette's series colours). */
+  colors?: readonly string[];
 }) {
   const animate = useChartAnimation();
   const p = useChartPalette();
+  const seriesColors = colors?.length ? colors : p.series;
   if (data.length === 0 || series.length === 0) return <EmptyChart height={height} />;
   const categories = data.map((row) => {
     const parts = series
@@ -379,7 +385,7 @@ export function CumulativeStackedBar({ data, series, height = 320, title = 'Comb
           <Tooltip cursor={{ fill: p.cursor }} content={<PaneTooltip />} isAnimationActive={animate} />
           <ReferenceLine y={0} stroke={p.zero} />
           {series.map((s, i) => (
-            <Bar key={s.key} dataKey={s.key} name={s.name} stackId="a" fill={p.series[i % p.series.length]} isAnimationActive={animate} animationDuration={1000} radius={i === series.length - 1 ? [5, 5, 0, 0] : [0, 0, 0, 0]} />
+            <Bar key={s.key} dataKey={s.key} name={s.name} stackId="a" fill={seriesColors[i % seriesColors.length]} isAnimationActive={animate} animationDuration={1000} radius={i === series.length - 1 ? [5, 5, 0, 0] : [0, 0, 0, 0]} />
           ))}
         </BarChart>
       </ResponsiveContainer>
@@ -390,11 +396,14 @@ export function CumulativeStackedBar({ data, series, height = 320, title = 'Comb
 // ===========================================================================
 // 7. Cumulative projection lines — one line per policy + a total line
 // ===========================================================================
-export function CumulativeProjectionLines({ data, series, height = 340, title = 'Projection over 1, 3 and 5 years' }: {
+export function CumulativeProjectionLines({ data, series, height = 340, title = 'Projection over 1, 3 and 5 years', colors }: {
   data: Record<string, number | string>[]; series: { key: string; name: string; total?: boolean }[]; height?: number; title?: string;
+  /** One colour per series, cycled (default: the palette's series colours); the total line is always ink. */
+  colors?: readonly string[];
 }) {
   const animate = useChartAnimation();
   const p = useChartPalette();
+  const seriesColors = colors?.length ? colors : p.series;
   if (data.length === 0 || series.length === 0) return <EmptyChart height={height} />;
   const value = (row: Record<string, number | string>, key: string) => Number(row[key]) || 0;
   const total = series.find((s) => s.total);
@@ -420,9 +429,9 @@ export function CumulativeProjectionLines({ data, series, height = 340, title = 
               type="monotone"
               dataKey={s.key}
               name={s.name}
-              stroke={s.total ? p.total : p.series[i % p.series.length]}
+              stroke={s.total ? p.total : seriesColors[i % seriesColors.length]}
               strokeWidth={s.total ? 3.5 : 2}
-              dot={{ r: s.total ? 4 : 2.5, strokeWidth: 0, fill: s.total ? p.total : p.series[i % p.series.length] }}
+              dot={{ r: s.total ? 4 : 2.5, strokeWidth: 0, fill: s.total ? p.total : seriesColors[i % seriesColors.length] }}
               isAnimationActive={animate}
               animationDuration={1200}
             />

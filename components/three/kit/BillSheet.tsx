@@ -40,6 +40,12 @@ export interface BillSheetProps {
    * (the landing film's shot 2). Default 1.
    */
   text?: () => number;
+  /**
+   * Stamp the archive-gold seal (the official record). Default true; pass
+   * false for a bill that isn't verified against an official record, since
+   * gold is only ever an official-record accent.
+   */
+  seal?: boolean;
 }
 
 const WIDTH = 0.773; // 8.5 × 11
@@ -93,7 +99,7 @@ function sealGeometry(radius: number) {
   return g;
 }
 
-export default function BillSheet({ material = 'paper', position = [0, 0, 0], rotation = [0, 0, 0], scale = 1, float = true, text }: BillSheetProps) {
+export default function BillSheet({ material = 'paper', position = [0, 0, 0], rotation = [0, 0, 0], scale = 1, float = true, text, seal = true }: BillSheetProps) {
   const palette = useScenePalette();
   const animated = useAnimated(30);
   const sway = useRef<Group>(null);
@@ -189,14 +195,16 @@ export default function BillSheet({ material = 'paper', position = [0, 0, 0], ro
         </instancedMesh>
         {/* The official record: an archive-gold seal stamped with the mark. */}
         {/* Satin rather than mirror metal, so it reads in a pale room; the mark is a deeper gold. */}
-        <group position={[WIDTH / 2 - 0.16, -HEIGHT / 2 + 0.16, THICKNESS / 2]}>
-          <mesh geometry={geo.seal}>
-            <meshStandardMaterial color={palette.gold} metalness={0.55} roughness={0.34} />
-          </mesh>
-          <mesh geometry={geo.stamp} position={[0, 0, 0.007]} scale={[0.11, 0.11, 0.06]}>
-            <meshStandardMaterial color={mixHex(palette.gold, '#5C4307', 0.45)} metalness={0.6} roughness={0.42} />
-          </mesh>
-        </group>
+        {seal && (
+          <group position={[WIDTH / 2 - 0.16, -HEIGHT / 2 + 0.16, THICKNESS / 2]}>
+            <mesh geometry={geo.seal}>
+              <meshStandardMaterial color={palette.gold} metalness={0.55} roughness={0.34} />
+            </mesh>
+            <mesh geometry={geo.stamp} position={[0, 0, 0.007]} scale={[0.11, 0.11, 0.06]}>
+              <meshStandardMaterial color={mixHex(palette.gold, '#5C4307', 0.45)} metalness={0.6} roughness={0.42} />
+            </mesh>
+          </group>
+        )}
       </group>
     </group>
   );

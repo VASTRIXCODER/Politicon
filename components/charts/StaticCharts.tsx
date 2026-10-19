@@ -10,15 +10,27 @@ type Direction = 'positive' | 'negative' | 'neutral';
 
 // ===========================================================================
 // Economic transmission waterfall — macro → corporate → personal
-// Card-based cascading layout: each tier shows its label, magnitude bar,
-// sublabel value, and an optional plain-English detail line.
+// Card-based cascading layout: each tier shows its label, its figure, a bar
+// on that tier's own linear scale from 0 (named under it, `scale`; no bar at
+// all for a figure of 0) and an optional plain-English detail line.
 // ===========================================================================
 const WATERFALL_ICONS: LucideIcon[] = [Globe, Building2, Wallet];
 
-export function TransmissionWaterfall(
-  { levels }:
-  { levels: { label: string; sublabel: string; magnitude: number; direction: Direction; detail?: string }[] }
-) {
+export interface WaterfallLevel {
+  label: string;
+  sublabel: string;
+  /** 0 … 100: the figure as a share of its scale's top (0 draws no bar). */
+  magnitude: number;
+  /** The tier's tone (its card and figure). */
+  direction: Direction;
+  /** The bar's own figure's sign (its colour); defaults to `direction`. */
+  barDirection?: Direction;
+  /** The bar's scale in words ("Bar: 0 to 1% of GDP, linear"). */
+  scale?: string;
+  detail?: string;
+}
+
+export function TransmissionWaterfall({ levels }: { levels: WaterfallLevel[] }) {
   if (!levels || levels.length === 0) {
     return (
       <div className="flex items-center justify-center py-12">
@@ -34,7 +46,8 @@ export function TransmissionWaterfall(
   const barFor = (d: Direction) =>
     d === 'positive' ? 'bg-gain-fill' : d === 'negative' ? 'bg-loss-fill' : 'bg-accent';
   const valueColor = (d: Direction) =>
-    d === 'positive' ? 'text-gain' : d === 'negative' ? 'text-loss' : 'text-secondary';
+    // No direction is ink: never the orchid accent, which reads as a meaning of its own.
+    d === 'positive' ? 'text-gain' : d === 'negative' ? 'text-loss' : 'text-text-primary';
 
   return (
     <ol className="space-y-0">
@@ -58,13 +71,20 @@ export function TransmissionWaterfall(
                 </span>
               </div>
 
-              {/* Magnitude bar (relative size only; the value is printed above) */}
-              <div className="h-2.5 rounded-full bg-fg/8 overflow-hidden mb-3" aria-hidden>
-                <div
-                  className={`h-full rounded-full transition-all duration-700 ease-out ${barFor(lvl.direction)}`}
-                  style={{ width: `${Math.max(6, Math.min(100, lvl.magnitude))}%` }}
-                />
-              </div>
+              {/* The bar (the value is printed above): linear from 0 on the scale named under it; none for 0. */}
+              {lvl.magnitude > 0 ? (
+                <div className="mb-3">
+                  <div className="h-2.5 rounded-full bg-fg/8 overflow-hidden" aria-hidden>
+                    <div
+                      className={`h-full min-w-[2px] rounded-full transition-[width] duration-700 ease-out ${barFor(lvl.barDirection ?? lvl.direction)}`}
+                      style={{ width: `${Math.min(100, lvl.magnitude)}%` }}
+                    />
+                  </div>
+                  {lvl.scale && <p className="mt-1.5 font-mono-data text-meta text-text-muted">{lvl.scale}</p>}
+                </div>
+              ) : (
+                <p className="mb-3 font-mono-data text-meta text-text-muted">No change to draw</p>
+              )}
 
               {/* Detail text */}
               {lvl.detail && (
@@ -98,8 +118,16 @@ export function TransmissionWaterfall(
 // Spending heatmap — categories tinted ledger teal (saves) or ember amber (costs more)
 // ===========================================================================
 export function SpendingHeatmap(
-  { items }:
-  { items: { category: string; dollarImpact: number; direction: Direction }[] }
+  { items, numbered = false, focus = null, onFocus }:
+  {
+    items: { category: string; dollarImpact: number; direction?: Direction; id?: string }[];
+    /** Number the cells 1 … n (to match numbers laid over a picture of the same items). */
+    numbered?: boolean;
+    /** The cell (its id) to mark as lit. */
+    focus?: string | null;
+    /** A cell pointed at (its id), or let go (null). */
+    onFocus?: (_id: string | null) => void;
+  }
 ) {
   if (!items || items.length === 0) {
     return <div className="flex items-center justify-center py-10"><p className="text-xs text-text-muted">No data to chart yet.</p></div>;
@@ -116,14 +144,23 @@ export function SpendingHeatmap(
     return 'rgb(var(--c-fg) / 0.06)';
   };
   return (
-    <ul className="grid grid-cols-2 sm:grid-cols-3 gap-3 [--heat:0.12] dark:[--heat:0.35]">
-      {items.map((it) => (
+    <ul className="grid grid-cols-2 sm:grid-cols-3 gap-3 [--heat:0.12] dark:[--heat:0.35]" onPointerLeave={onFocus ? () => onFocus(null) : undefined}>
+      {items.map((it, i) => (
         <li
-          key={it.category}
-          className="rounded-xl border border-fg/8 p-4 transition-all"
+          key={it.id ?? it.category}
+          onPointerEnter={onFocus ? () => onFocus(it.id ?? it.category) : undefined}
+          className={`rounded-xl border p-4 transition-[border-color,box-shadow] ${focus && focus === (it.id ?? it.category) ? 'border-primary-300/70 shadow-[0_0_0_1px_rgb(var(--c-violet)/0.35)]' : 'border-fg/8'}`}
           style={{ background: cellColor(it.dollarImpact) }}
         >
-          <p className="text-xs font-medium text-text-primary mb-1">{it.category}</p>
+          <p className="text-xs font-medium text-text-primary mb-1 flex items-start gap-1.5">
+            {numbered && (
+              // The tile's number over the picture beside it (decoration: the name and figure are here in words).
+              <span aria-hidden="true" className="mt-px flex size-4 flex-shrink-0 items-center justify-center rounded-full border border-fg/25 font-mono-data text-[0.5625rem] font-semibold leading-none">
+                {i + 1}
+              </span>
+            )}
+            <span className="min-w-0">{it.category}</span>
+          </p>
           <p className={`font-mono-data text-sm font-bold ${it.dollarImpact > 0 ? 'text-gain' : it.dollarImpact < 0 ? 'text-loss' : 'text-text-muted'}`}>
             {formatUSD(it.dollarImpact, { signed: true, suffix: '/mo' })}
           </p>

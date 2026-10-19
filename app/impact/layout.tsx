@@ -1,5 +1,4 @@
 import type { Metadata } from 'next';
-import MotionProvider from '@/components/providers/MotionProvider';
 
 // Private, signed-in pages are kept out of search results.
 export const metadata: Metadata = {
@@ -7,7 +6,11 @@ export const metadata: Metadata = {
   robots: { index: false, follow: false },
 };
 
-// The signed-in pages animate with motion/react (m.* elements); marketing pages don't load it.
+// The list's receipt and skyline and the detail page's entrances animate with
+// CSS ([policyId]/_components/detail.module.css, components/impact), so these
+// pages don't load motion/react: the one m.* element, the detail page's
+// ConfirmDialog, brings its own setup inside the lazily loaded detail view
+// (components/ui/ConfirmDialogWithMotion).
 export default function Layout({ children }: { children: React.ReactNode }) {
-  return <MotionProvider>{children}</MotionProvider>;
+  return children;
 }

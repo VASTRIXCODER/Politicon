@@ -1,0 +1,248 @@
+/*
+ * "Your Policy Receipt" (/impact): a long strip of paper that feeds out of
+ * a slim printer slot, with a row of punched perforations under its header
+ * and above its foot, a double rule over the net, a violet stamp, and a
+ * torn edge at the bottom. The paper is the theme's surface by day; in the
+ * dark theme it is its own night paper (42 35 54: a step lighter and warmer
+ * than the night surface, so it still reads as a printed strip on the dark
+ * page; receiptModel NIGHT_PAPER, every text token on it checked in
+ * tests/impactList.test.ts).
+ *
+ * The print is CSS only and only ever moves things: the strip settles from
+ * a slight tilt out of the slot, the lines drop into place one after
+ * another, a band of print-head light passes down the paper, and the stamp
+ * lands. Nothing is ever transparent, so a stalled frame still shows the
+ * whole receipt; reduced motion and "Pause motion" skip all of it (here and
+ * in app/globals.css).
+ */
+
+.stage {
+  perspective: 1600px;
+  perspective-origin: 50% 0;
+}
+
+/* The printer slot the paper feeds from: a dark bar with a violet light inside. */
+.slot {
+  position: relative;
+  z-index: 2;
+  height: 0.875rem;
+  margin-inline: -0.5rem;
+  border-radius: 999px;
+  background: linear-gradient(to bottom, rgb(var(--c-ink) / 0.92), rgb(var(--c-ink) / 0.78));
+  box-shadow:
+    inset 0 1px 0 rgb(255 255 255 / 0.12),
+    0 10px 18px -10px rgb(var(--c-ink) / 0.6);
+}
+:global([data-theme='dark']) .slot,
+:global([data-night]) .slot {
+  background: linear-gradient(to bottom, rgb(0 0 0 / 0.7), rgb(0 0 0 / 0.5));
+  box-shadow:
+    inset 0 0 0 1px rgb(var(--c-fg) / 0.1),
+    0 10px 18px -10px rgb(0 0 0 / 0.8);
+}
+.slot::after {
+  content: '';
+  position: absolute;
+  inset-inline: 1.25rem;
+  top: 50%;
+  height: 2px;
+  margin-top: -1px;
+  border-radius: 999px;
+  background: linear-gradient(90deg, transparent, rgb(var(--c-glow) / 0.95), transparent);
+  box-shadow: 0 0 10px rgb(var(--c-glow) / 0.8);
+}
+
+/* The paper's lift off the page (a filter, so it follows the torn edge). */
+.lift {
+  position: relative;
+  z-index: 1;
+  margin-top: -0.4375rem;
+  filter: drop-shadow(0 18px 24px rgb(21 18 31 / 0.12)) drop-shadow(0 2px 3px rgb(21 18 31 / 0.08));
+}
+:global([data-theme='dark']) .lift,
+:global([data-night]) .lift {
+  filter: drop-shadow(0 22px 30px rgb(0 0 0 / 0.5)) drop-shadow(0 0 26px rgb(143 117 255 / 0.16));
+}
+
+.paper {
+  --tooth: 14px;
+  --torn: 9px;
+  position: relative;
+  transform-origin: 50% 0;
+  background-color: rgb(var(--c-surface));
+  /* A faint curl where it leaves the slot. */
+  background-image: linear-gradient(to bottom, rgb(var(--c-fg) / 0.06), transparent 2.25rem);
+  padding-bottom: calc(var(--torn) + 0.5rem);
+  /* The torn bottom edge: a row of teeth cut into the paper. */
+  -webkit-mask: conic-gradient(from -45deg at bottom, #0000, #000 1deg 89deg, #0000 90deg) 50% / var(--tooth) 100%;
+  mask: conic-gradient(from -45deg at bottom, #0000, #000 1deg 89deg, #0000 90deg) 50% / var(--tooth) 100%;
+}
+
+/* Night paper (receiptModel NIGHT_PAPER): the slot's violet light still falls on a sheet, not a panel. */
+:global([data-theme='dark']) .paper {
+  background-color: rgb(42 35 54);
+  background-image: linear-gradient(to bottom, rgb(143 117 255 / 0.1), transparent 2.25rem);
+}
+
+/* A row of punched holes across the paper: the perforation it tears along. */
+.perforation {
+  height: 6px;
+  margin-inline: 0.75rem;
+  background-image: radial-gradient(circle at 50% 50%, rgb(var(--c-canvas)) 2.2px, rgb(var(--c-fg) / 0.14) 2.7px, transparent 3.2px);
+  background-size: 11px 6px;
+  background-repeat: repeat-x;
+  background-position: center;
+}
+
+/* A dotted rule between lines, as a till prints them. */
+.line + .line {
+  background-image: linear-gradient(90deg, rgb(var(--c-fg) / 0.16) 50%, transparent 0);
+  background-size: 6px 1px;
+  background-repeat: repeat-x;
+  background-position: 0 0;
+}
+
+.line {
+  transition: background-color 200ms cubic-bezier(0.2, 0.7, 0.2, 1);
+}
+.line[data-focused] {
+  background-color: rgb(var(--c-violet) / 0.06);
+}
+@media (hover: hover) {
+  .line:hover {
+    background-color: rgb(var(--c-violet) / 0.05);
+  }
+}
+
+/* A lit marker at the line's edge while its tower is lit. */
+.line[data-focused]::before {
+  content: '';
+  position: absolute;
+  left: -0.25rem;
+  top: 0.75rem;
+  bottom: 0.75rem;
+  width: 2px;
+  border-radius: 2px;
+  background: rgb(var(--c-violet));
+  box-shadow: 0 0 8px rgb(var(--c-glow) / 0.8);
+}
+
+/* Subtotals: a dotted rule above. */
+.subtotals {
+  background-image: linear-gradient(90deg, rgb(var(--c-fg) / 0.22) 50%, transparent 0);
+  background-size: 6px 1px;
+  background-repeat: repeat-x;
+  background-position: 0 0;
+}
+
+/* The foot: a double rule, then the net. */
+.net {
+  border-top: 3px double rgb(var(--c-fg) / 0.3);
+}
+
+/* The stamp: violet ink, pressed at a slant. */
+.seal {
+  transform: rotate(-9deg);
+}
+
+/* An opened line's summary unfolds a few pixels into place. */
+.unfold {
+  animation: unfold 360ms cubic-bezier(0.2, 0.7, 0.2, 1) both;
+}
+
+/* ---------------------------------------------------------------------------
+   The print (first view only). */
+
+.print .paper {
+  animation: feed 900ms cubic-bezier(0.2, 0.7, 0.2, 1) both;
+}
+.print .line,
+.print .subtotals,
+.print .net {
+  animation: drop 520ms cubic-bezier(0.2, 0.7, 0.2, 1) both;
+  animation-delay: calc(140ms + min(var(--i, 0), 14) * 55ms);
+}
+.print .seal {
+  animation: stamp 460ms cubic-bezier(0.2, 0.7, 0.2, 1) both;
+  animation-delay: calc(420ms + min(var(--i, 0), 14) * 55ms);
+}
+/* The print head's light passing down the paper. */
+.print .paper::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  background: linear-gradient(to bottom, transparent, rgb(var(--c-glow) / 0.16) 48%, rgb(var(--c-glow) / 0.26) 50%, transparent 52%) 0 0 / 100% 300% no-repeat;
+  animation: head 1200ms cubic-bezier(0.4, 0.1, 0.3, 1) both;
+}
+
+@keyframes feed {
+  from {
+    transform: translate3d(0, -1.25rem, 0) rotateX(14deg);
+  }
+  to {
+    transform: none;
+  }
+}
+@keyframes drop {
+  from {
+    transform: translate3d(0, -0.4rem, 0);
+  }
+  to {
+    transform: none;
+  }
+}
+@keyframes stamp {
+  from {
+    transform: rotate(-3deg) scale(1.28);
+  }
+  60% {
+    transform: rotate(-10deg) scale(0.96);
+  }
+  to {
+    transform: rotate(-9deg) scale(1);
+  }
+}
+@keyframes head {
+  from {
+    background-position: 0 100%;
+  }
+  to {
+    background-position: 0 0;
+    visibility: hidden;
+  }
+}
+@keyframes unfold {
+  from {
+    transform: translate3d(0, -0.375rem, 0);
+  }
+  to {
+    transform: none;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .print .paper,
+  .print .line,
+  .print .subtotals,
+  .print .net,
+  .print .seal,
+  .unfold {
+    animation: none;
+  }
+  .print .paper::after {
+    content: none;
+  }
+}
+
+:global(html[data-motion='paused']) .print .paper,
+:global(html[data-motion='paused']) .print .line,
+:global(html[data-motion='paused']) .print .subtotals,
+:global(html[data-motion='paused']) .print .net,
+:global(html[data-motion='paused']) .print .seal,
+:global(html[data-motion='paused']) .unfold {
+  animation: none;
+}
+:global(html[data-motion='paused']) .print .paper::after {
+  content: none;
+}

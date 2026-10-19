@@ -1,5 +1,4 @@
 import type { Metadata } from 'next';
-import MotionProvider from '@/components/providers/MotionProvider';
 
 // Private, signed-in pages are kept out of search results.
 export const metadata: Metadata = {
@@ -7,7 +6,10 @@ export const metadata: Metadata = {
   robots: { index: false, follow: false },
 };
 
-// The signed-in pages animate with motion/react (m.* elements); marketing pages don't load it.
+// The Chamber's panes, sheets and orb animate with CSS (components/guide), so
+// the page doesn't load motion/react: its one m.* element, the ConfirmDialog
+// for deleting a conversation, brings its own setup with its lazy chunk
+// (components/ui/ConfirmDialogWithMotion).
 export default function Layout({ children }: { children: React.ReactNode }) {
-  return <MotionProvider>{children}</MotionProvider>;
+  return children;
 }

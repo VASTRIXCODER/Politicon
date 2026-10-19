@@ -1,0 +1,30 @@
+/*
+ * The cumulative tab's one motion: each contribution bar grows out from a
+ * stub (never from nothing, so a stalled frame still shows every bar), one
+ * after another. Off under reduced motion and "Pause motion".
+ */
+
+.grow {
+  transform-origin: left center;
+  animation: grow 700ms cubic-bezier(0.2, 0.7, 0.2, 1) both;
+  animation-delay: calc(min(var(--i, 0), 8) * 50ms);
+}
+
+@keyframes grow {
+  from {
+    transform: scaleX(0.12);
+  }
+  to {
+    transform: none;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .grow {
+    animation: none;
+  }
+}
+
+:global(html[data-motion='paused']) .grow {
+  animation: none;
+}
