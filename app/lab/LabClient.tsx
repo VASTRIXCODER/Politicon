@@ -1,6 +1,7 @@
 'use client';
 
 import { lazy, useId, useState, type ReactNode } from 'react';
+import dynamic from 'next/dynamic';
 import Link from 'next/link';
 import PageHeader from '@/components/ui/PageHeader';
 import Surface from '@/components/ui/Surface';
@@ -22,6 +23,9 @@ import { MARK_PATHS, MARK_VIEWBOX } from '@/lib/brand/mark';
 import { cn } from '@/lib/utils';
 import AppLab from './AppLab';
 import FilmLab from './FilmLab';
+
+// App II's specimens (the Transmission, the receipt and skyline, the Chamber): server-rendered, off this page's first load.
+const AppTwoLab = dynamic(() => import('./AppTwoLab'));
 
 // QA-only scenes, loaded like the kit (never in this page's first load).
 const GlassSpecimen = lazy(() => import('@/components/three/lab/Specimens').then((m) => ({ default: m.GlassSpecimen })));
@@ -346,6 +350,8 @@ export default function LabClient() {
       <FilmLab />
 
       <AppLab />
+
+      <AppTwoLab />
 
       <section
         className="mt-16 rounded-pane bg-canvas px-5 py-10 sm:px-10"

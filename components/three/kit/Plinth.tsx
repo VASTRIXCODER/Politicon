@@ -28,6 +28,12 @@ export interface PlinthProps {
    * on the plinth wants a smaller one, or its box's edge cuts the pool.
    */
   shadowSpread?: number;
+  /**
+   * The drum's colour. Default: the palette's paper by night, its surface
+   * by day. A view whose subject is data (the impact page's night vitrines)
+   * passes a darker night tone, so the plinth stays quieter than the data.
+   */
+  color?: string;
 }
 
 /** Darkens a geometry toward its base (y0 → y1) through vertex colours: cheap ambient occlusion. */
@@ -117,7 +123,7 @@ function plinthProfile(radius: number, height: number): Vector2[] {
   return pts;
 }
 
-export default function Plinth({ radius = 1.2, height = 0.2, position = [0, 0, 0], shadow = 1, shadowSpread = 3.1 }: PlinthProps) {
+export default function Plinth({ radius = 1.2, height = 0.2, position = [0, 0, 0], shadow = 1, shadowSpread = 3.1, color }: PlinthProps) {
   const palette = useScenePalette();
 
   const geo = useMemo(() => {
@@ -129,8 +135,8 @@ export default function Plinth({ radius = 1.2, height = 0.2, position = [0, 0, 0
   const paper = useMemo(() => new MeshStandardMaterial({ roughness: 0.94, metalness: 0, vertexColors: true }), []);
   useEffect(() => () => paper.dispose(), [paper]);
   useEffect(() => {
-    paper.color.set(palette.night ? palette.paper : palette.surface);
-  }, [paper, palette]);
+    paper.color.set(color ?? (palette.night ? palette.paper : palette.surface));
+  }, [paper, palette, color]);
 
   // A hairline of violet set into the top, just inside the edge.
   const inlay = mixHex(palette.night ? palette.paper : palette.porcelain, palette.violet, palette.night ? 0.55 : 0.32);

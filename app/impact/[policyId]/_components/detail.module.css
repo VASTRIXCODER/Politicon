@@ -1,0 +1,128 @@
+/*
+ * The impact detail page's own CSS: the entrance, the Chambers its 3D views
+ * stand in (night vitrines on the day page), the record's archive-gold seal
+ * and the deep dive's reveal. Everything that moves here is a CSS animation
+ * or transition, so reduced motion and "Pause motion" (app/globals.css) land
+ * it at its end state at once; nothing is ever left transparent.
+ */
+
+/* A block rises a few pixels into place as the analysis arrives.
+   --rise-delay staggers the hero's parts. */
+.rise {
+  animation: rise 640ms cubic-bezier(0.2, 0.7, 0.2, 1) both;
+  animation-delay: var(--rise-delay, 0ms);
+}
+
+@keyframes rise {
+  from {
+    opacity: 0;
+    translate: 0 14px;
+  }
+  to {
+    opacity: 1;
+    translate: 0 0;
+  }
+}
+
+/* A deep-dive section opening: its figures fade down into place. */
+.reveal {
+  animation: reveal 360ms cubic-bezier(0.2, 0.7, 0.2, 1) both;
+}
+
+@keyframes reveal {
+  from {
+    opacity: 0;
+    translate: 0 -6px;
+  }
+  to {
+    opacity: 1;
+    translate: 0 0;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .rise,
+  .reveal {
+    animation: none;
+  }
+}
+
+:global(html[data-motion='paused']) .rise,
+:global(html[data-motion='paused']) .reveal {
+  animation: none;
+}
+
+/* ---------------------------------------------------------------------------
+   A Chamber: the night vitrine a 3D view stands in. Night tokens
+   (data-night), its own night canvas and aurora until the stage's light
+   field takes it over (data-scene-night-live clears the canvas, so the view
+   shows through). A hairline of light along its inner edge. */
+
+.chamber {
+  box-shadow:
+    inset 0 0 0 1px rgb(var(--c-fg) / 0.08),
+    inset 0 1px 0 rgb(var(--c-fg) / 0.1),
+    0 32px 64px -36px rgb(0 0 0 / 0.55);
+}
+
+.aurora {
+  background:
+    radial-gradient(ellipse 62% 50% at 24% -8%, rgb(var(--c-violet) / 0.3), rgb(var(--c-violet) / 0.08) 50%, transparent 78%),
+    radial-gradient(ellipse 46% 42% at 84% -10%, rgb(var(--c-glow) / 0.14), rgb(var(--c-glow) / 0.04) 52%, transparent 80%),
+    radial-gradient(ellipse 84% 34% at 50% 92%, rgb(var(--c-violet) / 0.18), rgb(var(--c-violet) / 0.04) 55%, transparent 82%);
+  transition: opacity 0.7s cubic-bezier(0.2, 0.7, 0.2, 1);
+}
+
+:global([data-scene-night-live]) .aurora {
+  opacity: 0;
+}
+
+/* The readout plate under a view: a solid night pane, so figures never sit
+   on the canvas (the glass rule: numbers on solid panes). */
+.plate {
+  background-color: rgb(var(--c-surface));
+  box-shadow:
+    inset 0 1px 0 rgb(var(--c-fg) / 0.07),
+    0 18px 36px -24px rgb(0 0 0 / 0.6);
+}
+
+/* ---------------------------------------------------------------------------
+   The official record's seal: a small embossed medallion in archive gold,
+   drawn only for a record verified against Congress.gov or Open States. */
+
+.seal {
+  position: relative;
+  display: inline-block;
+  width: 1.375rem;
+  height: 1.375rem;
+  flex-shrink: 0;
+  border-radius: 9999px;
+  background:
+    radial-gradient(circle at 35% 30%, rgb(255 255 255 / 0.45), transparent 42%),
+    radial-gradient(circle, rgb(var(--c-gold)) 0 38%, transparent 40%),
+    repeating-conic-gradient(rgb(var(--c-gold)) 0 6deg, rgb(var(--c-gold) / 0.55) 6deg 12deg);
+  box-shadow:
+    0 0 0 1px rgb(var(--c-gold) / 0.5),
+    0 0 0 4px rgb(var(--c-gold) / 0.12),
+    0 0 14px rgb(var(--c-gold) / 0.35);
+}
+
+.seal::after {
+  content: '';
+  position: absolute;
+  inset: 4px;
+  border-radius: inherit;
+  border: 1px solid rgb(var(--c-canvas) / 0.55);
+}
+
+/* The record pane: where the bill stands and where that comes from. */
+.record {
+  border: 1px solid rgb(var(--c-fg) / 0.07);
+  background: linear-gradient(to bottom, rgb(var(--c-fg) / 0.025), rgb(var(--c-fg) / 0.01));
+}
+
+@media print {
+  .aurora {
+    display: none;
+  }
+}
