@@ -1,9 +1,10 @@
 'use client';
 
-import { m, useReducedMotion } from 'motion/react';
+import { m } from 'motion/react';
 import type { ComponentPropsWithRef, ReactNode } from 'react';
 import Spotlight from '@/components/ui/Spotlight';
 import { EASE_CIVIC } from '@/components/providers/MotionProvider';
+import { useLessMotion } from '@/lib/motion';
 import { cn } from '@/lib/utils';
 
 // Plain div props. Drag/animation event handlers are left out because Motion
@@ -41,7 +42,7 @@ export default function GlassCard({
   animate = true,
   ...props
 }: GlassCardProps) {
-  const reduceMotion = useReducedMotion();
+  const reduceMotion = useLessMotion();
 
   const classes = cn(
     'relative overflow-hidden rounded-2xl',

@@ -55,7 +55,7 @@ const SECTION_DEFS = [
   { key: 'retirement', title: 'Retirement', icon: PiggyBank },
   { key: 'education', title: 'Education', icon: GraduationCap },
   { key: 'tax', title: 'Taxes', icon: Landmark },
-  { key: 'ripple', title: 'Ripple Effects', icon: Waves },
+  { key: 'ripple', title: 'Ripple effects', icon: Waves },
 ] as const;
 
 export default function DeepDiveTab({ a }: { a: FullAnalysis }) {

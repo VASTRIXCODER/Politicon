@@ -985,12 +985,12 @@ export function describeCrystal(axes: readonly CrystalAxis[]): string {
   return `A violet crystal shaped by six vulnerability scores, reaching further out where the pressure is higher: ${list(items)}. Highest: ${list(highest)}.`;
 }
 
-/** Which way the scores run, in words (the crystal's key: every label reads as a risk, "Income Stability 38" included). */
+/** Which way the scores run, in words (the crystal's key: every label reads as a risk, "Income stability 38" included). */
 export const CRYSTAL_DIRECTION = 'Higher = more at risk';
 
 /** The crystal's scale in words (for its caption): which way the scores run first, then the scale. */
 export function crystalScaleNote(): string {
-  return 'Every score is a risk score: higher means more pressure on you (more at risk), so the crystal reaches further out where you are more exposed. Each point reaches out along its axis as far as the score, on a linear scale from 0 at the centre to 100 at the outer ring; the guide rings mark 25, 50 and 75.';
+  return 'Every score is a risk score: higher means more pressure on you (more at risk), so the crystal reaches further out where you are more exposed. Each point reaches out along its axis as far as the score, on a linear scale from 0 at the center to 100 at the outer ring; the guide rings mark 25, 50 and 75.';
 }
 
 /**

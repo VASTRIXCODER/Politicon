@@ -1,6 +1,7 @@
 'use client';
 
 import { useRef, useState, type KeyboardEvent, type ReactNode } from 'react';
+import { playCue } from '@/lib/sound';
 import { cn } from '@/lib/utils';
 
 export interface SegmentedOption<T extends string> {
@@ -22,10 +23,28 @@ export interface SegmentedControlProps<T extends string> {
   label?: string;
   /** id of a visible label that names the group. */
   labelledBy?: string;
+  /** id(s) of visible text that says more about the choice (a hint): the group's aria-describedby. */
+  describedBy?: string;
   size?: 'sm' | 'md';
   /** Stretch to the container's width (segments share it equally either way). */
   fullWidth?: boolean;
   className?: string;
+}
+
+/**
+ * Picks option `index`, unless it's disabled or already picked: a soft tick
+ * (lib/sound: silent unless the visitor turned sound on), then onValueChange.
+ */
+export function pickSegment<T extends string>(
+  options: readonly SegmentedOption<T>[],
+  index: number,
+  value: T | undefined,
+  onValueChange: (_value: T) => void
+) {
+  const option = options[index];
+  if (!option || option.disabled || option.value === value) return;
+  playCue('tick');
+  onValueChange(option.value);
 }
 
 const sizes = {
@@ -44,6 +63,8 @@ const sizes = {
  * and select, Home/End jump to the ends, disabled options are skipped. The
  * selection thumb is a CSS transform, so it needs no layout animation, and
  * it only glides once the control has been used (no slide on page load).
+ * A change plays a soft tick (silent unless sound is on). `describedBy`
+ * links the group to a visible hint, read after its name.
  */
 export default function SegmentedControl<T extends string>({
   options,
@@ -51,6 +72,7 @@ export default function SegmentedControl<T extends string>({
   onValueChange,
   label,
   labelledBy,
+  describedBy,
   size = 'md',
   fullWidth = false,
   className,
@@ -62,11 +84,7 @@ export default function SegmentedControl<T extends string>({
   // With nothing selected, the first enabled option takes the Tab stop.
   const tabStop = selected >= 0 && !options[selected].disabled ? selected : options.findIndex((o) => !o.disabled);
 
-  const choose = (index: number) => {
-    const option = options[index];
-    if (!option || option.disabled) return;
-    if (option.value !== value) onValueChange(option.value);
-  };
+  const choose = (index: number) => pickSegment(options, index, value, onValueChange);
 
   const onKeyDown = (e: KeyboardEvent<HTMLDivElement>) => {
     const current = refs.current.indexOf(e.target as HTMLButtonElement);
@@ -93,6 +111,7 @@ export default function SegmentedControl<T extends string>({
       role="radiogroup"
       aria-label={labelledBy ? undefined : label}
       aria-labelledby={labelledBy}
+      aria-describedby={describedBy}
       onKeyDown={onKeyDown}
       onPointerDown={() => setUsed(true)}
       className={cn(

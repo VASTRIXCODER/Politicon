@@ -1,5 +1,5 @@
 import AxeBuilder from '@axe-core/playwright';
-import type { APIRequestContext, Page, Route, TestInfo } from '@playwright/test';
+import type { APIRequestContext, Locator, Page, Route, TestInfo } from '@playwright/test';
 import { ANALYSIS_SCHEMA_VERSION, coerceFullAnalysis } from '@/lib/analysisSchema';
 import { classifyGuardrail, GUARDRAIL_REPLIES } from '@/lib/guardrails';
 import type { FullAnalysis } from '@/types';
@@ -32,7 +32,7 @@ const THEMES = ['light', 'dark'] as const;
 type Theme = (typeof THEMES)[number];
 
 /** The detail page's tabs, by their accessible names (app/impact/[policyId]/_components/detailModel.ts). */
-const DETAIL_TABS = ['Overview', 'Financial Breakdown', 'Timeline', 'Economic Context', 'Deep Dive', 'Things to Consider'];
+const DETAIL_TABS = ['Overview', 'Financial breakdown', 'Timeline', 'Economic context', 'Deep dive', 'Things to consider'];
 
 const [GAIN, COST] = FEED;
 
@@ -391,6 +391,44 @@ test.describe('App II: the Chamber reflows', () => {
     expect(box!.y + box!.height, 'composer bottom at 320×256').toBeLessThanOrEqual(256 + 1);
     await expect(page.getByText('AI-generated estimate for education', { exact: false }).last()).toBeInViewport();
     await expectNoOverflow(page, '/advisor at 320×256');
+    expect(unexpected, 'API calls nothing answered').toEqual([]);
+  });
+});
+
+/**
+ * Forced colours (Windows High Contrast) draw every border in the text
+ * colour and drop the raised pill, so the violet rim no longer marks the
+ * selected tab or the chosen reading level. There they take a 2px Highlight
+ * rim and an underline (components/ui/Tabs.tsx TAB_FORCED_COLORS,
+ * ReadingModeToggle), and the others don't.
+ */
+test.describe('App II in forced colours', () => {
+  test.beforeEach(async ({ request }) => {
+    await requireHermeticBuild(request);
+  });
+
+  test('the selected tab and the chosen reading level stand out from the rest @desktop-only', async ({ page, request }) => {
+    test.setTimeout(120_000);
+    const unexpected = await mockAi(page);
+    await signedInWithAnalyses(page, db(request));
+    await page.emulateMedia({ forcedColors: 'active', reducedMotion: 'reduce' });
+    /** The rim's width and the text's decoration: "2px underline" marks the selected one. */
+    const mark = (el: Locator) => el.evaluate((e) => `${getComputedStyle(e).borderTopWidth} ${getComputedStyle(e).textDecorationLine}`);
+
+    await page.goto(`/impact/${encodeURIComponent(GAIN.id)}?fx=0`);
+    await expect(page.getByRole('heading', { level: 1 })).toContainText(GAIN.title, { timeout: 30_000 });
+    const sections = page.getByRole('tablist', { name: 'Analysis sections' });
+    expect(await mark(sections.getByRole('tab', { selected: true }))).toBe('2px underline');
+    expect(await mark(sections.getByRole('tab', { selected: false }).first())).toBe('1px none');
+    const level = page.getByRole('group', { name: 'Reading level' }).first();
+    expect(await mark(level.getByRole('button', { pressed: true }))).toBe('2px underline');
+    expect(await mark(level.getByRole('button', { pressed: false }))).toBe('1px none');
+
+    await page.goto('/impact?fx=0');
+    await expect(page.getByRole('heading', { level: 1, name: /what it all adds up to/i })).toBeVisible({ timeout: 30_000 });
+    const views = page.getByRole('tablist', { name: 'Impact views' });
+    expect(await mark(views.getByRole('tab', { selected: true }))).toBe('2px underline');
+    expect(await mark(views.getByRole('tab', { selected: false }))).toBe('1px none');
     expect(unexpected, 'API calls nothing answered').toEqual([]);
   });
 });

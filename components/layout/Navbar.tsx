@@ -17,7 +17,7 @@ import { cn } from '@/lib/utils';
 import type { User as SupabaseUser } from '@supabase/supabase-js';
 
 const PUBLIC_LINKS = [
-  { label: 'How It Works', href: '/#how-it-works' },
+  { label: 'How it works', href: '/#how-it-works' },
   { label: 'Explorer', href: '/explorer' },
   { label: 'Help', href: '/help' },
 ];
@@ -189,7 +189,7 @@ function UserDropdown({ user, onSignOut }: { user: SupabaseUser; onSignOut: () =
             onClick={() => { close(true); onSignOut(); }}
             className={`${MENU_ITEM} text-danger hover:bg-danger/10 focus:bg-danger/10`}
           >
-            <LogOut className="h-4 w-4" aria-hidden="true" /> Sign Out
+            <LogOut className="h-4 w-4" aria-hidden="true" /> Sign out
           </button>
         </div>
       )}
@@ -330,8 +330,8 @@ export default function Navbar() {
                 <UserDropdown user={user} onSignOut={handleSignOut} />
               ) : (
                 <>
-                  <Button href="/auth/signin" variant="ghost" size="sm" className="border-transparent bg-transparent px-3 hover:border-fg/10">Sign In</Button>
-                  <Button href="/auth/signup" variant="primary" size="sm">Get Started</Button>
+                  <Button href="/auth/signin" variant="ghost" size="sm" className="border-transparent bg-transparent px-3 hover:border-fg/10">Sign in</Button>
+                  <Button href="/auth/signup" variant="primary" size="sm">Get started</Button>
                 </>
               )}
             </div>
@@ -456,13 +456,13 @@ export default function Navbar() {
                   onClick={() => { closeMobile(); void handleSignOut(); }}
                   className="flex min-h-12 w-full items-center justify-center gap-2 rounded-full border border-danger/25 text-sm text-danger transition-colors hover:bg-danger/10"
                 >
-                  <LogOut className="h-4 w-4" aria-hidden="true" /> Sign Out
+                  <LogOut className="h-4 w-4" aria-hidden="true" /> Sign out
                 </button>
               ) : (
                 <>
-                  <Button href="/auth/signin" variant="ghost" size="lg" fullWidth onClick={closeMobile}>Sign In</Button>
+                  <Button href="/auth/signin" variant="ghost" size="lg" fullWidth onClick={closeMobile}>Sign in</Button>
                   <Button href="/auth/signup" variant="primary" size="lg" fullWidth onClick={closeMobile} icon={<ArrowUpRight className="h-4 w-4" />} iconPosition="end">
-                    Get Started Free
+                    Get started free
                   </Button>
                 </>
               )}

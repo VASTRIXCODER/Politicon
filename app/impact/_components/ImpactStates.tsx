@@ -81,7 +81,7 @@ export function LoadFailed({ onRetry }: { onRetry: () => void }) {
       <EmptyState
         icon={CloudOff}
         tone="danger"
-        title="We couldn't load your analyses"
+        title="We couldn’t load your analyses"
         body="Your analyses are safe; this page just couldn't read them. Check your connection and try again."
         action={
           <Button variant="ghost" size="sm" onClick={onRetry}>

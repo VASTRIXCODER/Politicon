@@ -9,6 +9,7 @@ import {
   TAB_LABELS,
   better,
   PRIORITY_STAMP,
+  changeRow,
   costRow,
   deepDiveHeadline,
   deepDiveRows,
@@ -95,7 +96,7 @@ describe('the detail tabs', () => {
   it('keep their ids, order and labels (the journey, deep links and the keyboard tests use them)', () => {
     expect(TABS).toEqual(['overview', 'breakdown', 'timeline', 'economic', 'deepdive', 'action']);
     expect(TABS.map((t) => TAB_LABELS[t])).toEqual([
-      'Overview', 'Financial Breakdown', 'Timeline', 'Economic Context', 'Deep Dive', 'Things to Consider',
+      'Overview', 'Financial breakdown', 'Timeline', 'Economic context', 'Deep dive', 'Things to consider',
     ]);
   });
 });
@@ -161,7 +162,7 @@ describe('milestones', () => {
 describe('waterfallLevels / radarData', () => {
   it('runs macro → corporate → personal, the personal tier signed by the wallet', () => {
     const levels = waterfallLevels(analysis(), false, 60000);
-    expect(levels.map((l) => l.label)).toEqual(['Macro — Economy', expect.stringMatching(/^Corporate — /), 'Personal — Your Wallet']);
+    expect(levels.map((l) => l.label)).toEqual(['Macro — Economy', expect.stringMatching(/^Corporate — /), 'Personal — Your wallet']);
     expect(levels[2]).toMatchObject({ direction: 'positive', sublabel: '+$100/mo · +$1,200/yr' });
     const cost = waterfallLevels(analysis({ personal: { disposableIncomeMonthly: -30, disposableIncomeAnnual: -360 } }), false, 60000);
     expect(cost[2].direction).toBe('negative');
@@ -191,7 +192,7 @@ describe('waterfallLevels / radarData', () => {
   it('labels the six vulnerability scores for the reading mode', () => {
     const expert = radarData(analysis(), false);
     expect(expert).toHaveLength(6);
-    expect(expert[3]).toEqual({ dimension: 'Cost of Living Pressure', score: 70 });
+    expect(expert[3]).toEqual({ dimension: 'Cost-of-living pressure', score: 70 });
     expect(radarData(analysis(), true)[0].dimension).toBe('Will my paycheck be safe');
   });
 });
@@ -216,6 +217,32 @@ describe('deepDiveRows', () => {
     const housing = deepDiveRows(analysis(), 'housing');
     const property = housing.find((r) => r.label === 'Property value change');
     expect(property?.positive).toBe(better(analysis().housing.propertyValueChangePct));
+  });
+
+  it('says a figure that doesn’t move one way, "No change", and signs the rest with the true minus', () => {
+    const still = analysis({
+      housing: { monthlyHousingEffect: 0, propertyValueChangePct: 0, affordabilityIndexChange: 0 },
+      employment: { jobSecurityRisk: 20, wageGrowthPct: 0, benefitChangeValue: 0 },
+      retirement: { contributionLimitChange: 0, socialSecurityChange: 0, timelineImpactYears: 0 },
+      ripple: { inflationImpactPct: 0, costOfLivingChange: 0, purchasingPowerChange: 0 },
+    });
+    for (const key of ['housing', 'employment', 'retirement', 'ripple']) {
+      for (const row of deepDiveRows(still, key).filter((r) => r.label !== 'Job security risk')) {
+        expect(row, `${key}: ${row.label}`).toMatchObject({ value: 'No change' });
+        expect(row.positive, `${key}: ${row.label}`).toBeUndefined();
+      }
+    }
+    const moved = analysis({
+      housing: { monthlyHousingEffect: 0, propertyValueChangePct: -1.5, affordabilityIndexChange: -2 },
+      retirement: { contributionLimitChange: 500, socialSecurityChange: -40, timelineImpactYears: 1 },
+    });
+    const row = (key: string, label: string) => deepDiveRows(moved, key).find((r) => r.label === label);
+    expect(row('housing', 'Property value change')).toMatchObject({ value: '−1.5%', positive: false });
+    // An index with no agreed better way: signed, in ink.
+    expect(row('housing', 'Affordability index change')).toEqual({ label: 'Affordability index change', value: '−2' });
+    expect(row('retirement', 'Social Security benefits')).toMatchObject({ value: '−$40', positive: false, cue: -40, kind: 'income' });
+    expect(row('retirement', 'Retirement timeline')).toMatchObject({ value: '+1 yr', positive: false });
+    expect(changeRow('Retirement timeline', -2.5, 'plain', { way: 'down', suffix: ' yrs' })).toMatchObject({ value: '−2.5 yrs', positive: true });
   });
 
   it('has rows for every section and none for an unknown one', () => {
@@ -333,7 +360,7 @@ describe('TransmissionHeader', () => {
     expect(unverified).toContain('Unverified');
     expect(unverified).not.toContain('Official record');
     expect(unverified).not.toContain('text-gold');
-    // The chip is neutral ink, never the caution ochre (which reads as archive gold), and so is the provenance note.
+    // The chip is neutral ink, never gold or a warning colour, and so is the provenance note.
     expect(unverified).toMatch(/<span class="[^"]*border-dashed border-fg\/20[^"]*text-muted"><svg[\s\S]*?<\/svg> Unverified<\/span>/);
     expect(unverified).toContain('Stage not shown');
     expect(unverified).toContain('Not verified against an official source');
@@ -412,7 +439,7 @@ describe('the tab visuals', () => {
 
   it('prints the six vulnerability scores the crystal is shaped by, which way they run, and numbers them over the view', () => {
     const html = render(h(CrystalView, { a: analysis(), simple: false }));
-    expect(html).toContain('Cost of Living Pressure');
+    expect(html).toContain('Cost-of-living pressure');
     expect(html).toMatch(/>70<span[^>]*>\/100/);
     expect(html).toContain('higher = more at risk');
     expect(html).toContain('more pressure on you (more at risk)');
@@ -442,7 +469,7 @@ describe('DetailView and its tabs', () => {
     for (const t of TABS) expect(html).toContain(`>${TAB_LABELS[t].replace('&', '&amp;')}</button>`);
     expect(html).toContain('aria-label="Delete this analysis"');
     expect(html).toContain('Re-analyze with my current profile');
-    // The stale-profile note is violet ink, not the caution ochre (which reads as the record's gold).
+    // The stale-profile note is violet ink: a note, not a warning.
     expect(html).toMatch(/border-primary\/25 bg-primary\/\[0\.06\][^>]*>[\s\S]*?Your financial profile changed/);
     expect(html).not.toContain('bg-caution');
     expect(html).toMatch(/<h1 id="impact-title"[^>]*>Working Families Tax Credit Act<\/h1>/);
@@ -480,7 +507,7 @@ describe('DetailView and its tabs', () => {
     expect(tabs[3]).toContain('The vulnerability crystal');
     expect(tabs[3]).toContain('The spending terrain');
     expect(tabs[3]).toContain('−$12/mo');
-    expect(tabs[3]).toContain('Your Vulnerability Profile');
+    expect(tabs[3]).toContain('Your vulnerability profile');
     expect(tabs[4]).toContain('aria-expanded="true"');
     expect(tabs[5]).toContain('role="checkbox"');
     // The overview's flow states every category: no second category chart under it.

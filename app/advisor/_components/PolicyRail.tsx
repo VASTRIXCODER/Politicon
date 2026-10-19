@@ -126,7 +126,7 @@ export default function PolicyRail({ policies, loading, onAsk, onDragState, skel
     return (
       <div className="p-4 text-center">
         <Sparkles className="mx-auto mb-2 h-6 w-6 text-muted" aria-hidden="true" />
-        <p className="text-xs text-muted">No policies in your feed yet. Visit your dashboard to generate one.</p>
+        <p className="text-xs text-muted">No policies in your feed yet. Build your feed from the dashboard.</p>
       </div>
     );
   }

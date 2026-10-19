@@ -42,7 +42,7 @@ export function JargonBuster({ terms }: { terms: JargonTerm[] }) {
         className="w-full flex items-center justify-between gap-3 px-4 py-3.5 text-left rounded-[inherit] transition-colors duration-200 ease-civic hover:bg-fg/3"
       >
         <span className="flex items-center gap-2 text-sm font-medium text-text-primary">
-          <BookOpen className="w-4 h-4 text-accent" aria-hidden /> Jargon Buster
+          <BookOpen className="w-4 h-4 text-accent" aria-hidden /> Jargon buster
         </span>
         <ChevronDown
           className={cn('w-4 h-4 text-text-muted transition-transform duration-300 ease-civic motion-reduce:transition-none', open && 'rotate-180')}

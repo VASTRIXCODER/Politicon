@@ -45,7 +45,7 @@ interface Options {
  *   never land in (or be saved to) another conversation.
  * - A new conversation's first save inserts its row; a follow-up saved
  *   before that finishes waits for it and updates the same row.
- * - ?policyId= (the dashboard's "Ask the guide") prefills the question for
+ * - ?policyId= (a feed card's "Ask the Policy Guide") prefills the question for
  *   a policy in the user's own feed once the feed has loaded; ?q= (the
  *   landing page's search) prefills its question. Neither is ever sent
  *   until the user presses send.
@@ -205,7 +205,8 @@ export function useGuideConversation({ feed, feedLoading, simple, onReply }: Opt
     if (!res.ok) {
       // Shown once, not saved, and not sent back to the model. A used-up daily
       // quota resets within a day, so it gets neither a wait time nor a retry.
-      const wait = res.code === 'rate_limited' && res.retryAfter && res.retryAfter > 0 ? ` You can try again in about ${Math.ceil(res.retryAfter / 60)} min.` : '';
+      const minutes = res.code === 'rate_limited' && res.retryAfter && res.retryAfter > 0 ? Math.ceil(res.retryAfter / 60) : 0;
+      const wait = minutes ? ` You can try again in about ${minutes === 1 ? 'a minute' : `${minutes} minutes`}.` : '';
       const retryable = res.status === 0 || (res.status === 429 && res.code !== 'daily_quota') || res.status >= 500;
       setMessages(prev => [...prev, {
         id: (Date.now() + 1).toString(), role: 'assistant', local: true,
@@ -261,7 +262,7 @@ export function useGuideConversation({ feed, feedLoading, simple, onReply }: Opt
     void sendMessage(pendingRetry.text, pendingRetry.policyMeta);
   }, [pendingRetry, sendMessage]);
 
-  // Arriving with ?policyId= (e.g. "Ask the guide" on the dashboard) prefills the
+  // Arriving with ?policyId= (e.g. "Ask the Policy Guide" on a feed card) prefills the
   // question for a policy from the user's own feed. Nothing is sent until the
   // user presses send.
   useEffect(() => {

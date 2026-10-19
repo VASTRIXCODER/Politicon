@@ -16,9 +16,12 @@ import { cn } from '@/lib/utils';
  * `night` makes the page a night section in both senses: data-night flips
  * its tokens (so it reads as night in the light theme too) and
  * data-scene-night asks the stage to paint the Chamber's light behind it.
- * Until the stage has drawn (and on devices without 3D) the page shows its
- * own night canvas; app/globals.css makes that transparent once the field
- * is live (data-scene-night-live), so 3D views on the page show through.
+ * The shell is the whole page, so it asks for "bleed": the field carries
+ * the night past its edges instead of softening it inside them, and no
+ * sliver of day paper shows round the screen. Until the stage has drawn
+ * (and on devices without 3D) the page shows its own night canvas;
+ * app/globals.css makes that transparent once the field is live
+ * (data-scene-night-live), so 3D views on the page show through.
  *
  * No hooks: a server component wherever it's rendered from one.
  */
@@ -40,7 +43,7 @@ export default function AppShell({ children, mainClassName, night = false, hideN
   return (
     <div
       className={cn('relative min-h-screen', night && 'bg-canvas text-ink')}
-      {...(night ? { 'data-night': '', 'data-scene-night': '' } : {})}
+      {...(night ? { 'data-night': '', 'data-scene-night': 'bleed' } : {})}
     >
       <AmbientBackground />
       <div className="relative z-content">

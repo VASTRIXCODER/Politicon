@@ -1,6 +1,6 @@
 'use client';
 
-import { useCallback, useEffect, useRef, useState } from 'react';
+import { useCallback, useEffect, useRef, useState, type RefObject } from 'react';
 import { AlertTriangle, Check, X } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import styles from './toast.module.css';
@@ -32,6 +32,12 @@ const TONE: Record<ToastType, { rail: string; icon: string }> = {
  *
  *   const { toast, showToast } = useToast();
  *   showToast('Saved'); … return <>{toast}…</>;
+ *
+ * It sits at the bottom of the screen (the right-hand corner from tablets
+ * up), above the phone's home indicator. A page with its own bar along the
+ * bottom (a sticky save bar, a composer) keeps the toast clear of it by
+ * setting TOAST_BOTTOM_INSET_VAR on any ancestor, or with useToastClearance,
+ * so a toast never lands on the controls it's reporting on.
  */
 export function useToast() {
   const [state, setState] = useState<ToastState | null>(null);
@@ -100,8 +106,9 @@ export function useToast() {
             if (!e.currentTarget.contains(e.relatedTarget as Node | null)) setHold((h) => ({ ...h, focus: false }));
           }}
           className={cn(
+            // Its bottom offset (with the page's inset) is in toast.module.css.
             styles.toast,
-            'fixed bottom-4 left-4 right-4 z-toast flex items-start gap-3 overflow-hidden sm:bottom-6 sm:left-auto sm:right-6 sm:max-w-md',
+            'fixed left-4 right-4 z-toast flex items-start gap-3 overflow-hidden sm:left-auto sm:right-6 sm:max-w-md',
             'rounded-tile border border-fg/10 bg-raised py-3.5 pl-5 pr-3.5 text-sm font-medium text-ink shadow-lift',
             'dark:shadow-[0_24px_48px_-16px_rgb(0_0_0/0.7)]'
           )}
@@ -126,4 +133,59 @@ export function useToast() {
   );
 
   return { toast, showToast };
+}
+
+/**
+ * The room a page keeps along the bottom of the screen for its own bar, as a
+ * CSS length (custom properties inherit, so any ancestor of the toast, or
+ * <html>, can set it). The toast rises that much higher.
+ */
+export const TOAST_BOTTOM_INSET_VAR = '--toast-bottom-inset';
+
+/** Space between a bar and a toast lifted above it. */
+const CLEARANCE_GAP_PX = 8;
+
+/**
+ * While `active`, keeps the page's toast clear of `bar`, a bar along the
+ * bottom of the screen (a sticky save bar, a composer): its height, its
+ * offset from the edge and a small gap, kept up to date as it changes size
+ * and as the page scrolls (a sticky bar sits mid-screen in its own place,
+ * then rides the bottom edge once the page scrolls it there).
+ */
+export function useToastClearance(bar: RefObject<HTMLElement | null>, active = true) {
+  useEffect(() => {
+    const el = bar.current;
+    if (!active || !el) return;
+    const root = document.documentElement;
+    const measure = () => {
+      const r = el.getBoundingClientRect();
+      // Only a bar in the lower half of the screen is in the toast's way.
+      if (!r.height || r.top + r.bottom < window.innerHeight) {
+        root.style.removeProperty(TOAST_BOTTOM_INSET_VAR);
+        return;
+      }
+      const offset = Math.max(0, window.innerHeight - r.bottom);
+      root.style.setProperty(TOAST_BOTTOM_INSET_VAR, `${Math.ceil(r.height + offset + CLEARANCE_GAP_PX)}px`);
+    };
+    // Scrolling: once a frame at most.
+    let frame = 0;
+    const onScroll = () => {
+      frame ||= requestAnimationFrame(() => {
+        frame = 0;
+        measure();
+      });
+    };
+    measure();
+    const observer = new ResizeObserver(measure);
+    observer.observe(el);
+    window.addEventListener('resize', measure);
+    window.addEventListener('scroll', onScroll, { passive: true });
+    return () => {
+      observer.disconnect();
+      cancelAnimationFrame(frame);
+      window.removeEventListener('resize', measure);
+      window.removeEventListener('scroll', onScroll);
+      root.style.removeProperty(TOAST_BOTTOM_INSET_VAR);
+    };
+  }, [bar, active]);
 }

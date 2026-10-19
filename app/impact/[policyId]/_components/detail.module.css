@@ -145,7 +145,7 @@
   box-shadow:
     0 1px 0 rgb(255 255 255 / 0.06) inset,
     0 22px 40px -24px rgb(0 0 0 / 0.7),
-    0 0 26px rgb(143 117 255 / 0.08);
+    0 0 26px rgb(var(--c-violet) / 0.08);
 }
 
 /* A row of punched holes: the perforation the slip tears along. */

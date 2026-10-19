@@ -8,7 +8,15 @@ import { cn } from '@/lib/utils';
  * The semantics live on the caller's element (role="radio" with
  * aria-checked in components/forms/RadioGroup, or a button with
  * aria-pressed); these are only its looks.
+ *
+ * Forced colours (Windows contrast themes) drop the light, the shadows and
+ * the mark's violet fill, so a chosen tile there takes a Highlight rim
+ * (TILE_FORCED_SELECTED) and its mark is drawn in the system's own colours:
+ * a Highlight ring round a dot or check in the text colour.
  */
+
+/** A chosen tile's rim in forced colours, where its light and shadow are gone. */
+export const TILE_FORCED_SELECTED = 'forced-colors:border-2 forced-colors:border-[color:Highlight]';
 
 export function tileClass(selected: boolean, className?: string) {
   return cn(
@@ -16,7 +24,7 @@ export function tileClass(selected: boolean, className?: string) {
     'transition-[background-color,border-color,box-shadow,translate,opacity] duration-200 ease-civic',
     'disabled:cursor-not-allowed disabled:opacity-45',
     selected
-      ? 'border-primary/60 bg-raised font-medium shadow-[inset_0_1px_0_rgb(255_255_255/0.7),0_0_0_3px_rgb(var(--c-violet)/0.14),0_14px_30px_-16px_rgb(var(--c-violet)/0.75)] dark:shadow-[inset_0_1px_0_rgb(255_255_255/0.06),0_0_0_3px_rgb(var(--c-violet)/0.22),0_14px_30px_-16px_rgb(var(--c-violet)/0.9)]'
+      ? cn(TILE_FORCED_SELECTED, 'border-primary/60 bg-raised font-medium shadow-[inset_0_1px_0_rgb(255_255_255/0.7),0_0_0_3px_rgb(var(--c-violet)/0.14),0_14px_30px_-16px_rgb(var(--c-violet)/0.75)] dark:shadow-[inset_0_1px_0_rgb(255_255_255/0.06),0_0_0_3px_rgb(var(--c-violet)/0.22),0_14px_30px_-16px_rgb(var(--c-violet)/0.9)]')
       : cn(
           'border-fg/10 bg-raised/80 shadow-[inset_0_1px_0_rgb(255_255_255/0.6),0_1px_2px_rgb(21_18_31/0.05)] dark:shadow-[inset_0_1px_0_rgb(255_255_255/0.04)]',
           'enabled:hover:border-fg/20 enabled:hover:bg-raised motion-safe:[@media(hover:hover)]:enabled:hover:-translate-y-px'
@@ -38,26 +46,34 @@ export function TileEdge({ on }: { on: boolean }) {
   );
 }
 
-/** A tile's mark: a ring that fills with light (one answer) or a box that takes a check (several). */
+/**
+ * A tile's mark: a ring that fills with light (one answer) or a box that
+ * takes a check (several). In forced colours the ring or box is a Highlight
+ * outline on Canvas, so the choice still shows without the violet fill, and
+ * the dot or check is in the text colour. The check takes its white from
+ * the mark, never from a colour on the svg itself: an svg keeps the colour
+ * authored on it in forced colours (preserve-parent-color), which drew a
+ * white check on the white Canvas box under a light contrast theme. Set on
+ * the mark, the white is forced to the theme's text colour like any text.
+ */
 export function TileMark({ on, multiple = false }: { on: boolean; multiple?: boolean }) {
   return (
     <span
       aria-hidden="true"
       className={cn(
         'flex h-[1.125rem] w-[1.125rem] flex-shrink-0 items-center justify-center border transition-[background-color,border-color,box-shadow] duration-200 ease-civic',
-        // Forced colours (Windows contrast themes) drop backgrounds: the mark keeps system colours instead.
-        'forced-colors:[forced-color-adjust:none]',
+        'forced-colors:bg-[color:Canvas]',
         multiple ? 'rounded-[5px]' : 'rounded-full',
         on
-          ? 'border-primary-fill bg-primary-fill shadow-[0_0_10px_rgb(var(--c-glow)/0.75)] forced-colors:border-[Highlight] forced-colors:bg-[Highlight]'
-          : 'border-fg/45 bg-raised forced-colors:border-[CanvasText] forced-colors:bg-[Canvas]'
+          ? 'border-primary-fill bg-primary-fill text-white shadow-[0_0_10px_rgb(var(--c-glow)/0.75)] forced-colors:border-2 forced-colors:border-[color:Highlight]'
+          : 'border-fg/45 bg-raised forced-colors:border-[color:CanvasText]'
       )}
     >
       {on &&
         (multiple ? (
-          <Check className="h-3 w-3 text-white forced-colors:text-[HighlightText]" strokeWidth={3} />
+          <Check className="h-3 w-3" strokeWidth={3} />
         ) : (
-          <span className="h-1.5 w-1.5 rounded-full bg-white forced-colors:bg-[HighlightText]" />
+          <span className="h-1.5 w-1.5 rounded-full bg-white forced-colors:bg-[color:CanvasText]" />
         ))}
     </span>
   );

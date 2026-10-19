@@ -25,14 +25,14 @@ export default function TimelineTab({ a, simple }: { a: FullAnalysis; simple: bo
       <RibbonView a={a} simple={simple} />
 
       <Pane
-        title={simple ? 'How it adds up over your first year' : 'Year One — Month by Month'}
+        title={simple ? 'How it adds up over your first year' : 'Year one, month by month'}
         lede={simple ? CHART_DESCRIPTIONS.timeline : 'Cumulative dollar impact as the policy takes effect.'}
       >
         <MonthlyTimeline data={a.timeline.monthly} height={320} title={simple ? 'How it adds up over your first year' : 'Year one, month by month'} />
       </Pane>
 
       <div className="grid gap-6 lg:grid-cols-2">
-        <Pane title={simple ? 'Where you stand in 1, 3, and 5 years' : '1 / 3 / 5-Year Cumulative'}>
+        <Pane title={simple ? 'Where you stand in 1, 3 and 5 years' : '1 / 3 / 5-year cumulative'}>
           <ProjectionBars year1={a.timeline.year1} year3={a.timeline.year3} year5={a.timeline.year5} height={280} title="Cumulative impact after 1, 3 and 5 years" />
         </Pane>
 

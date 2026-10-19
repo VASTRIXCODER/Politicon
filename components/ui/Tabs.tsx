@@ -150,6 +150,15 @@ export function TabList({ children, label, labelledBy, className }: TabListProps
   );
 }
 
+/**
+ * Forced colours (Windows contrast themes) draw every border in the text
+ * colour and every fill as the canvas, so the violet rim and the raised pill
+ * no longer tell the selected tab apart. There it takes a 2px Highlight rim
+ * and an underline (not colour alone), and the others lose their edge.
+ */
+export const TAB_FORCED_COLORS =
+  'forced-colors:border-[color:Canvas] aria-selected:forced-colors:border-2 aria-selected:forced-colors:border-[color:Highlight] aria-selected:forced-colors:underline aria-selected:forced-colors:underline-offset-4';
+
 export interface TabProps {
   value: string;
   children: ReactNode;
@@ -194,6 +203,7 @@ export function Tab({ value, children, disabled, icon, className }: TabProps) {
         // A tight glow: a scrolling tab strip clips anything that spreads further.
         'aria-selected:shadow-[0_1px_2px_rgb(var(--c-fg)/0.1),0_2px_6px_-2px_rgb(var(--c-violet)/0.35)]',
         'dark:aria-selected:shadow-[inset_0_1px_0_rgb(var(--c-fg)/0.08),0_2px_6px_-2px_rgb(var(--c-violet)/0.5)]',
+        TAB_FORCED_COLORS,
         className
       )}
     >

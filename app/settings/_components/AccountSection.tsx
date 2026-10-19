@@ -11,6 +11,7 @@ import { cn } from '@/lib/utils';
 import { AccountRow, FIELD, FieldLabel, WAITING_SUBMIT } from './AccountParts';
 import AccountDelete from './AccountDelete';
 import AccountPassword from './AccountPassword';
+import { useUnsavedChanges } from './unsavedChanges';
 import { SettingsPane } from './SettingsSection';
 import { isValidEmail, type SettingsAccount } from './settingsModel';
 
@@ -19,7 +20,12 @@ import { isValidEmail, type SettingsAccount } from './settingsModel';
  * password, other sessions, a copy of your data, and deleting the account.
  * Each form saves on its own and reports through the page's toast. A button
  * that's busy stays focusable (aria-disabled, not disabled, which would drop
- * keyboard focus); a form that empties once it's done moves focus to its field.
+ * keyboard focus). A submit with nothing to send yet is disabled, so when a
+ * save leaves its button waiting again (the field emptied, or the name saved)
+ * focus moves to the field first.
+ * A name or new address typed but not saved counts as an unsaved change
+ * (unsavedChanges.ts): leaving the page asks first. Password fields don't, since
+ * a password manager can fill them without the person typing anything.
  */
 
 export interface AccountSectionProps {
@@ -29,38 +35,46 @@ export interface AccountSectionProps {
   notify: (_message: string, _type?: ToastType) => void;
 }
 
-/** Personal Information: the first name, kept in the auth profile and in user_profiles. */
+/** Personal information: the first name, kept in the auth profile and in user_profiles. */
 function NameRow({ initialName, onSaved, notify }: { initialName: string; onSaved: (_name: string) => void; notify: AccountSectionProps['notify'] }) {
   const uid = useId();
   const id = `${uid}-first-name`;
   const [firstName, setFirstName] = useState(initialName);
   const [saving, setSaving] = useState(false);
+  const field = useRef<HTMLInputElement>(null);
+  const name = firstName.trim();
+  // Like its sibling rows, the button waits until there's something to send.
+  const unchanged = name === initialName.trim();
+  useUnsavedChanges(!unchanged);
 
-  const saveProfile = async () => {
-    if (saving) return;
+  const saveName = async () => {
+    if (saving || unchanged) return;
     setSaving(true);
     const supabase = createClient();
     try {
       const { data: { user } } = await supabase.auth.getUser();
       if (!user) throw new Error('Not authenticated');
-      await supabase.auth.updateUser({ data: { first_name: firstName } });
-      const { data: updated, error } = await supabase.from('user_profiles').update({ first_name: firstName }).eq('id', user.id).select('id');
-      if (error || !updated?.length) throw error || new Error('Profile not saved');
-      onSaved(firstName);
-      notify('Profile updated successfully', 'success');
+      await supabase.auth.updateUser({ data: { first_name: name } });
+      const { data: updated, error } = await supabase.from('user_profiles').update({ first_name: name }).eq('id', user.id).select('id');
+      if (error || !updated?.length) throw error || new Error('Name not saved');
+      // Saved, the button waits for a new name: focus goes back to the field.
+      field.current?.focus();
+      onSaved(name);
+      notify('Name saved.', 'success');
     } catch {
-      notify('Failed to save profile', 'error');
+      notify('We couldn’t save your name. Please try again.', 'error');
     } finally {
       setSaving(false);
     }
   };
 
   return (
-    <AccountRow title="Personal Information" description="Your display name shown across Politicon">
+    <AccountRow title="Personal information" description="Your display name shown across Politicon">
       <div className="flex flex-col gap-3 sm:flex-row sm:items-end">
         <div className="min-w-0 flex-1 sm:max-w-sm">
-          <FieldLabel htmlFor={id}>First Name</FieldLabel>
+          <FieldLabel htmlFor={id}>First name</FieldLabel>
           <input
+            ref={field}
             id={id}
             type="text"
             autoComplete="given-name"
@@ -73,20 +87,22 @@ function NameRow({ initialName, onSaved, notify }: { initialName: string; onSave
         </div>
         <Button
           variant="secondary"
-          onClick={saveProfile}
+          onClick={saveName}
+          // Busy stays focusable (a disabled button would drop keyboard focus); nothing to send yet is disabled.
+          disabled={!saving && unchanged}
           aria-disabled={saving || undefined}
           aria-busy={saving || undefined}
           icon={saving ? <RefreshCw className="h-4 w-4 animate-spin" /> : <Save className="h-4 w-4" />}
-          className="self-start sm:self-auto"
+          className={cn('self-start sm:self-auto', !saving && unchanged && WAITING_SUBMIT)}
         >
-          {saving ? 'Saving…' : 'Save Changes'}
+          {saving ? 'Saving…' : 'Save name'}
         </Button>
       </div>
     </AccountRow>
   );
 }
 
-/** Email Address: starts a change that finishes once the new address is confirmed. */
+/** Email address: starts a change that finishes once the new address is confirmed. */
 function EmailRow({ email, notify }: { email: string; notify: AccountSectionProps['notify'] }) {
   const uid = useId();
   const ids = { newEmail: `${uid}-new-email`, newEmailHint: `${uid}-new-email-hint` };
@@ -94,11 +110,12 @@ function EmailRow({ email, notify }: { email: string; notify: AccountSectionProp
   const [loading, setLoading] = useState(false);
   const field = useRef<HTMLInputElement>(null);
   const unchanged = !newEmail.trim() || newEmail.trim().toLowerCase() === email.toLowerCase();
+  useUnsavedChanges(!unchanged);
 
   const changeEmail = async () => {
     if (loading) return;
     const next = newEmail.trim();
-    if (!isValidEmail(next)) { notify('Enter a valid email address', 'error'); return; }
+    if (!isValidEmail(next)) { notify('Enter a valid email address.', 'error'); return; }
     setLoading(true);
     const { error } = await createClient().auth.updateUser(
       { email: next },
@@ -114,7 +131,7 @@ function EmailRow({ email, notify }: { email: string; notify: AccountSectionProp
 
   return (
     <AccountRow
-      title="Email Address"
+      title="Email address"
       description={
         <>
           Currently <span className="font-medium text-ink">{email}</span>
@@ -160,7 +177,7 @@ function SessionsRow({ notify }: { notify: AccountSectionProps['notify'] }) {
     setLoading(true);
     const { error } = await createClient().auth.signOut({ scope: 'others' });
     setLoading(false);
-    notify(error ? 'Could not sign out other devices. Please try again.' : 'Signed out of all other devices', error ? 'error' : 'success');
+    notify(error ? 'We couldn’t sign out your other devices. Please try again.' : 'Signed out of all other devices.', error ? 'error' : 'success');
   };
   return (
     <AccountRow title="Sessions" description="Signed in somewhere you don't recognize? End every other session.">
@@ -191,7 +208,7 @@ export default function AccountSection({ account, onNameSaved, notify }: Account
       </SettingsPane>
 
       <SettingsPane>
-        <AccountRow title="Your Data" description="Download everything Politicon stores about you">
+        <AccountRow title="Your data" description="Download everything Politicon stores about you">
           <div className="flex flex-col items-start gap-3 sm:flex-row sm:items-center sm:gap-5">
             {/* A plain link: the browser downloads the file the route sends. */}
             <a

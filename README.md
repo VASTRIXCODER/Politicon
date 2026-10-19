@@ -9,6 +9,7 @@ It explains; it doesn't advise. Estimates are educational, not financial, tax or
 - [Environment variables](#environment-variables)
 - [Supabase setup](#supabase-setup)
 - [Routes and auth](#routes-and-auth)
+- [Design system — Civic Light](#design-system--civic-light)
 - [Testing](#testing)
 - [Deploying to Vercel](#deploying-to-vercel)
 - [Operations](#operations)
@@ -38,7 +39,10 @@ Main folders:
 ```
 app/                 pages, layouts, API routes (app/api), auth handlers (app/auth)
 components/          UI; components/Analytics.tsx loads Vercel Analytics + Speed Insights
+components/ui/       the UI kit (Surface, Button, PageHeader, ConfirmDialog, Toast…)
+components/three/    the shared 3D stage, SceneView, the lazy kit and the scenes
 lib/claude.ts        every prompt and Claude call
+lib/design/tokens.ts every colour, per theme (styles/tokens.css mirrors it)
 lib/server/          server-only: AI config, budget, schemas, legislation adapters, request context
 lib/supabase/        browser, server and admin Supabase clients
 lib/track.ts         privacy-safe product analytics events
@@ -47,7 +51,7 @@ next.config.js       Content-Security-Policy and security headers
 supabase/migrations  database schema, applied in filename order
 supabase/tests       database test suite (fresh build, re-runs, security assertions)
 tests/               unit tests (Vitest); tests/e2e (Playwright); tests/eval (model evals)
-scripts/             check-bundle.mjs (first-load JS budget), audit-prod.mjs (dependency audit); both run in CI
+scripts/             check-bundle.mjs (first-load and lazy 3D budgets), audit-prod.mjs (dependency audit); both run in CI
 ```
 
 ## Local setup
@@ -243,6 +247,144 @@ Rate limits are fixed windows per user, or per hashed IP for public routes. They
 
 On top of the per-user caps, every AI call reserves its estimated cost against the global 24-hour ceiling (`AI_GLOBAL_DAILY_USD`). Durations: `/api/policies/feed` and `/api/analyze` export `maxDuration = 300`. `/api/advisor`, `/api/insight` and `/api/cumulative-summary` export 60.
 
+## Design system — Civic Light
+
+**Law, turned into light.** A bill is a sheet of light: it leaves the Capitol, travels, and resolves into a number that is yours. Politicon is day by default (warm paper, porcelain, crisp ink type, the signature violet used as light) and dips into a deep-violet night, "the Chamber", for its big moments: the 3D scenes, the AI Policy Guide and the impact reveal. The dark theme is the Chamber everywhere. The materials are paper (grain, embossed seals), glass (for controls) and light (violet beams; gold only on the official record). It should read as a public-service instrument: professional, legible and non-partisan.
+
+### Tokens and themes
+
+- **One source of colour.** `lib/design/tokens.ts` holds every colour as hex, per theme: `canvas`, `surface`, `raised`, `ink`, `muted`, `fg`, `violet`/`violetText`/`violetFill`/`glow`, `accent`, `gain`/`gainFill`, `loss`/`lossFill`, `danger`, `caution`, `gold`/`goldFill` and `focus`, plus the categorical `CATEGORY_COLORS` and the fixed `BRAND_COLORS`. `styles/tokens.css` mirrors them as RGB channels (`--c-ink: 21 18 31`) so Tailwind's opacity modifiers work. `tests/tokens.test.ts` fails if the two drift, and checks every text pair at 4.5:1 and every graphic at 3:1 in both themes.
+- **Use the classes, never a hex.** `tailwind.config.ts` maps the tokens: `bg-canvas`, `bg-surface`, `bg-raised`, `text-ink`, `text-muted`, `border-fg/10` (hairlines and tints), `text-primary-300` (violet at body size), `bg-primary-fill` (behind white text), `text-gain`/`bg-gain-fill`, `text-loss`/`bg-loss-fill`, `text-gold`/`bg-gold-fill`, `text-danger`, `text-caution` and `bg-cat-*`. Charts take concrete colours from `components/charts/palette.ts` and the 3D scenes from `lib/three/palette.ts`, both derived from the same tokens.
+- **Themes.** `<html data-theme="light|dark">`, light by default. The choice (Light, Dark or System, saved in `localStorage` as `pc-theme`) is applied before first paint by `THEME_SCRIPT` (`lib/theme.ts`, inlined in `app/layout.tsx`), and changed from the navbar or Settings → Experience.
+- **Night and day zones.** `data-night` on any element turns its subtree to the night tokens; that's how a light page dips into the Chamber (`Surface variant="night"` and `<AppShell night>` set it for you). `data-day` turns a subtree back to day, for a paper slip on a night pane. The nearest zone wins, and Tailwind's `dark:` variant follows it (`DARK_VARIANT` in `lib/design/tokens.ts`), so `dark:` means "night here", not "the dark theme". `data-scene-night` also asks the 3D stage to paint the aurora behind the section, and a SceneView inside a zone uses that zone's 3D palette.
+- **Scales.** Radii `rounded-tile` and `rounded-pane`; shadows `shadow-pane` and `shadow-lift` (ink by day, near-black by night, never a white glow); z-index `stage` < `content` < `nav` < `overlay` < `modal` < `toast` < `skip`; one easing curve, `ease-civic`.
+- **UI kit** (`components/ui`): `Surface` (`paper`, `glass`, `night` or `outline`), `Button` (`primary`, `secondary`, `ghost` and `link`, plus `gold` for official-record actions only), `PageHeader`, `EmptyState`, `Skeleton`, `StatTile`, `Badge`, `StatusBadge`, `Tabs`, `SegmentedControl`, `ConfirmDialog` (never `window.confirm` or `alert`) and `Toast`.
+
+### Type
+
+- **Fraunces** (variable, with its SOFT, WONK and optical-size axes) is the editorial display face: `font-display` with the fluid `text-display-sm`, `-md` and `-lg` sizes. A headline carries one italic accent in violet, written as `<em>`: "What it all <em>adds up to</em>".
+- **Geist** is the interface face and **Geist Mono** sets numbers (`font-mono-data`, tabular figures), both from the `geist` package.
+- All three are self-hosted at build time by `next/font`, so there are no third-party font requests and nothing for the CSP to allow. `text-meta` (12 px) is the smallest size anywhere.
+
+### Colour and meaning
+
+- **No red and no blue for meaning.** In the US they read as party colours.
+- **Gains are ledger teal and costs are ember amber, and neither is ever alone.** Every amount carries a sign (`+`, or the typographic `−` from `lib/format.ts`) and words ("saves you" / "costs you": `impactWords`), and gains and costs get the same animation energy. Zero is "no change", never teal.
+- `danger` is for errors and destructive actions, never for a cost; `caution` is for warnings and low confidence.
+- **Archive gold marks the official record only**: seals, the "Official record" badge, the enacted stage of a bill's path. It's never a highlight, a gain or decoration.
+- Category colours contain no red, blue, teal, amber or gold, so a category never reads as a direction or a record.
+- **Glass is for controls and navigation**: the navbar, tabs, filters, toolbars and the guide's frame (`.glass`, `.glass-nav`, `Surface variant="glass"`). Numbers and charts sit on solid paper or night panes (`Surface variant="paper"`, or `.glass-strong`, which is solid despite its name). With `prefers-reduced-transparency`, glass turns opaque.
+- **No invented numbers.** Illustrative figures (the landing film, the explorer, the product mockups) always carry an "Example" or "Illustrative" label. Every other figure comes from a real field of an analysis.
+
+### Copy
+
+- **One vocabulary:** "AI Policy Guide" on first mention and "Policy Guide" in the nav, "My Impact" (`/impact`), "Policies", "Dashboard", "Settings" and "Explorer".
+- **Sentence case** for buttons, headings, labels and tabs; proper nouns and page names keep their capitals.
+- **Mechanics:** loading states end in "…", never "...". Dates read "Oct 19, 2026" (`en-US`; official-record dates go through `lib/recordDate.ts`).
+- **Voice:** plain English with US spelling, non-partisan, and no exclamation marks.
+
+`tests/copy.test.ts` checks the mechanical parts on every page.
+
+### Motion
+
+- **Principles.** One easing family (`ease-civic`, `cubic-bezier(.2,.7,.2,1)`, plus springs). Camera moves are slow and purposeful, numbers count up (`CountUp`), light leads the eye, and nothing loops in your face.
+- **Where each library runs.**
+  - Smooth scrolling (Lenis) runs on the marketing and reading pages only; app pages keep native scrolling.
+  - GSAP's SplitText loads lazily, for the kinetic headlines. The landing film pins with CSS (`position: sticky`) and reads its progress from the scroll itself, with no scroll library.
+  - Motion (`motion/react`) is set up only in the signed-in layouts that animate with it.
+- **Page entrances.**
+  - A signed-in page that arrives by a client-side navigation rises 8 px and fades in under a faint sweep of violet light: each route's `template.tsx` renders `components/layout/PageEnter`. It never plays on a first load, and `/`, the marketing pages and the auth pages have no template. Neither do Settings and onboarding: they show a full-page loader until the account has loaded, so an entrance would play on the loader and cut off the page that replaces it.
+  - Where the browser supports the View Transitions API, a docket card's bill sheet morphs into the impact page's hero (`lib/viewTransition.ts`). While it runs, `<html>` carries `data-morphing` (`lib/morphState.ts`), and the page entrance stands aside.
+- **Reduced motion and "Pause motion".** Every animation has a still equivalent.
+  - Two switches hold the page still: the OS setting, and the site's own "Pause motion" toggle (WCAG 2.2.2) in the navbar and Settings. The toggle is saved in `localStorage` as `pc-motion` and applied to `<html data-motion="paused">` before first paint by `MOTION_SCRIPT`.
+  - Either one stops CSS animations and transitions (`app/globals.css`).
+  - It also stops every scripted effect that asks `prefersLessMotion()` or `useLessMotion()` (`lib/motion.ts`): smooth scrolling, kinetic headlines, the example carousel, tilt and magnetic hover. The 3D scenes show one composed still frame each, and the landing film shows its still sequence.
+- **Content never waits for an animation.** The server HTML is the final state. Under reduced motion, `tests/e2e/keyboard-motion.spec.ts` holds the landing page to that rule:
+  - nothing is marked `[data-reveal]`;
+  - no text is transparent;
+  - the headline, the main call to action and the search box are opaque from the first frame.
+
+  `tests/e2e/motion-audit.spec.ts` holds every other page to it, public and signed in, once with reduced motion and once with "Pause motion" on: a second after its content is in, no animation is still running and no visible text is transparent. It opens the impact page from a docket card, so the page entrance and the morph are covered too.
+
+### The 3D stage
+
+- **One canvas.** `components/three/Stage.tsx` is a single WebGL canvas fixed behind the page (`aria-hidden`, no pointer events, below all content).
+  - `StageLoader`, in the root layout, loads it once the page is idle, and only on tier 1 and 2 devices.
+  - It loads only where the stage adds something: a page with a SceneView, a `data-scene-night` section, or the drifting light of `/`, `/explorer` and `/lab` under a mouse.
+  - It paints the ambient light field (paper light by day, an aurora by night), then each SceneView into its own box (drei `View`), so a page with five scenes still has one WebGL context.
+  - Frames are drawn on demand, never in an idle loop.
+- **SceneView** (`components/three/SceneView.tsx`) is a box on the page with a server-rendered `poster` (CSS or SVG 2.5D).
+  - The poster stays until the scene has drawn its first frame. It comes back on tier 0, when the context is lost and when a scene fails, so the HTML means something without JavaScript and hydration always matches.
+  - Meaning goes in `label` or in the DOM around the box, and every scene has a DOM twin that states its figures: a readout, the receipt, or "View as table".
+  - Scenes mount as they near the viewport and render only while on screen. `release` frees a scene's GPU memory once it has scrolled far away.
+- **Tiers** (`lib/three/tier.ts`):
+
+  | Tier | When | What renders |
+  |---|---|---|
+  | 0 | No WebGL2, a software renderer, Data Saver, or Settings → Visual effects: Off | No canvas: posters only |
+  | 1 | A touch screen, 4 GB of memory or less, 4 cores or fewer, or Visual effects: Reduced | Pixel ratio up to 1.5, up to 4k particles, rim-lit glass instead of refraction, no post-processing |
+  | 2 | Desktop-class | Pixel ratio up to 2, transmission glass, up to 25k particles, a subtle bloom and vignette |
+
+  - The server and the first client render are tier 0. The GPU is probed after the first paint, once the browser is idle.
+  - When frames keep dropping, the stage lowers the pixel ratio, then the tier. Two lost contexts drop the device to tier 0 for the visit.
+- **Posters are the design at tier 0**, not placeholders. Every scene ships one: `components/impact/posters`, `HouseholdPoster`, `LedgerPoster` and the rest.
+- **The lazy kit.** three.js, React Three Fiber, drei and every scene load only through dynamic imports.
+  - Pages import kit pieces from `components/three/kit/lazy` and scenes from `components/three/scenes/*.lazy.tsx`, never the modules themselves.
+  - Everything is procedural: there are no models, HDRs or textures to fetch.
+  - There's no drei `<Text>`, because it needs blob workers, which the CSP forbids. Text stays in the DOM.
+- **Budgets** (`scripts/check-bundle.mjs`, run in CI after the build):
+  - first-load JS at most 276 kB gzip on marketing pages and 297 kB on app pages, with no three.js or R3F in any first-load chunk;
+  - the lazy stage at most 302 kB;
+  - the 3D any one page can load at most 430 kB (`/lab` is exempt);
+  - all lazy 3D together at most 590 kB.
+
+### Sound
+
+- **Off by default and optional** (`lib/sound.ts`). Turn it on with the speaker toggle in the navbar (`aria-pressed`) or Settings → Experience → Sound effects; the choice is saved in `localStorage` as `pc-sound`.
+- **Four short cues, synthesized with WebAudio** (there are no audio files). The synthesizer (`lib/soundSynth.ts`) loads only once sound is on, so no page's first load carries it:
+  - `rustle`: the docket re-fans;
+  - `chime`: an analysis is ready;
+  - `whoosh`: an impact page opens, or the film jumps to a step;
+  - `tick`: a choice changes, or the film moves on a step.
+- **Rules:**
+  - Nothing autoplays. The audio context is made inside the click that turns sound on (Safari starts audio only within the gesture itself), or, on a page opened with sound on, on the first cue after the person has interacted with the page.
+  - Cues play for deliberate actions only, never on hover or a timer.
+  - Every cue accompanies something visible: sound never carries meaning on its own.
+
+### Accessibility
+
+- **WCAG 2.2 AA in both themes.** The token tests check contrast. In CI, axe (`tests/e2e/a11y*.spec.ts`) checks the public pages, the signed-in pages and Settings in light and dark, on desktop and on a 375 px phone, and nothing may scroll sideways at 375 px.
+- **Never colour alone.** Money carries a sign and words, a status carries text, links in running text are underlined, and a selected choice, tab or reading level stays visible in forced colours.
+- **Keyboard.**
+  - Every page has a skip link, and everything focusable gets a 2 px `focus` ring.
+  - Focus is never hidden under the floating navbar or a sticky bar (`scroll-padding`, WCAG 2.4.11).
+  - Menus, tabs, radio groups and dialogs follow the WAI-ARIA patterns.
+- **3D and charts are never the only way in.** The canvas and the posters are decorative: each scene has a `label` and a DOM equivalent, and each chart has a caption and "View as table".
+- **Forms and status.** Every field is labelled. Errors are announced (`role="alert"`), and so are progress and results (`role="status"`). Destructive actions confirm in `ConfirmDialog`. With unsaved changes on Settings, a link to another page asks first, and closing or reloading the tab gets the browser's own prompt (`LeaveGuard`); the browser's Back and Forward buttons are not held.
+- **The visitor's settings win:** reduced motion, "Pause motion", reduced transparency and their theme. The Chamber reflows at 400% zoom.
+
+### QA with /lab
+
+`/lab` renders every kit piece and scene on the shared stage, for visual QA. It isn't indexed or linked, and it's a 404 on the production deployment; dev, preview and CI builds keep it.
+
+1. Run `npm run dev` and open `http://localhost:3000/lab`. It has these sections:
+   - the device readout (the tier, and why);
+   - the Aperture Dome and the kit;
+   - the landing film's pieces and its reduced-motion stills;
+   - the app (the onboarding household, the avatar, the ledger);
+   - the Transmission's views;
+   - the Receipt and the Skyline;
+   - the Chamber;
+   - a night section.
+2. Force a tier with `?fx=0`, `?fx=1` or `?fx=2` (there are links on the page). The tier sticks for the tab until `?fx=auto`, and production ignores it. The page's Theme and Visual effects controls switch the rest.
+3. Check each tier in light and dark, at 1280 × 800 and 375 × 812, with reduced motion emulated (DevTools → Rendering) and with "Pause motion" on. Posters must be complete at tier 0, and nothing may be blank while the stage loads or overflow its box.
+4. Run the headless checks:
+   - `tests/e2e/stage.spec.ts` draws every `/lab` view at tier 1 and checks that tier 2's programs compile.
+   - `E2E_PERF=1 npx playwright test frame-rate --project=mobile` checks that the 95th-percentile frame time stays at or under 33 ms on a CPU slowed 4×.
+   - `E2E_PERF=1 npx playwright test long-tasks --project=mobile` traces the first load of `/`, the dashboard and an impact page on a CPU slowed 4× at tier 1, and reports every main-thread task over 200 ms with what ran in it, and the total blocking time. It's a report, not a gate: WebGL runs in software in headless Chromium, which inflates the numbers.
+
+   `npm run test:perf` runs both probes.
+
 ## Testing
 
 | What | Command | Notes |
@@ -252,7 +394,7 @@ On top of the per-user caps, every AI call reserves its estimated cost against t
 | Unit tests | `npm test` | Vitest, `tests/**/*.test.ts`, excluding `tests/e2e` and `tests/eval`. Claude calls are tested against a local fake of the streaming Messages API, so no key is needed. |
 | Database | `PGHOST=localhost PGPORT=5432 PGUSER=postgres PGPASSWORD=postgres bash supabase/tests/run.sh` | Needs a throwaway Postgres 16, for example `docker run -e POSTGRES_PASSWORD=postgres -p 5432:5432 postgres:16` (it requires the password over TCP, so keep `PGPASSWORD`). See below. |
 | End-to-end | `npm run build` then `npm run test:e2e` | Playwright. `npm run test:e2e:ui` to debug, `npm run test:e2e:report` for the last HTML report. See below. |
-| Bundle budget | `npm run check:bundle` | After a build: first-load JS per page (`scripts/check-bundle.mjs`). |
+| Bundle budget | `npm run check:bundle` | After a build: first-load JS per page, and the lazy 3D budgets (`scripts/check-bundle.mjs`; see [the 3D stage](#the-3d-stage)). |
 | Dependency audit | `npm run audit:prod` | `npm audit` of production dependencies; fails on high or critical advisories not accepted (with a reason) in `scripts/audit-prod.mjs`. |
 | Neutrality eval | `npm run eval` | The live model part calls the real API and costs money; without `ANTHROPIC_API_KEY` only the heuristics and guardrail checks run, which is what CI does. See below. |
 

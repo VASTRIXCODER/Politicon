@@ -1,8 +1,9 @@
 'use client';
 
-import { useState, type RefObject } from 'react';
+import { useRef, useState, type RefObject } from 'react';
 import { Send, X } from 'lucide-react';
 import { POLICY_DRAG_TYPE, isPolicyDrag } from '@/components/guide/policyRail';
+import { useToastClearance } from '@/components/ui/Toast';
 import { cn } from '@/lib/utils';
 import { MAX_TURN_CHARS, type PolicyMeta } from './types';
 
@@ -12,7 +13,9 @@ import { MAX_TURN_CHARS, type PolicyMeta } from './types';
  * own), Enter to send and Shift+Enter for a new line. A policy dragged from
  * the rail can be dropped here as well as on the orb. When a question was
  * prefilled for one of the user's policies (the dashboard's hand-off), a
- * token above the text says which, and can be removed.
+ * token above the text says which, and can be removed. The page's toasts
+ * rise clear of it (useToastClearance), so on a phone a toast never covers
+ * the box.
  */
 export default function Composer({ value, onChange, onSubmit, disabled, inputRef, pendingPolicy, onClearPolicy, onDropPolicy }: {
   value: string;
@@ -27,6 +30,8 @@ export default function Composer({ value, onChange, onSubmit, disabled, inputRef
   onDropPolicy: (_id: string) => void;
 }) {
   const [dragOver, setDragOver] = useState(false);
+  const boxRef = useRef<HTMLDivElement>(null);
+  useToastClearance(boxRef);
 
   const handleKeyDown = (e: React.KeyboardEvent) => {
     if (e.key === 'Enter' && !e.shiftKey && !e.nativeEvent.isComposing) { e.preventDefault(); onSubmit(); }
@@ -34,6 +39,7 @@ export default function Composer({ value, onChange, onSubmit, disabled, inputRef
 
   return (
     <div
+      ref={boxRef}
       onDragOver={(e) => {
         // Only a policy from the rail is taken here; dragged text still drops into the box as usual.
         if (!isPolicyDrag(e.dataTransfer.types)) return;

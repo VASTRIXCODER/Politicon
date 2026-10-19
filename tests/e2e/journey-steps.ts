@@ -179,11 +179,11 @@ export async function openFullImpactAndReturn(page: Page, card: Locator, title: 
 }
 
 /**
- * "Ask the guide" on the card: the guide opens with the policy question in the
+ * "Ask the Policy Guide" on the card: the guide opens with the policy question in the
  * composer (not sent), the user sends it and a saved, ratable reply comes back.
  */
 export async function askGuideAbout(page: Page, card: Locator, title: string, timeouts: Pick<JourneyTimeouts, 'feed' | 'reply'>) {
-  await card.getByRole('button', { name: /ask the guide/i }).click();
+  await card.getByRole('button', { name: /ask the policy guide/i }).click();
   await expect(page).toHaveURL(/\/advisor\?policyId=/);
   await expect(page.getByRole('heading', { level: 1, name: 'AI Policy Guide' })).toBeVisible();
 

@@ -146,7 +146,7 @@ export default function AccountDeleteDialog({ open, hasPassword, onClose }: {
             </div>
           </>
         }
-        confirmLabel="Permanently Delete My Account"
+        confirmLabel="Permanently delete my account"
         busy={deleting}
         busyLabel="Deleting…"
         onConfirm={deleteAccount}

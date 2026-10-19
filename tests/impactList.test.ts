@@ -283,7 +283,7 @@ describe('the page pieces', () => {
     expect(renderToString(h(NoAnalyses))).toContain('No policies analyzed yet');
     const failed = renderToString(h(LoadFailed, { onRetry: () => {} }));
     expect(failed).toContain('role="alert"');
-    expect(failed).toContain("We couldn&#x27;t load your analyses");
+    expect(failed).toContain("We couldn’t load your analyses");
     expect(failed).toContain('Try again');
   });
 

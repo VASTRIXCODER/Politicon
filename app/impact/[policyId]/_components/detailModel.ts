@@ -1,4 +1,4 @@
-import { costChange, formatPct, formatUSD, impactSign, impactWords } from '@/lib/format';
+import { costChange, formatPct, formatSigned, formatUSD, impactSign, impactWords, roundsToZero } from '@/lib/format';
 import { EMPLOYMENT_STATUSES, FILING_STATUSES, HOUSING_SITUATIONS, INCOME_RANGES, labelOf } from '@/lib/profileOptions';
 import { RADAR_LABELS, TIMELINE_LABELS } from '@/lib/simpleMode';
 import { flowTotals, flowsFromAnalysis, type TransmissionTone } from '@/lib/transmission';
@@ -19,11 +19,11 @@ export const TABS = ['overview', 'breakdown', 'timeline', 'economic', 'deepdive'
 export type DetailTab = (typeof TABS)[number];
 export const TAB_LABELS: Record<DetailTab, string> = {
   overview: 'Overview',
-  breakdown: 'Financial Breakdown',
+  breakdown: 'Financial breakdown',
   timeline: 'Timeline',
-  economic: 'Economic Context',
-  deepdive: 'Deep Dive',
-  action: 'Things to Consider',
+  economic: 'Economic context',
+  deepdive: 'Deep dive',
+  action: 'Things to consider',
 };
 
 // ---------------------------------------------------------------------------
@@ -34,7 +34,11 @@ export const TAB_LABELS: Record<DetailTab, string> = {
 export const money = (n: number, suffix = '') => formatUSD(n, { signed: true, suffix });
 export const signedUSD = (n: number) => formatUSD(n, { signed: true });
 export const pct = (n: number) => formatPct(n, { digits: 2 });
-export const titleCase = (s: string) => s.replace(/[-_]+/g, ' ').replace(/\b\w/g, (c) => c.toUpperCase());
+/** A label in sentence case, as the app writes labels: "real_estate" → "Real estate" (the rest is left as given). */
+export const sentenceCase = (s: string) => {
+  const t = s.replace(/[-_]+/g, ' ').trim();
+  return t.charAt(0).toUpperCase() + t.slice(1);
+};
 
 /** One labelled figure (StatRow's props). `cue` spells out "saves you" / "costs you" next to a signed amount. */
 export interface StatRowData {
@@ -243,7 +247,7 @@ export function waterfallLevels(a: Pick<FullAnalysis, 'macro' | 'corporate' | 'p
       detail: macro.gdpExplanation || macro.inflationExplanation || undefined,
     },
     {
-      label: simple ? 'Companies you might work for' : `Corporate — ${titleCase(corporate.sector)}`,
+      label: simple ? 'Companies you might work for' : `Corporate — ${sentenceCase(corporate.sector)}`,
       sublabel: simple
         ? CAPEX_LABEL[corporate.capexDirection].text
         : `Equity ${corporate.equityImpactRange || pct(corporate.equityPortfolioImpactPct)} · ${CAPEX_LABEL[corporate.capexDirection].text}`,
@@ -253,7 +257,7 @@ export function waterfallLevels(a: Pick<FullAnalysis, 'macro' | 'corporate' | 'p
       detail: corporate.capexExplanation || corporate.leverageExplanation || undefined,
     },
     {
-      label: simple ? 'Your own wallet' : 'Personal — Your Wallet',
+      label: simple ? 'Your own wallet' : 'Personal — Your wallet',
       sublabel: `${money(personal.disposableIncomeMonthly)}/mo · ${money(personal.disposableIncomeAnnual)}/yr`,
       ...personalBar,
       barDirection: signOf(Math.round(personal.disposableIncomeAnnual)),
@@ -294,19 +298,45 @@ export function better(n: number, way: 'up' | 'down' = 'up'): boolean | undefine
   return way === 'up' ? n > 0 : n < 0;
 }
 
+/** Places a figure is shown to: whole dollars, percents to two places, an index or years to one. */
+const PLACES = { usd: 0, pct: 2, plain: 1 } as const;
+
+/**
+ * A signed change in the deep dive, coloured by which way is better; or
+ * "No change" in ink when it shows as zero, as costRow says it: zero has no
+ * direction, so it never takes a sign (no "+0", "0%" or "$0" beside it).
+ * `colour: false` keeps a moving figure in ink too (no agreed better way).
+ */
+export function changeRow(
+  label: string,
+  n: number,
+  unit: keyof typeof PLACES,
+  { way = 'up', colour = true, suffix = '' }: { way?: 'up' | 'down'; colour?: boolean; suffix?: string } = {}
+): StatRowData {
+  if (roundsToZero(n, PLACES[unit])) return { label, value: 'No change' };
+  const value = unit === 'usd' ? money(n, suffix) : unit === 'pct' ? pct(n) : formatSigned(n, { suffix });
+  return { label, value, positive: colour ? better(n, way) : undefined };
+}
+
+/** An amount of money coming in (pay, benefits), signed, with "you gain" / "you lose" spelled out. */
+const incomeRow = (label: string, n: number, suffix = ''): StatRowData => ({ ...changeRow(label, n, 'usd', { suffix }), cue: n, kind: 'income' });
+
+/** "+1.5 yrs", "−1 yr". */
+const years = (n: number) => (roundsToZero(Math.abs(n) - 1, PLACES.plain) ? ' yr' : ' yrs');
+
 /** The figures under one deep-dive heading. */
 export function deepDiveRows(a: FullAnalysis, key: DeepDiveSection | string): StatRowData[] {
   switch (key) {
     case 'housing': return [
       costRow('Housing costs, per month', a.housing.monthlyHousingEffect, '/mo'),
-      { label: 'Property value change', value: pct(a.housing.propertyValueChangePct), positive: better(a.housing.propertyValueChangePct) },
-      { label: 'Affordability index change', value: `${a.housing.affordabilityIndexChange >= 0 ? '+' : ''}${a.housing.affordabilityIndexChange}` },
+      changeRow('Property value change', a.housing.propertyValueChangePct, 'pct'),
+      changeRow('Affordability index change', a.housing.affordabilityIndexChange, 'plain', { colour: false }),
       ...(a.housing.firstTimeBuyerImpact ? [{ label: 'First-time buyer', value: a.housing.firstTimeBuyerImpact }] : []),
     ];
     case 'employment': return [
       { label: 'Job security risk', value: `${a.employment.jobSecurityRisk}/100` },
-      { label: 'Wage growth projection', value: pct(a.employment.wageGrowthPct), positive: better(a.employment.wageGrowthPct) },
-      { label: 'Job benefits', value: money(a.employment.benefitChangeValue), positive: better(a.employment.benefitChangeValue), cue: a.employment.benefitChangeValue, kind: 'income' },
+      changeRow('Wage growth projection', a.employment.wageGrowthPct, 'pct'),
+      incomeRow('Job benefits', a.employment.benefitChangeValue),
       ...(a.employment.industryEffects ? [{ label: 'Industry effects', value: a.employment.industryEffects }] : []),
     ];
     case 'healthcare': return [
@@ -316,13 +346,13 @@ export function deepDiveRows(a: FullAnalysis, key: DeepDiveSection | string): St
       ...(a.healthcare.coverageChange ? [{ label: 'Coverage', value: a.healthcare.coverageChange }] : []),
     ];
     case 'retirement': return [
-      { label: '401(k) / IRA contribution limit', value: money(a.retirement.contributionLimitChange), positive: better(a.retirement.contributionLimitChange) },
-      { label: 'Social Security benefits', value: money(a.retirement.socialSecurityChange), positive: better(a.retirement.socialSecurityChange), cue: a.retirement.socialSecurityChange, kind: 'income' },
-      { label: 'Retirement timeline', value: `${a.retirement.timelineImpactYears >= 0 ? '+' : ''}${a.retirement.timelineImpactYears} yrs`, positive: better(a.retirement.timelineImpactYears, 'down') },
+      changeRow('401(k) / IRA contribution limit', a.retirement.contributionLimitChange, 'usd'),
+      incomeRow('Social Security benefits', a.retirement.socialSecurityChange),
+      changeRow('Retirement timeline', a.retirement.timelineImpactYears, 'plain', { way: 'down', suffix: years(a.retirement.timelineImpactYears) }),
     ];
     case 'education': return [
       costRow('Student loan payments, per month', a.education.studentLoanPaymentChange, '/mo'),
-      { label: 'Tuition assistance', value: money(a.education.tuitionAssistanceChange), positive: better(a.education.tuitionAssistanceChange), cue: a.education.tuitionAssistanceChange, kind: 'income' },
+      incomeRow('Tuition assistance', a.education.tuitionAssistanceChange),
       costRow('Child education costs', a.education.childEducationCostChange),
     ];
     case 'tax': return [
@@ -334,9 +364,9 @@ export function deepDiveRows(a: FullAnalysis, key: DeepDiveSection | string): St
       ...(a.tax.creditChanges ? [{ label: 'Credits', value: a.tax.creditChanges }] : []),
     ];
     case 'ripple': return [
-      { label: 'Inflation impact', value: pct(a.ripple.inflationImpactPct), positive: better(a.ripple.inflationImpactPct, 'down') },
+      changeRow('Inflation impact', a.ripple.inflationImpactPct, 'pct', { way: 'down' }),
       costRow('Cost of living, per year', a.ripple.costOfLivingChange, '/yr'),
-      { label: 'Purchasing power, per year', value: money(a.ripple.purchasingPowerChange, '/yr'), positive: better(a.ripple.purchasingPowerChange), cue: a.ripple.purchasingPowerChange, kind: 'income' },
+      incomeRow('Purchasing power, per year', a.ripple.purchasingPowerChange, '/yr'),
       ...(a.ripple.interestRateEffect ? [{ label: 'Interest rates on debt', value: a.ripple.interestRateEffect }] : []),
     ];
     default: return [];

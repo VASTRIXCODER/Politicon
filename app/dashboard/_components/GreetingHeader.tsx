@@ -77,7 +77,7 @@ export default function GreetingHeader({ loading, firstName, profile, headline }
       </div>
       <div className="flex flex-shrink-0 flex-wrap items-center gap-3">
         <Button href="/advisor" icon={<Search className="h-4 w-4" />}>
-          Analyze a Policy
+          Analyze a policy
         </Button>
         <Button href="/advisor" variant="ghost" icon={<MessageSquare className="h-4 w-4" />}>
           Ask the Policy Guide

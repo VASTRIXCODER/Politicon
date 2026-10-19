@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { formatUSD, formatPct, formatPts, impactSign, impactWords, impactTone, costChange, formatAxisUSD } from '@/lib/format';
+import { formatUSD, formatPct, formatPts, formatSigned, roundsToZero, impactSign, impactWords, impactTone, costChange, formatAxisUSD } from '@/lib/format';
 
 const M = '−';
 
@@ -42,6 +42,16 @@ describe('formatPct / formatPts', () => {
   it('labels percentage points', () => {
     expect(formatPts(-0.5)).toBe(`${M}0.5 pts`);
     expect(formatPts(2)).toBe('+2 pts');
+  });
+  it('signs plain numbers with the true minus, and zero not at all', () => {
+    expect(formatSigned(-2)).toBe(`${M}2`);
+    expect(formatSigned(1.5, { suffix: ' yrs' })).toBe('+1.5 yrs');
+    expect(formatSigned(0)).toBe('0');
+    expect(formatSigned(-0.01)).toBe('0');
+    expect(roundsToZero(0.004, 2)).toBe(true);
+    expect(roundsToZero(0.005, 2)).toBe(false);
+    expect(roundsToZero(-0.4)).toBe(true);
+    expect(roundsToZero(Number.NaN)).toBe(true);
   });
 });
 

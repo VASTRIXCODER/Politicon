@@ -36,12 +36,12 @@ export function pctToDollar(pct: number, income: number, period: 'year' | 'month
 /** Radar dimension labels — expert (technical) vs simple (everyday) wording. */
 export const RADAR_LABELS = {
   expert: {
-    incomeStability: 'Income Stability',
-    housingSecurity: 'Housing Security',
-    employmentRisk: 'Employment Risk',
-    costOfLivingPressure: 'Cost of Living Pressure',
-    investmentExposure: 'Investment Exposure',
-    debtBurden: 'Debt Burden',
+    incomeStability: 'Income stability',
+    housingSecurity: 'Housing security',
+    employmentRisk: 'Employment risk',
+    costOfLivingPressure: 'Cost-of-living pressure',
+    investmentExposure: 'Investment exposure',
+    debtBurden: 'Debt burden',
   },
   simple: {
     incomeStability: 'Will my paycheck be safe',
@@ -64,7 +64,7 @@ export const CHART_DESCRIPTIONS: Record<string, string> = {
   category: 'How much money each part of your budget gains or loses each year.',
   donut: 'Which parts of your budget are affected the most.',
   timeline: 'How the running total adds up month by month over a year.',
-  projection: 'How the impact stacks up after 1, 3, and 5 years.',
+  projection: 'How the impact stacks up after 1, 3 and 5 years.',
   beforeAfter: 'Your numbers before this policy vs. after it.',
   waterfall: 'How this policy flows from the whole economy down to your own wallet.',
   radar: 'The areas of your money life this policy puts the most pressure on.',

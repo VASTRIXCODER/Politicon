@@ -46,7 +46,7 @@ export default function RecentAnalyses({ loading, analyses, analysed }: RecentAn
           href="/impact"
           className="inline-flex items-center gap-1 text-meta font-medium text-primary-300 underline-offset-2 hover:underline"
         >
-          All<span className="sr-only"> analyses</span> in My Impact
+          View all<span className="sr-only"> analyses</span> in My Impact
           <ArrowRight className="h-3 w-3" aria-hidden />
         </Link>
       </div>

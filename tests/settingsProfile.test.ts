@@ -155,9 +155,9 @@ describe('what a save sends', () => {
   });
 
   it('lists a missing answer by its label without the note', () => {
-    expect(fieldName('debtTypes')).toBe('Debt Types');
-    expect(fieldName('topFinancialConcerns')).toBe('Top Financial Concerns');
-    expect(fieldName('ageRange')).toBe('Age Range');
+    expect(fieldName('debtTypes')).toBe('Debt types');
+    expect(fieldName('topFinancialConcerns')).toBe('Top financial concerns');
+    expect(fieldName('ageRange')).toBe('Age range');
   });
 });
 
@@ -227,12 +227,16 @@ describe('ProfileSection on the server', () => {
       expect(copy, field).toContain(FIELD_LABELS[field]);
     }
     expect(copy).toContain('Changes here directly affect how the AI calculates your policy impact. Keep this accurate for best results.');
+    // A note in violet ink, not a warning: caution is kept for answers that are missing.
+    const [note] = html.match(/<div role="note"[\s\S]*?<\/div>/) ?? [''];
+    expect(note).toContain('border-primary/25');
+    expect(note).not.toContain('caution');
     // The h2 names the section, and can take focus when a link jumps to it (never a Tab stop).
     const [, headingId] = html.match(/<h2[^>]*><span id="([^"]+)" tabindex="-1"[^>]*>Your <em>household<\/em><\/span><\/h2>/) ?? [];
     expect(headingId).toBeTruthy();
     expect(html).toMatch(new RegExp(`^<section id="profile" aria-labelledby="${headingId}"`));
     expect(render({ headingId: 'settings-profile-title' })).toMatch(/^<section id="profile" aria-labelledby="settings-profile-title"/);
-    expect(copy).toContain('Save Financial Profile');
+    expect(copy).toContain('Save financial profile');
     // The four sections, as h3s.
     for (const label of ['Location', 'About you', 'Finances', 'Household']) expect(html).toMatch(new RegExp(`<h3[^>]*>${label}</h3>`));
   });
@@ -289,7 +293,7 @@ describe('ProfileSection on the server', () => {
     const html = render({ profile: { ...COMPLETE, ageRange: '', topFinancialConcerns: [] } });
     const copy = text(html);
     expect((copy.match(/Needed before you can save/g) ?? []).length).toBe(2);
-    expect(copy).toMatch(/2 answers needed\s*: Age Range, Top Financial Concerns/);
+    expect(copy).toMatch(/2 answers needed\s*: Age range, Top financial concerns/);
     expect(copy).toMatch(/About you\s+1 needed/);
     expect(copy).toMatch(/Location\s+Complete/);
   });
@@ -308,7 +312,7 @@ describe('ProfileSection on the server', () => {
 
   it('keeps the page’s footer (Re-run Onboarding) inside the section, after the save bar', () => {
     const html = render({ footer: h('h3', { id: 'rerun' }, 'Re-run Onboarding') });
-    const save = html.indexOf('Save Financial Profile');
+    const save = html.indexOf('Save financial profile');
     const footer = html.indexOf('<h3 id="rerun">');
     expect(save).toBeGreaterThan(0);
     expect(footer).toBeGreaterThan(save);
@@ -326,7 +330,7 @@ describe('ProfileSection on the server', () => {
 
   it('comes first in the page order, the preview and the section index after it', () => {
     const html = render();
-    const form = html.indexOf('Save Financial Profile');
+    const form = html.indexOf('Save financial profile');
     expect(form).toBeGreaterThan(0);
     expect(html.indexOf('<nav aria-label="Profile sections"')).toBeGreaterThan(form);
     expect(html.indexOf('aria-live="polite"')).toBeGreaterThan(form);

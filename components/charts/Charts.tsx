@@ -1,7 +1,6 @@
 'use client';
 
 import { useId, useState, type ReactNode } from 'react';
-import { useReducedMotion } from 'motion/react';
 import { BarChart3, Table2 } from 'lucide-react';
 import {
   BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer,
@@ -9,6 +8,7 @@ import {
   RadarChart, Radar, PolarGrid, PolarAngleAxis, PolarRadiusAxis,
 } from 'recharts';
 import { formatAxisUSD, formatUSD } from '@/lib/format';
+import { useLessMotion } from '@/lib/motion';
 import { useChartPalette, type ChartPalette } from './palette';
 
 // Recharts is heavy: pages load these through components/charts/LazyCharts,
@@ -20,9 +20,12 @@ const fmtAxis = formatAxisUSD;
 const fmtMoney = (n: number) => formatUSD(n, { signed: true });
 const fmtYearly = (n: number) => formatUSD(n, { signed: true, suffix: '/yr' });
 
-/** Recharts animations are JS-driven, so they ignore the CSS reduced-motion rule. */
+/**
+ * Recharts animations are JS-driven, so they ignore the CSS reduced-motion
+ * rule: they follow the OS setting and the site's "Pause motion" here.
+ */
 function useChartAnimation(): boolean {
-  return !useReducedMotion();
+  return !useLessMotion();
 }
 
 // ---------------------------------------------------------------------------

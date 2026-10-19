@@ -1,4 +1,4 @@
-import { useMemo, type CSSProperties } from 'react';
+import { useMemo, useState, type CSSProperties } from 'react';
 import { Info, Sparkles } from 'lucide-react';
 import PolicyProvenance from '@/components/PolicyProvenance';
 import BillPath from '@/components/feed/BillPath';
@@ -9,8 +9,9 @@ import StatusBadge from '@/components/ui/StatusBadge';
 import { billPath } from '@/lib/billPath';
 import { heroScaleNote } from '@/lib/transmission';
 import { cn } from '@/lib/utils';
+import { isMorphArriving, morphTarget } from '@/lib/viewTransition';
 import type { FullAnalysis } from '@/types';
-import { money, netReadout, recordFacts, signedUSD, titleCase } from './detailModel';
+import { money, netReadout, recordFacts, sentenceCase, signedUSD } from './detailModel';
 import { HERO_GRID } from './DetailStates';
 import { Chamber, DirIcon, Kicker } from './parts';
 import { HeroView } from './visuals';
@@ -28,7 +29,9 @@ import styles from './detail.module.css';
  * a solid plate beside it in teal or amber with its sign and its words, and
  * the profile it was worked out for. On a phone the plate comes straight
  * after the title (the number in the first screen), then the scene, then
- * the bill's path and provenance.
+ * the bill's path and provenance. Opened from a docket card, the card's bill
+ * sheet morphs into the record line and title (lib/viewTransition), which
+ * then skip their own rise.
  */
 
 export interface TransmissionHeaderProps {
@@ -42,13 +45,15 @@ export default function TransmissionHeader({ a, analyzedAt, profileChips }: Tran
   const path = useMemo(() => billPath(a.record, { billNumber: a.billNumber, region: a.record?.region }), [a.record, a.billNumber]);
   const record = recordFacts(a, path.origin);
   const rated = confidenceLabel(a.confidenceScore);
-  // The words carry the level; a low one is said in ink, never the caution ochre (which reads as the record's gold).
+  // The words carry the level; a low one is said in ink, not caution's terracotta (beside the plate's cost amber it would read as part of the cost).
   const confidence = { ...rated, tone: rated.tone === 'text-caution' ? 'text-muted' : rated.tone };
   const net = netReadout(a.netAnnualImpact);
+  // Arriving by the card's morph: the morph is this block's entrance.
+  const [morphed] = useState(() => isMorphArriving('bill-sheet'));
 
   return (
     <section aria-labelledby="impact-title" className={cn(HERO_GRID, 'mb-10')}>
-      <div className={cn(styles.rise, 'min-w-0 lg:col-span-7 lg:row-start-1')}>
+      <div {...morphTarget('bill-sheet')} className={cn(!morphed && styles.rise, 'min-w-0 lg:col-span-7 lg:row-start-1')}>
         {/* The record line: the seal (verified records only), then where the bill comes from. */}
         <p className="mb-4 flex min-w-0 flex-wrap items-center gap-x-3 gap-y-2">
           {record.verified ? (
@@ -57,7 +62,7 @@ export default function TransmissionHeader({ a, analyzedAt, profileChips }: Tran
               <Badge variant="gold">Official record</Badge>
             </>
           ) : (
-            // Neutral, never gold or the caution ochre beside it: gold marks only a verified record.
+            // Neutral, never gold (it marks only a verified record) and not a warning colour: unverified isn't wrong.
             <span className="inline-flex items-center gap-1.5 rounded-full border border-dashed border-fg/20 px-2.5 py-0.5 text-meta font-medium text-muted">
               <Info className="h-3 w-3" aria-hidden /> Unverified
             </span>
@@ -72,7 +77,7 @@ export default function TransmissionHeader({ a, analyzedAt, profileChips }: Tran
         </h1>
 
         <div className="mt-4 flex flex-wrap items-center gap-2">
-          <Badge variant="primary">{titleCase(a.category)}</Badge>
+          <Badge variant="primary">{sentenceCase(a.category)}</Badge>
           {/* The stage only from the official record: an unverified analysis's status is the model's guess. */}
           {record.verified && <StatusBadge status={a.status} />}
           <span className={cn('ml-1 flex items-center gap-1 font-mono-data text-meta', confidence.tone)}>
@@ -132,7 +137,7 @@ export default function TransmissionHeader({ a, analyzedAt, profileChips }: Tran
             {record.verified ? (
               <PolicyProvenance record={a.record} snapshotLabel />
             ) : (
-              // Said in neutral ink: the caution ochre beside it would read as the record's gold.
+              // Said in neutral ink, like the chip above: a note on the source, not a warning.
               <p className="flex items-start gap-1.5 text-meta text-muted">
                 <Info className="mt-px h-3.5 w-3.5 flex-shrink-0" aria-hidden />
                 <span>Not verified against an official source — details may be incomplete or out of date. Check the official record before relying on it.</span>
@@ -144,7 +149,7 @@ export default function TransmissionHeader({ a, analyzedAt, profileChips }: Tran
 
       <div className={cn(styles.rise, 'min-w-0 lg:col-span-12 lg:row-start-3')} style={{ '--rise-delay': '190ms' } as CSSProperties}>
         {analyzedAt && (
-          <p className="text-xs text-muted">Last analyzed {new Date(analyzedAt).toLocaleString()}</p>
+          <p className="text-xs text-muted">Last analyzed {new Date(analyzedAt).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })}</p>
         )}
         <AiDisclaimer className="mt-3 max-w-3xl" />
       </div>

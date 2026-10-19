@@ -638,8 +638,8 @@ describe('words', () => {
 
   it('names every axis with its score, and the highest', () => {
     const d = describeCrystal(crystalFromAnalysis(RICH));
-    expect(d).toContain('Income Stability 35 of 100');
-    expect(d).toContain('Highest: Cost of Living Pressure.');
+    expect(d).toContain('Income stability 35 of 100');
+    expect(d).toContain('Highest: Cost-of-living pressure.');
     expect(describeCrystal([])).toContain('no vulnerability scores');
     expect(crystalScaleNote()).toContain('linear');
   });

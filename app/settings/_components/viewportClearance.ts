@@ -1,4 +1,4 @@
-import { useEffect, type RefObject } from 'react';
+import { useEffect } from 'react';
 
 /*
  * Keeps keyboard focus clear of what floats over Settings (WCAG 2.2 2.4.11,
@@ -77,38 +77,4 @@ export function useFocusClearance() {
       cancelAnimationFrame(frame);
     };
   }, []);
-}
-
-/**
- * The room the stuck save bar takes at the bottom of the viewport, as a CSS
- * length on <html> (unset otherwise). The page lifts its toast by it, so a
- * toast never lands on the bar.
- */
-export const BOTTOM_CLEARANCE_VAR = '--settings-bottom-clearance';
-
-/** Space between the bar and a toast lifted above it. */
-const TOAST_GAP_PX = 8;
-
-/**
- * While `active`, publishes the room `bar` (a bar stuck to the bottom edge)
- * takes: its height, its offset from the edge and a small gap, kept up to
- * date as the bar changes size.
- */
-export function useBottomClearance(bar: RefObject<HTMLElement | null>, active: boolean) {
-  useEffect(() => {
-    const el = bar.current;
-    if (!active || !el) return;
-    const root = document.documentElement;
-    const measure = () => {
-      const offset = parseFloat(getComputedStyle(el).bottom) || 0;
-      root.style.setProperty(BOTTOM_CLEARANCE_VAR, `${Math.ceil(el.offsetHeight + offset + TOAST_GAP_PX)}px`);
-    };
-    measure();
-    const observer = new ResizeObserver(measure);
-    observer.observe(el);
-    return () => {
-      observer.disconnect();
-      root.style.removeProperty(BOTTOM_CLEARANCE_VAR);
-    };
-  }, [bar, active]);
 }

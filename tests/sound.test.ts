@@ -1,7 +1,10 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import { readFileSync } from 'node:fs';
+import path from 'node:path';
 import { createElement as h } from 'react';
 import { renderToString } from 'react-dom/server';
-import { CUES, SOUND_STORAGE_KEY, cueDuration, isSoundEnabled, parseSoundPreference, playCue, type Cue } from '@/lib/sound';
+import { SOUND_STORAGE_KEY, isSoundEnabled, parseSoundPreference, playCue, type Cue } from '@/lib/sound';
+import { CUES, cueDuration } from '@/lib/soundSynth';
 import SoundToggle from '@/components/ui/SoundToggle';
 
 const ALL: Cue[] = ['rustle', 'chime', 'whoosh', 'tick'];
@@ -78,6 +81,7 @@ class FakeAudioContext {
   sources: FakeSource[] = [];
   resume = vi.fn(async () => { this.state = 'running'; });
   suspend = vi.fn(async () => { this.state = 'suspended'; });
+  close = vi.fn(async () => {});
   constructor() { FakeAudioContext.instances.push(this); }
   createGain() { return Object.assign(new FakeNode(), { gain: new FakeParam() }); }
   createBiquadFilter() { return Object.assign(new FakeNode(), { type: 'lowpass', frequency: new FakeParam(), Q: new FakeParam() }); }
@@ -122,12 +126,28 @@ describe('playCue in a browser', () => {
     expect(FakeAudioContext.instances).toHaveLength(0);
   });
 
-  it('saves the choice, and creates one context lazily on the first cue', async () => {
+  it('saves the choice, and starts the audio inside the click that turns sound on, playing nothing', async () => {
     const sound = await load();
     sound.setSoundEnabled(true);
     expect(store.get('pc-sound')).toBe('on');
-    expect(FakeAudioContext.instances).toHaveLength(0);
+    // Made and woken before the click returns (WebKit starts audio only within the gesture itself)…
+    expect(FakeAudioContext.instances).toHaveLength(1);
+    const [ctx] = FakeAudioContext.instances;
+    expect(ctx.resume).toHaveBeenCalledTimes(1);
+    // …and silent until a cue: the synthesizer takes it over when it arrives.
+    await sound.loadSynth();
+    expect(ctx.sources).toHaveLength(0);
+    sound.playCue('chime');
+    sound.playCue('tick');
+    expect(FakeAudioContext.instances).toHaveLength(1);
+    expect(ctx.sources).toHaveLength(CUES.chime.length + CUES.tick.length);
+  });
 
+  it('creates one context lazily on the first cue on a page opened with sound on', async () => {
+    store.set('pc-sound', 'on');
+    const sound = await load();
+    await sound.loadSynth();
+    expect(FakeAudioContext.instances).toHaveLength(0);
     sound.playCue('chime');
     sound.playCue('tick');
     expect(FakeAudioContext.instances).toHaveLength(1);
@@ -139,9 +159,57 @@ describe('playCue in a browser', () => {
     expect(sound.isSoundEnabled()).toBe(true);
   });
 
+  it('keeps the synthesizer out of the module every page loads, and plays a cue that comes before it', async () => {
+    const source = readFileSync(path.resolve(__dirname, '../lib/sound.ts'), 'utf8');
+    expect(source).not.toMatch(/^import [^;]*soundSynth/m);
+    expect(source).toContain("import('@/lib/soundSynth')");
+    const sound = await load();
+    sound.setSoundEnabled(true);
+    // The first cue, before the synthesizer's chunk has arrived, plays once it has, through the click's context.
+    sound.playCue('chime');
+    await sound.loadSynth();
+    expect(FakeAudioContext.instances).toHaveLength(1);
+    expect(FakeAudioContext.instances[0].sources).toHaveLength(CUES.chime.length);
+  });
+
+  it('drops a cue still waiting for the synthesizer when sound is turned off, and rests the audio', async () => {
+    const sound = await load();
+    sound.setSoundEnabled(true);
+    sound.playCue('chime');
+    // Straight back off (a double click), before the chunk arrives.
+    sound.setSoundEnabled(false);
+    expect(sound.isSoundEnabled()).toBe(false);
+    await sound.loadSynth();
+    await Promise.resolve();
+    expect(FakeAudioContext.instances).toHaveLength(1);
+    const [ctx] = FakeAudioContext.instances;
+    expect(ctx.sources).toHaveLength(0);
+    expect(ctx.state).toBe('suspended');
+
+    // On again: the same context wakes, and plays.
+    sound.setSoundEnabled(true);
+    expect(ctx.state).toBe('running');
+    sound.playCue('tick');
+    expect(FakeAudioContext.instances).toHaveLength(1);
+    expect(ctx.sources).toHaveLength(CUES.tick.length);
+  });
+
+  it('keeps to one context if the synthesizer already made its own', async () => {
+    const synth = await import('@/lib/soundSynth');
+    synth.play('tick');
+    expect(FakeAudioContext.instances).toHaveLength(1);
+    const spare = new FakeAudioContext();
+    synth.adopt(spare as unknown as AudioContext);
+    expect(spare.close).toHaveBeenCalledTimes(1);
+    synth.play('chime');
+    expect(spare.sources).toHaveLength(0);
+    expect(FakeAudioContext.instances[0].sources).toHaveLength(CUES.tick.length + CUES.chime.length);
+  });
+
   it('stops every voice by the end of its cue', async () => {
     const sound = await load();
     sound.setSoundEnabled(true);
+    await sound.loadSynth();
     for (const cue of ALL) {
       sound.playCue(cue);
       const ctx = FakeAudioContext.instances[0];
@@ -150,7 +218,7 @@ describe('playCue in a browser', () => {
       for (const v of voices) {
         expect(v.started, cue).toBeGreaterThanOrEqual(ctx.currentTime);
         // Lead-in (10 ms) + the cue + the stop margin (20 ms).
-        expect(v.stopped! - ctx.currentTime, cue).toBeLessThanOrEqual(sound.cueDuration(cue) + 0.03 + 1e-9);
+        expect(v.stopped! - ctx.currentTime, cue).toBeLessThanOrEqual(cueDuration(cue) + 0.03 + 1e-9);
       }
     }
   });
@@ -158,6 +226,7 @@ describe('playCue in a browser', () => {
   it('plays a cue fired twice in a row once', async () => {
     const sound = await load();
     sound.setSoundEnabled(true);
+    await sound.loadSynth();
     sound.playCue('rustle');
     sound.playCue('rustle');
     expect(FakeAudioContext.instances[0].sources).toHaveLength(CUES.rustle.length);
@@ -165,8 +234,9 @@ describe('playCue in a browser', () => {
 
   it('waits for the person to interact with the page before starting audio', async () => {
     activation.hasBeenActive = false;
+    store.set('pc-sound', 'on');
     const sound = await load();
-    sound.setSoundEnabled(true);
+    await sound.loadSynth();
     sound.playCue('chime');
     expect(FakeAudioContext.instances).toHaveLength(0);
   });
@@ -175,15 +245,18 @@ describe('playCue in a browser', () => {
     vi.stubGlobal('document', { visibilityState: 'hidden' });
     const sound = await load();
     sound.setSoundEnabled(true);
+    await sound.loadSynth();
     sound.playCue('whoosh');
-    expect(FakeAudioContext.instances).toHaveLength(0);
+    expect(FakeAudioContext.instances.flatMap((c) => c.sources)).toHaveLength(0);
   });
 
   it('releases the audio device when turned off, and resumes when turned on', async () => {
     const sound = await load();
     sound.setSoundEnabled(true);
+    await sound.loadSynth();
     sound.playCue('tick');
     const ctx = FakeAudioContext.instances[0];
+    ctx.resume.mockClear();
 
     sound.setSoundEnabled(false);
     expect(store.get('pc-sound')).toBe('off');

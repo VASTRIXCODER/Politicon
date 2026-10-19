@@ -15,8 +15,9 @@ export default function SoundToggle({ className }: { className?: string }) {
   const toggle = () => {
     const next = !on;
     setOn(next);
-    // One soft chime confirms sound is on. It plays inside this click, which
-    // is what lets the browser start audio at all.
+    // One soft chime confirms sound is on. setOn starts the audio inside this
+    // click, which is what lets the browser play it; the chime itself may
+    // follow a moment later, once the synthesizer's chunk is in.
     if (next) playCue('chime');
   };
 

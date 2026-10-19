@@ -40,7 +40,7 @@ export const QUICK_PROMPTS: { icon: LucideIcon; label: string; text: string }[] 
   { icon: DollarSign, label: 'Taxes', text: 'Which kinds of tax changes would affect someone in my situation the most?' },
   { icon: Home, label: 'Housing', text: 'What kinds of housing policies could change my monthly housing costs?' },
   { icon: Heart, label: 'Healthcare', text: 'How do changes to health insurance subsidies usually affect households like mine?' },
-  { icon: GraduationCap, label: 'Student Loans', text: 'How could federal student loan policy changes affect my budget?' },
+  { icon: GraduationCap, label: 'Student loans', text: 'How could federal student loan policy changes affect my budget?' },
   { icon: Briefcase, label: 'Work', text: 'Which labor and wage policies are most relevant to my job situation?' },
 ];
 
@@ -57,7 +57,7 @@ export const INITIAL_MESSAGE: ExtendedMessage = {
   id: '0',
   local: true,
   role: 'assistant',
-  content: "Hi! I'm Politicon's AI Policy Guide. I can explain how policies may affect your finances, using the ranges in your profile. My numbers are educational estimates, not financial advice.\n\nPick one of your policies to ask about it, or ask me anything.",
+  content: "Hi, I'm Politicon's AI Policy Guide. I can explain how policies may affect your finances, using the ranges in your profile. My numbers are educational estimates, not financial advice.\n\nPick one of your policies to ask about it, or ask me anything.",
   timestamp: new Date(),
 };
 

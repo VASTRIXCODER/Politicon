@@ -47,7 +47,12 @@ export interface ThemeTokens {
   lossFill: string;
   /** Errors and destructive actions. Never used for a cost. */
   danger: string;
-  /** Warnings and low-confidence notes. */
+  /**
+   * Warnings and low-confidence notes: terracotta, a hue of its own between
+   * danger's rose and the cost amber, so a warning never reads as the
+   * official record's gold or as a cost (tests/tokens.test.ts keeps it
+   * visibly apart from all three, CIEDE2000).
+   */
   caution: string;
   /** Archive gold: official-record accents only, for text and icons (AA). */
   gold: string;
@@ -81,7 +86,7 @@ export const THEMES: Record<ThemeName, ThemeTokens> = {
     // Ember amber deepened for paper: the brand ember (#E0832B) is under 3:1 there.
     lossFill: '#C46A16',
     danger: '#B42344',
-    caution: '#7E5F07',
+    caution: '#A84530',
     gold: '#7A5C0A',
     goldFill: '#D6A52E',
     focus: '#5434E0',
@@ -103,7 +108,7 @@ export const THEMES: Record<ThemeName, ThemeTokens> = {
     loss: '#F2A35E',
     lossFill: '#E0832B',
     danger: '#FF8FA3',
-    caution: '#E8C35A',
+    caution: '#F37E63',
     gold: '#E3B341',
     goldFill: '#E3B341',
     focus: '#B9A8FF',
@@ -156,6 +161,29 @@ export const CATEGORY_COLORS: Record<ThemeName, Record<string, string>> = {
     other: '#A9A3C2',
   },
 };
+
+/*
+ * Theme zones. <html data-theme> sets the page's theme; any element with
+ * data-night turns its subtree to the night tokens, and data-day back to the
+ * day ones (a paper slip on a night pane), the nearest zone winning
+ * (styles/tokens.css). These selectors say "the nearest zone is night" for
+ * Tailwind's `dark:` variant (tailwind.config.ts), so `dark:` styles follow
+ * the tokens exactly for zones up to three deep (a night plate on a day card
+ * in a night section). Each list matches an element or anything inside it.
+ */
+export const THEME_ZONES = {
+  night: '[data-theme="dark"], [data-theme="dark"] *, [data-night], [data-night] *',
+  day: '[data-day], [data-day] *',
+  nightInDay: '[data-day] [data-night], [data-day] [data-night] *',
+  dayInNightInDay: '[data-day] [data-night] [data-day], [data-day] [data-night] [data-day] *',
+} as const;
+
+/**
+ * Tailwind's `dark:` variant: night, but not inside a day island, unless a
+ * night plate sits inside that island. Zero specificity (:where), so a
+ * `dark:` utility wins over its plain twin by order alone, as before.
+ */
+export const DARK_VARIANT = `&:where(:where(${THEME_ZONES.night}):not(${THEME_ZONES.day}), :where(${THEME_ZONES.nightInDay}):not(${THEME_ZONES.dayInNightInDay}))`;
 
 /** The CSS custom property each token is written to (`--c-<kebab>`). */
 export const cssVarName = (token: keyof ThemeTokens) =>

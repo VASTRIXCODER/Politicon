@@ -1,11 +1,20 @@
 /*
- * The toast's entrance and exit (components/ui/Toast.tsx): a short rise and
- * fade, in plain CSS so no animation library rides along in the pages'
- * first load. Under reduced motion and "Pause motion" app/globals.css cuts
+ * The toast's place and its entrance and exit (components/ui/Toast.tsx): a
+ * short rise and fade, in plain CSS so no animation library rides along in
+ * the pages' first load. Under reduced motion and "Pause motion" app/globals.css cuts
  * every animation to its end state (fill-mode both: fully shown, or gone).
  */
 .toast {
   animation: toast-in 320ms var(--ease-civic) both;
+  /* Clear of the phone's home indicator, and of a page's own bottom bar
+     (--toast-bottom-inset: a sticky save bar, a composer). */
+  bottom: calc(1rem + env(safe-area-inset-bottom, 0px) + var(--toast-bottom-inset, 0px));
+}
+
+@media (min-width: 640px) {
+  .toast {
+    bottom: calc(1.5rem + env(safe-area-inset-bottom, 0px) + var(--toast-bottom-inset, 0px));
+  }
 }
 
 .toast[data-leaving] {

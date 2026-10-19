@@ -238,7 +238,7 @@ export function useDashboardData(): DashboardData {
       // A refresh that ended without a newer feed failed, even though the old one is still showing.
       const refreshed = baseline === undefined || (res.data.updatedAt && res.data.updatedAt !== baseline);
       if (attempt > 0 && baseline !== undefined && (!refreshed || res.data.stale || res.data.failed)) {
-        showToast("We couldn't refresh your feed just now. Showing your previous one.", 'error');
+        showToast('We couldn’t refresh your feed just now. Showing your previous one.', 'error');
       }
     } else if (res.code === 'needs_onboarding') {
       setNeedsOnboarding(true);
@@ -262,7 +262,7 @@ export function useDashboardData(): DashboardData {
     if (unmounted.current.signal.aborted) return;
     if (res.ok) {
       track('analysis_ready', { source: 'dashboard', category, status: res.fresh ? 'fresh' : 'cached' });
-      showToast(`Analysis complete for "${policy.title}"`);
+      showToast(`Analysis ready for “${policy.title}”.`);
       await refetchAnalyses();
     } else if (!res.cancelled) {
       showToast(res.message, 'error');

@@ -42,7 +42,7 @@ export default function LedgerSkeleton() {
       </div>
       <section aria-labelledby="dashboard-ledger-loading" aria-busy="true" className={LEDGER_PANE}>
         <h2 id="dashboard-ledger-loading" className="font-display text-2xl font-medium text-ink sm:text-3xl">
-          Your <em>Ledger</em>
+          Your <em>ledger</em>
         </h2>
         <div role="status" className="mt-5">
           <span className="sr-only">Loading your ledger…</span>

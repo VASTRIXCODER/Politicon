@@ -222,7 +222,7 @@ export default function SignUpForm() {
             disabled={resendIn > 0}
             className="rounded-lg text-sm text-primary-300 transition-colors hover:text-ink disabled:cursor-not-allowed disabled:opacity-50"
           >
-            {resendIn > 0 ? `Resend available in ${resendIn}s` : 'Resend confirmation email'}
+            {resendIn > 0 ? `Resend in ${resendIn}s` : 'Resend confirmation email'}
           </button>
           {/* Always mounted so the note is announced when it appears. */}
           <p role="status" className="text-xs text-muted empty:hidden">{resendNote}</p>

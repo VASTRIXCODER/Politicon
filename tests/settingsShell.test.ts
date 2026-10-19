@@ -176,12 +176,12 @@ describe('Account', () => {
 
   it('keeps every form and label', () => {
     for (const label of [
-      'Personal Information', 'First Name', 'Save Changes',
-      'Email Address', 'New email address', 'Change email',
-      'Change Password', 'Current Password', 'New Password', 'Confirm New Password', 'Update Password',
+      'Personal information', 'First name', 'Save name',
+      'Email address', 'New email address', 'Change email',
+      'Change password', 'Current password', 'New password', 'Confirm new password', 'Update password',
       'Sessions', 'Sign out all other devices',
-      'Your Data', 'Download my data (JSON)', 'How we use your data',
-      'Delete Account',
+      'Your data', 'Download my data (JSON)', 'How we use your data',
+      'Delete account',
     ]) {
       expect(text(html), label).toContain(label);
     }
@@ -197,11 +197,11 @@ describe('Account', () => {
     }
   });
 
-  it('keeps its busy buttons focusable: nothing on the server render is disabled but the empty forms’ submits', () => {
+  it('keeps its busy buttons focusable: nothing on the server render is disabled but the unchanged forms’ submits', () => {
     // A save in flight reads aria-disabled (a disabled button would drop keyboard focus);
-    // "Change email" and "Update Password" wait, disabled, until there's something to send.
+    // "Save name", "Change email" and "Update password" wait, disabled, until there's something to send.
     const disabled = [...html.matchAll(/<button\b[^>]*\sdisabled=""[^>]*>[\s\S]*?<\/button>/g)].map((m) => text(m[0]));
-    expect(disabled).toEqual(['Change email', 'Update Password']);
+    expect(disabled).toEqual(['Save name', 'Change email', 'Update password']);
   });
 
   it('downloads the data export from the export route', () => {
@@ -210,14 +210,14 @@ describe('Account', () => {
 
   it('asks for no current password on accounts without one', () => {
     const oauth = renderToString(h(AccountSection, { account: { ...ACCOUNT, hasPassword: false }, onNameSaved: noop, notify: noop }));
-    expect(text(oauth)).not.toContain('Current Password');
-    expect(text(oauth)).toContain('New Password');
+    expect(text(oauth)).not.toContain('Current password');
+    expect(text(oauth)).toContain('New password');
   });
 
   it('keeps the delete confirmation out of the page until asked for', () => {
     expect(html).not.toContain('<dialog');
     expect(text(html)).not.toContain('Type DELETE to confirm');
-    expect(html).toMatch(/aria-haspopup="dialog"[^>]*>[\s\S]*?Delete Account/);
+    expect(html).toMatch(/aria-haspopup="dialog"[^>]*>[\s\S]*?Delete account/);
   });
 });
 
@@ -229,7 +229,7 @@ describe('deleting the account', () => {
     expect(text(html)).toContain('This cannot be undone.');
     expect(text(html)).toContain('Type DELETE to confirm');
     expect(text(html)).toContain('Your password');
-    expect(text(html)).toContain('Permanently Delete My Account');
+    expect(text(html)).toContain('Permanently delete my account');
     expect(html).toMatch(/<input[^>]*type="password"[^>]*autocomplete="current-password"/i);
   });
 

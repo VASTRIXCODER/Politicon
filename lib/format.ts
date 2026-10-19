@@ -54,6 +54,21 @@ export function formatPct(n: number, opts: { signed?: boolean; digits?: number }
   return `${sign(v, opts.signed ?? true)}${fixed(Math.abs(v), digits)}%`;
 }
 
+/**
+ * A plain signed number (an index, a count of years): formatSigned(-2) → "−2",
+ * formatSigned(1.5, { suffix: ' yrs' }) → "+1.5 yrs". Zero takes no sign.
+ */
+export function formatSigned(n: number, opts: { digits?: number; suffix?: string } = {}): string {
+  const digits = opts.digits ?? 1;
+  const v = clean(n, digits);
+  return `${sign(v, true)}${fixed(Math.abs(v), digits)}${opts.suffix ?? ''}`;
+}
+
+/** Whether a figure shows as zero at this many decimal places (so it has no direction to sign). */
+export function roundsToZero(n: number, digits = 0): boolean {
+  return clean(n, digits) === 0;
+}
+
 /** Percentage points, for changes in a rate: formatPts(-0.5) → "−0.5 pts". */
 export function formatPts(n: number, opts: { digits?: number } = {}): string {
   const digits = opts.digits ?? 1;

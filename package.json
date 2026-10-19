@@ -12,7 +12,7 @@
     "test:e2e": "playwright test",
     "test:e2e:ui": "playwright test --ui",
     "test:e2e:report": "playwright show-report",
-    "test:perf": "E2E_PERF=1 playwright test frame-rate --project=mobile",
+    "test:perf": "E2E_PERF=1 playwright test frame-rate long-tasks --project=mobile",
     "eval": "vitest run --config vitest.eval.config.ts",
     "check:bundle": "node scripts/check-bundle.mjs",
     "audit:prod": "node scripts/audit-prod.mjs"

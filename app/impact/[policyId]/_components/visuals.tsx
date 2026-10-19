@@ -363,7 +363,7 @@ export function CrystalView({ a, simple }: { a: FullAnalysis; simple: boolean })
           <p className="mt-1.5 text-xs leading-relaxed text-muted [text-wrap:pretty]">{crystalScaleNote()}</p>
           {axes.length > 0 && (
             <>
-              {/* The list's key: every score below reads as a risk ("Income Stability 38" is moderately at risk, not stable). */}
+              {/* The list's key: every score below reads as a risk ("Income stability 38" is moderately at risk, not stable). */}
               <p id={listId} className="mt-3 font-mono-data text-meta uppercase tracking-[0.14em] text-muted">
                 Risk scores, out of 100 · {CRYSTAL_DIRECTION.toLowerCase()}
               </p>

@@ -84,7 +84,7 @@ export default function LedgerMockup({ facing }: { facing: 'left' | 'right' }) {
     <TiltStage facing={facing} className="sm:mb-24">
       <Layer>
         <Pane>
-          <AppBar active="My Impact" crumb="Your Ledger" />
+          <AppBar active="My Impact" crumb="Your ledger" />
           <div className="grid grid-cols-1 gap-6 px-4 py-5 sm:grid-cols-[minmax(0,1fr)_9.5rem] sm:px-6">
             <div className="min-w-0">
               <div className="flex items-center justify-between gap-2">

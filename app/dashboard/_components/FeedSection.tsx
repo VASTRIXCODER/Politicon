@@ -27,10 +27,10 @@ export default function FeedSection({ feed }: { feed: DashboardData['feed'] }) {
           tabIndex={-1}
           className="scroll-mt-28 font-display text-2xl font-medium text-ink outline-none"
         >
-          Policy Feed
+          Policy feed
         </h2>
         <div className="flex items-center gap-3">
-          {updatedAt && <span className="text-meta text-muted">Updated {timeAgo(updatedAt)}</span>}
+          {updatedAt && <span className="text-meta text-muted">Updated {timeAgo(updatedAt).toLowerCase()}</span>}
           <button
             type="button"
             onClick={() => feed.load(true)}

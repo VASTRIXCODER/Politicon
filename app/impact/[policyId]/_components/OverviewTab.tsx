@@ -38,7 +38,7 @@ export default function OverviewTab({ a, simple, income, applies }: {
           )}
         </Pane>
 
-        <Pane title="Immediate Effects">
+        <Pane title="Immediate effects">
           <StatRow label="Monthly budget impact" value={money(a.immediate.monthlyBudgetImpact, '/mo')} positive={a.immediate.monthlyBudgetImpact >= 0} cue={a.immediate.monthlyBudgetImpact} />
           <StatRow label="Annual budget impact" value={money(a.immediate.annualBudgetImpact, '/yr')} positive={a.immediate.annualBudgetImpact >= 0} cue={a.immediate.annualBudgetImpact} />
           {(applies.paycheck || a.immediate.takeHomePerPaycheck !== 0) && (

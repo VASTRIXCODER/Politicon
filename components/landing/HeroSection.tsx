@@ -90,7 +90,8 @@ export default function HeroSection({ stateBills }: HeroSectionProps) {
                 maxLength={MAX_QUESTION}
                 enterKeyHint="go"
                 autoComplete="off"
-                placeholder="Ask about a policy, e.g. “minimum wage”"
+                // Short enough to show whole beside the Ask button on a phone; the example is in the hint.
+                placeholder="Ask about a policy…"
                 aria-describedby="hero-search-hint"
                 className="input-glass w-full !rounded-full py-4 pl-12 pr-28 text-sm shadow-[0_18px_40px_-24px_rgb(var(--c-violet)/0.45)]"
               />
@@ -104,14 +105,14 @@ export default function HeroSection({ stateBills }: HeroSectionProps) {
                 Ask
               </Button>
             </div>
-            <p id="hero-search-hint" className="mt-2.5 pl-5 text-meta text-muted">
-              Opens the AI Policy Guide with your question ready to send. Free account required.
+            <p id="hero-search-hint" className="mt-2.5 pl-5 text-meta text-muted [text-wrap:pretty]">
+              Try “minimum wage”: it opens in the AI Policy Guide, ready to send. Free account required.
             </p>
           </Form>
 
           <div className="mt-5 flex flex-wrap gap-3 sm:mt-6">
             <Button href="/auth/signup" variant="primary" size="lg" icon={<ArrowRight className="h-4 w-4" />} iconPosition="end">
-              Get My Impact Report
+              Get my impact report
             </Button>
             <Button href="/explorer" variant="ghost" size="lg">
               Try the Explorer

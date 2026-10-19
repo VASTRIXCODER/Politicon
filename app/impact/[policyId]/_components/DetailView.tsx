@@ -93,7 +93,7 @@ export default function DetailView({ detail, analysis: a, policyId }: DetailView
       <TransmissionHeader a={a} analyzedAt={analyzedAt} profileChips={chips} />
 
       {stale && (
-        // A note, not a warning: violet ink (the caution ochre reads as the official record's gold).
+        // A note, not a warning: violet ink (nothing is wrong with the analysis, it may just be out of date).
         <div role="status" className="mb-8 flex flex-col justify-between gap-3 rounded-pane border border-primary/25 bg-primary/[0.06] px-5 py-4 sm:flex-row sm:items-center">
           <p className="flex items-start gap-2.5 text-sm text-ink">
             <Info className="mt-0.5 h-4 w-4 flex-shrink-0 text-primary-300" aria-hidden />

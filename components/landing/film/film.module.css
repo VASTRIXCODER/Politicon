@@ -239,6 +239,19 @@
   }
 }
 
+/* The scene can pass behind a caption: on phones a tall one (the example's
+   ledger) reaches up past the scrim into it, and on desktops the outgoing
+   bill and the Capitol's edge cross the caption column as shot 3 pans to the
+   house. A soft halo of the page's own colour keeps every word clear of a
+   lit model behind it, in either theme (and at dusk, where --c-canvas is the
+   night's). */
+.caption {
+  text-shadow:
+    0 0 2px rgb(var(--c-canvas)),
+    0 0 0.375rem rgb(var(--c-canvas)),
+    0 0 1rem rgb(var(--c-canvas));
+}
+
 /* ---- Progress rail --------------------------------------------------------- */
 
 .segment {
