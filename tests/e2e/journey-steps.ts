@@ -59,11 +59,43 @@ export async function signIn(page: Page, account: Account) {
 }
 
 /**
- * Answers every onboarding question: the first option of any unanswered
- * single or multiple choice, the first state, and the optional city left
- * blank. Ends on the dashboard.
+ * Answers the onboarding question on screen, if it isn't answered yet: the
+ * first option of any unanswered single or multiple choice, the first state,
+ * and the optional city left blank. Returns its heading's text.
  */
-export async function completeOnboarding(page: Page) {
+export async function answerOnboardingStep(page: Page): Promise<string> {
+  const main = page.locator('main#main');
+  const heading = main.getByRole('heading', { level: 1 });
+  await expect(heading).toHaveCount(1);
+  const select = main.locator('select');
+  for (let i = 0; i < (await select.count()); i++) {
+    if (!(await select.nth(i).inputValue())) await select.nth(i).selectOption({ index: 1 });
+  }
+  const radiogroups = main.getByRole('radiogroup');
+  for (let i = 0; i < (await radiogroups.count()); i++) {
+    const group = radiogroups.nth(i);
+    if (!(await group.locator('[aria-checked="true"]').count())) await group.getByRole('radio').first().click();
+  }
+  const groups = main.getByRole('group');
+  for (let i = 0; i < (await groups.count()); i++) {
+    const toggles = groups.nth(i).locator('button[aria-pressed]');
+    if ((await toggles.count()) && !(await groups.nth(i).locator('button[aria-pressed="true"]').count())) {
+      await groups.nth(i).locator('button[aria-pressed]:enabled').first().click();
+    }
+  }
+  return (await heading.innerText()).trim();
+}
+
+/** The onboarding step's forward button (Continue, Skip, or the last step's). */
+export const onboardingNext = (page: Page) =>
+  page.locator('main#main').getByRole('button', { name: /^(continue|skip|see my impact|skip and see my impact)$/i });
+
+/**
+ * Answers onboarding questions until the progress bar reads `stop` (1-based),
+ * or every question when `stop` is omitted. Every question ends on the
+ * dashboard; a `stop` leaves that question on screen, unanswered.
+ */
+export async function completeOnboarding(page: Page, stop?: number) {
   const main = page.locator('main#main');
   const progress = page.getByRole('progressbar', { name: 'Profile setup progress' });
   await expect(progress).toBeVisible({ timeout: 30_000 });
@@ -76,26 +108,10 @@ export async function completeOnboarding(page: Page) {
     const heading = main.getByRole('heading', { level: 1 });
     await expect(heading).toHaveCount(1);
     if (previous) await expect(heading).not.toHaveText(previous);
-    previous = (await heading.innerText()).trim();
+    if (stop !== undefined && step >= stop) return;
+    previous = await answerOnboardingStep(page);
 
-    const select = main.locator('select');
-    for (let i = 0; i < (await select.count()); i++) {
-      if (!(await select.nth(i).inputValue())) await select.nth(i).selectOption({ index: 1 });
-    }
-    const radiogroups = main.getByRole('radiogroup');
-    for (let i = 0; i < (await radiogroups.count()); i++) {
-      const group = radiogroups.nth(i);
-      if (!(await group.locator('[aria-checked="true"]').count())) await group.getByRole('radio').first().click();
-    }
-    const groups = main.getByRole('group');
-    for (let i = 0; i < (await groups.count()); i++) {
-      const toggles = groups.nth(i).locator('button[aria-pressed]');
-      if ((await toggles.count()) && !(await groups.nth(i).locator('button[aria-pressed="true"]').count())) {
-        await groups.nth(i).locator('button[aria-pressed]:enabled').first().click();
-      }
-    }
-
-    const next = main.getByRole('button', { name: /^(continue|skip|see my impact|skip and see my impact)$/i });
+    const next = onboardingNext(page);
     await expect(next).toBeEnabled();
     const last = step === total;
     await next.click();

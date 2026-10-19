@@ -20,6 +20,7 @@ import { usePrefersReducedMotion, useStageStatus } from '@/components/three/runt
 import { fxOverrideAllowed, useTierDetails } from '@/lib/three/tier';
 import { MARK_PATHS, MARK_VIEWBOX } from '@/lib/brand/mark';
 import { cn } from '@/lib/utils';
+import AppLab from './AppLab';
 import FilmLab from './FilmLab';
 
 // QA-only scenes, loaded like the kit (never in this page's first load).
@@ -343,6 +344,8 @@ export default function LabClient() {
       </section>
 
       <FilmLab />
+
+      <AppLab />
 
       <section
         className="mt-16 rounded-pane bg-canvas px-5 py-10 sm:px-10"

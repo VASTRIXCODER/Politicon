@@ -13,7 +13,8 @@ type Rating = 'up' | 'down' | 'not_relevant' | 'report';
  * Thumbs up/down and "report a problem" on an AI output. A thumbs-down
  * offers the usual fixes (update profile, re-analyze) when they apply.
  * `excerpt` is a short copy of the rated text, kept with the feedback so
- * reviewers can see what was rated.
+ * reviewers can see what was rated. A thumbs-down is an opinion, not an
+ * error, so it never lights up in the error colour (danger is for errors only).
  */
 export default function FeedbackControls({
   targetType, targetId, excerpt, onReanalyze, className = '',
@@ -67,7 +68,7 @@ export default function FeedbackControls({
             <button type="button" onClick={() => send('up')} disabled={pending} aria-label="Helpful" className="p-1.5 rounded-lg hover:bg-fg/5 hover:text-gain transition-colors disabled:opacity-50">
               <ThumbsUp className="w-3.5 h-3.5" aria-hidden />
             </button>
-            <button type="button" onClick={() => send('down')} disabled={pending} aria-label="Not helpful" className="p-1.5 rounded-lg hover:bg-fg/5 hover:text-danger transition-colors disabled:opacity-50">
+            <button type="button" onClick={() => send('down')} disabled={pending} aria-label="Not helpful" className="p-1.5 rounded-lg hover:bg-fg/5 hover:text-ink transition-colors disabled:opacity-50">
               <ThumbsDown className="w-3.5 h-3.5" aria-hidden />
             </button>
             <button type="button" onClick={() => setReporting(v => !v)} disabled={pending} aria-expanded={reporting} aria-label="Report a problem" className="p-1.5 rounded-lg hover:bg-fg/5 hover:text-caution transition-colors disabled:opacity-50">

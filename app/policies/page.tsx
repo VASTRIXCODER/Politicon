@@ -3,29 +3,41 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
-import { Search, X, RefreshCw } from 'lucide-react';
-import Navbar from '@/components/layout/Navbar';
-import AmbientBackground from '@/components/landing/AmbientBackground';
-import GlassCard from '@/components/ui/GlassCard';
+import { Search, SearchX, X, RefreshCw, BookOpen, ArrowRight } from 'lucide-react';
+import AppShell from '@/components/layout/AppShell';
 import Button from '@/components/ui/Button';
+import EmptyState from '@/components/ui/EmptyState';
+import PageHeader from '@/components/ui/PageHeader';
+import SegmentedControl from '@/components/ui/SegmentedControl';
+import Surface from '@/components/ui/Surface';
 import PolicyFeedCard, { FeedSkeletonCard } from '@/components/PolicyFeedCard';
+import PolicyDocket from '@/components/feed/PolicyDocket';
 import { useToast } from '@/components/ui/Toast';
 import { apiFetch } from '@/lib/api';
 import { requestAnalysis } from '@/lib/analysisClient';
 import { policyCategory, track } from '@/lib/track';
 import { createClient } from '@/lib/supabase/client';
 import { getCategoryIcon } from '@/lib/categoryIcons';
+import { cn } from '@/lib/utils';
 import type { DiscoveredPolicy } from '@/types';
 
 const POLL_MS = 5000;
 const POLL_ATTEMPTS = 60; // ~5 minutes
 
 type Show = 'all' | 'analyzed' | 'not_analyzed';
-const SHOW_LABELS: Record<Show, string> = { all: 'All', analyzed: 'Analyzed', not_analyzed: 'Not analyzed yet' };
+const SHOW_OPTIONS: { value: Show; label: string }[] = [
+  { value: 'all', label: 'All' },
+  { value: 'analyzed', label: 'Analyzed' },
+  { value: 'not_analyzed', label: 'Not analyzed' },
+];
+
+/** The same grid the docket lays its cards out on (components/feed/PolicyDocket, layout="grid"). */
+const GRID = 'grid grid-cols-1 gap-x-5 gap-y-4 md:grid-cols-2 xl:grid-cols-3';
 
 /**
- * Every policy in the user's personalized feed, searchable and filterable.
- * Policies come from official records (see the dashboard to refresh the feed).
+ * Every policy in the user's personalized feed, searchable and filterable,
+ * as a docket of bill sheets. Policies come from official records (see the
+ * dashboard to refresh the feed).
  */
 export default function PoliciesPage() {
   const router = useRouter();
@@ -43,7 +55,8 @@ export default function PoliciesPage() {
   const timer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const policyCount = useRef(0);
   const searchRef = useRef<HTMLInputElement>(null);
-  const headingRef = useRef<HTMLHeadingElement>(null);
+  // The page title takes focus when the list it heads goes away (the last card hidden, filters cleared).
+  const headingRef = useRef<HTMLSpanElement>(null);
   useEffect(() => { policyCount.current = policies.length; }, [policies]);
 
   async function loadImpacts() {
@@ -156,6 +169,16 @@ export default function PoliciesPage() {
     });
   }, [policies, impacts, search, category, show]);
 
+  // The docket's ledger line: counts of what's actually in the feed.
+  const analyzedCount = useMemo(() => policies.filter((p) => impacts.has(p.id)).length, [policies, impacts]);
+  const officialCount = useMemo(() => policies.filter((p) => p.record?.verified).length, [policies]);
+
+  function clearFilters() {
+    setSearch('');
+    setCategory('All');
+    setShow('all');
+  }
+
   // Read out by one status region that stays mounted, so a search that matches
   // nothing (and the results coming back) is announced as it changes.
   const noMatches = !loading && policies.length > 0 && filtered.length === 0;
@@ -166,137 +189,169 @@ export default function PoliciesPage() {
       : `Showing ${filtered.length} of ${policies.length} ${policies.length === 1 ? 'policy' : 'policies'}`;
 
   return (
-    <div className="min-h-screen relative">
-      <AmbientBackground />
+    <AppShell>
       {toast}
-      <div className="relative z-10">
-        <Navbar />
-        <main id="main" tabIndex={-1} className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 pt-28 pb-20">
-          <header className="mb-8">
-            <h1 ref={headingRef} tabIndex={-1} className="font-display text-3xl font-medium text-text-primary mb-2 outline-none">Your <em>policies</em></h1>
-            <p className="text-text-muted max-w-2xl">
-              Bills and laws from official records that are most relevant to your profile. Analyze one to see what it could mean for your
-              finances. To get newer policies, refresh your feed on the <Link href="/dashboard" className="text-primary-300 hover:underline underline-offset-2">dashboard</Link>.
-            </p>
-          </header>
-
-          <div className="flex flex-col lg:flex-row gap-4 mb-6">
-            <div className="relative flex-1">
-              <label htmlFor="policy-search" className="sr-only">Search your policies</label>
-              <Search className="absolute left-4 top-1/2 -translate-y-1/2 w-4 h-4 text-text-muted" aria-hidden />
-              <input
-                ref={searchRef}
-                id="policy-search"
-                type="search"
-                placeholder="Search by title, bill number or topic…"
-                value={search}
-                onChange={(e) => setSearch(e.target.value)}
-                className="input-glass w-full pl-11 pr-10 py-3.5 text-base sm:text-sm"
-              />
-              {search && (
-                <button type="button" onClick={() => { setSearch(''); searchRef.current?.focus(); }} aria-label="Clear search" className="absolute right-2.5 top-1/2 -translate-y-1/2 p-1 rounded-lg text-text-muted hover:text-text-primary">
-                  <X className="w-4 h-4" aria-hidden />
-                </button>
-              )}
-            </div>
-            <div role="group" aria-label="Show" className="flex gap-1 glass rounded-2xl p-1 w-fit">
-              {(Object.keys(SHOW_LABELS) as Show[]).map((k) => (
-                <button
-                  key={k}
-                  type="button"
-                  aria-pressed={show === k}
-                  onClick={() => setShow(k)}
-                  className={`px-4 py-2.5 rounded-xl border text-sm font-medium whitespace-nowrap transition-all ${show === k ? 'bg-primary/20 text-primary-300 border-primary/20' : 'border-transparent text-text-muted hover:text-text-primary'}`}
-                >
-                  {SHOW_LABELS[k]}
-                </button>
-              ))}
-            </div>
-          </div>
-
-          {categories.length > 2 && (
-            <div role="group" aria-label="Category" className="flex gap-2 mb-8 overflow-x-auto pb-2 scrollbar-hide">
-              {categories.map((cat) => {
-                const Icon = cat === 'All' ? null : getCategoryIcon(cat);
-                return (
-                  <button
-                    key={cat}
-                    type="button"
-                    aria-pressed={category === cat}
-                    onClick={() => setCategory(cat)}
-                    className={`flex-shrink-0 inline-flex items-center gap-1.5 px-4 py-2 rounded-full text-xs font-medium border transition-all ${
-                      category === cat ? 'bg-primary/20 border-primary/40 text-primary-300' : 'bg-fg/4 border-fg/8 text-text-muted hover:text-text-primary hover:border-fg/16'
-                    }`}
-                  >
-                    {Icon && <Icon className="w-3.5 h-3.5" aria-hidden />}
-                    {cat}
-                  </button>
-                );
-              })}
-            </div>
-          )}
-
-          {preparing && (
-            <p role="status" className="mb-6 flex items-center gap-2 text-sm text-text-muted">
-              <RefreshCw className="w-4 h-4 animate-spin text-primary" aria-hidden /> Updating your feed from official records…
-            </p>
-          )}
-
-          <p role="status" className={noMatches ? 'text-text-muted text-center pt-16 mb-4' : 'text-xs text-text-muted mb-4 empty:mb-0'}>
-            {resultsStatus}
+      <PageHeader
+        eyebrow="Your docket"
+        title={
+          <span ref={headingRef} tabIndex={-1} className="rounded-md">
+            Your <em>policies</em>
+          </span>
+        }
+        lede={
+          <p>
+            Bills and laws from official records that are most relevant to your profile. Analyze one to see what it could mean for your
+            finances. To get newer policies, refresh your feed on the{' '}
+            <Link href="/dashboard" className="text-primary-300 underline decoration-primary/30 underline-offset-2 hover:decoration-primary">dashboard</Link>.
           </p>
+        }
+        actions={
+          !loading && policies.length > 0 ? (
+            <dl className="grid grid-cols-3 gap-x-6 gap-y-1 font-mono-data">
+              {[
+                ['In your feed', policies.length],
+                ['Analyzed', analyzedCount],
+                ['Official records', officialCount],
+              ].map(([label, value]) => (
+                // Number above its label (dd first on screen), the numbers in one row even when a label wraps on a phone.
+                <div key={label} className="flex flex-col-reverse justify-end">
+                  <dt className="text-meta uppercase tracking-[0.12em] text-muted">{label}</dt>
+                  <dd className="text-2xl font-semibold tabular-nums text-ink">{value}</dd>
+                </div>
+              ))}
+            </dl>
+          ) : undefined
+        }
+      />
 
-          {loading ? (
-            <div role="status" className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-4">
-              <span className="sr-only">Loading your policies…</span>
-              {[0, 1, 2, 3, 4, 5].map((i) => <FeedSkeletonCard key={i} />)}
-            </div>
-          ) : error && policies.length === 0 ? (
-            <GlassCard className="rounded-2xl p-10 text-center">
-              <h2 className="font-medium text-text-primary mb-2">We couldn&apos;t load your policies</h2>
-              <p role="alert" className="text-sm text-text-muted mb-6">{error}</p>
-              <Button onClick={() => loadFeed()} variant="ghost" size="sm" className="px-5 py-2.5 bg-primary/20 hover:bg-primary/30 border-primary/20 text-primary-300">
-                Try again
-              </Button>
-            </GlassCard>
-          ) : policies.length === 0 ? (
-            <GlassCard className="rounded-2xl p-10 text-center">
-              <h2 className="font-medium text-text-primary mb-2">No policies in your feed yet</h2>
-              <p className="text-sm text-text-muted mb-6">Build your personalized feed from the dashboard.</p>
-              <Button href="/dashboard" variant="ghost" size="sm" className="px-5 py-2.5 bg-primary/20 hover:bg-primary/30 border-primary/20 text-primary-300">
-                Go to the dashboard
-              </Button>
-            </GlassCard>
-          ) : noMatches ? (
-            <div className="text-center pb-16">
+      {/* The filter bar: glass, because it's a control (the docket's paper holds the content). */}
+      <Surface variant="glass" pad="none" className="mb-6 mt-10 flex flex-col gap-3 p-3 sm:p-4">
+        <div className="flex flex-col gap-3 lg:flex-row lg:items-center">
+          <div className="relative min-w-0 flex-1">
+            <label htmlFor="policy-search" className="sr-only">Search your policies</label>
+            <Search className="pointer-events-none absolute left-4 top-1/2 h-4 w-4 -translate-y-1/2 text-muted" aria-hidden />
+            <input
+              ref={searchRef}
+              id="policy-search"
+              type="search"
+              placeholder="Search title, bill or topic…"
+              value={search}
+              onChange={(e) => setSearch(e.target.value)}
+              className="input-glass w-full rounded-full py-3 pl-11 pr-10 text-base sm:text-sm"
+            />
+            {search && (
               <button
                 type="button"
-                // This button leaves with the empty state; the page heading keeps focus in place.
-                onClick={() => { setSearch(''); setCategory('All'); setShow('all'); headingRef.current?.focus(); }}
-                className="text-sm text-primary-300 hover:underline underline-offset-2"
+                onClick={() => { setSearch(''); searchRef.current?.focus(); }}
+                aria-label="Clear search"
+                className="absolute right-2 top-1/2 inline-flex h-8 w-8 -translate-y-1/2 items-center justify-center rounded-full text-muted hover:bg-fg/5 hover:text-ink"
               >
-                Clear filters
+                <X className="h-4 w-4" aria-hidden />
               </button>
-            </div>
-          ) : (
-            <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-4">
-              {filtered.map((policy) => (
-                <PolicyFeedCard
-                  key={policy.id}
-                  policy={policy}
-                  analyzed={impacts.has(policy.id)}
-                  impact={impacts.get(policy.id)}
-                  onAnalyze={handleAnalyze}
-                  onAskAdvisor={(p) => router.push(`/advisor?policyId=${encodeURIComponent(p.id)}`)}
-                  onDismiss={handleDismiss}
-                  analyzingIds={analyzingIds}
-                  focusWhenEmptyRef={headingRef}
-                />
-              ))}
-            </div>
-          )}
-        </main>
-      </div>
-    </div>
+            )}
+          </div>
+          <SegmentedControl label="Show" options={SHOW_OPTIONS} value={show} onValueChange={setShow} size="sm" className="self-start lg:self-auto" />
+        </div>
+
+        {categories.length > 2 && (
+          <div role="group" aria-label="Category" className="-mx-1 flex gap-2 overflow-x-auto px-1 pb-1 scrollbar-hide">
+            {categories.map((cat) => {
+              const Icon = cat === 'All' ? null : getCategoryIcon(cat);
+              const on = category === cat;
+              return (
+                <button
+                  key={cat}
+                  type="button"
+                  aria-pressed={on}
+                  onClick={() => setCategory(cat)}
+                  className={cn(
+                    'inline-flex min-h-8 flex-shrink-0 items-center gap-1.5 rounded-full border px-3.5 py-1.5 text-xs font-medium capitalize transition-colors duration-200 ease-civic',
+                    on ? 'border-primary bg-raised text-ink shadow-[0_6px_16px_-8px_rgb(var(--c-violet)/0.45)]' : 'border-fg/10 bg-fg/4 text-muted hover:border-fg/20 hover:text-ink'
+                  )}
+                >
+                  {Icon && <Icon className={cn('h-3.5 w-3.5', on && 'text-primary-300')} aria-hidden />}
+                  {cat}
+                </button>
+              );
+            })}
+          </div>
+        )}
+      </Surface>
+
+      {preparing && (
+        <p role="status" className="mb-6 flex items-center gap-2 text-sm text-muted">
+          <RefreshCw className="h-4 w-4 text-primary motion-safe:animate-spin" aria-hidden /> Updating your feed from official records…
+        </p>
+      )}
+
+      <h2 className="sr-only">Policies in your feed</h2>
+      <p role="status" className={noMatches ? 'sr-only' : 'mb-4 text-xs text-muted empty:mb-0'}>
+        {resultsStatus}
+      </p>
+
+      {loading ? (
+        <div role="status" aria-busy="true" className={GRID}>
+          <span className="sr-only">Loading your policies…</span>
+          {[0, 1, 2, 3, 4, 5].map((i) => <FeedSkeletonCard key={i} />)}
+        </div>
+      ) : error && policies.length === 0 ? (
+        <EmptyState
+          icon={RefreshCw}
+          tone="neutral"
+          title="We couldn’t load your policies"
+          body={<p role="alert">{error}</p>}
+          action={
+            <Button onClick={() => loadFeed()} variant="ghost" size="sm">
+              Try again
+            </Button>
+          }
+        />
+      ) : policies.length === 0 ? (
+        <EmptyState
+          icon={BookOpen}
+          title="No policies in your feed yet"
+          body="Build your personalized feed from the dashboard."
+          action={
+            <Button href="/dashboard" icon={<ArrowRight className="h-4 w-4" />} iconPosition="end">
+              Go to the dashboard
+            </Button>
+          }
+        />
+      ) : noMatches ? (
+        <EmptyState
+          icon={SearchX}
+          tone="neutral"
+          titleAs="p"
+          title="No policies match these filters"
+          body="Try another search or category, or clear the filters to see your whole feed."
+          action={
+            <Button
+              variant="ghost"
+              size="sm"
+              // This button leaves with the empty state; the page title keeps focus in place.
+              onClick={() => { clearFilters(); headingRef.current?.focus(); }}
+            >
+              Clear filters
+            </Button>
+          }
+        />
+      ) : (
+        <PolicyDocket layout="grid">
+          {filtered.map((policy) => (
+            <PolicyFeedCard
+              key={policy.id}
+              policy={policy}
+              analyzed={impacts.has(policy.id)}
+              impact={impacts.get(policy.id)}
+              onAnalyze={handleAnalyze}
+              onAskAdvisor={(p) => router.push(`/advisor?policyId=${encodeURIComponent(p.id)}`)}
+              onDismiss={handleDismiss}
+              analyzingIds={analyzingIds}
+              focusWhenEmptyRef={headingRef}
+            />
+          ))}
+        </PolicyDocket>
+      )}
+    </AppShell>
   );
 }

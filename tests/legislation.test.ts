@@ -51,6 +51,9 @@ describe('statusFromAction', () => {
     ['Signed by President.', 'enacted'],
     ['Chaptered by Secretary of State - Chapter 512, Statutes of 2025', 'enacted'],
     ['Signed by Governor', 'enacted'],
+    // The presiding officers' signatures on the enrolled bill come before the chief executive's.
+    ['Signed by President of the Senate', 'passed'],
+    ['Signed by the Speaker of the House and the President Pro Tempore', 'passed'],
     ['Passed/agreed to in House: On passage Passed by the Yeas and Nays: 218 - 214.', 'passed'],
     ['Presented to President.', 'passed'],
     ['Vetoed by Governor', 'rejected'],
@@ -79,6 +82,14 @@ describe('statusFromAction', () => {
     ['Public Act . . . . . . . . . 104-0012', 'enacted'],
     ['Act No. 2025-45', 'enacted'],
     ['Chapter 12, Laws of 2025', 'enacted'],
+    // Repealed only when the action is the repeal itself, never a bill about repealing something.
+    ['Repealed', 'repealed'],
+    ['Repealed by HB 22', 'repealed'],
+    ['Repealed by Public Act 104-12', 'repealed'],
+    ['Act repealed by Chapter 9, Laws of 2026', 'repealed'],
+    ['Passed House. (A bill to repeal section 5 of the Act)', 'passed'],
+    ['Referred to the Committee on Ways and Means. To repeal the estate tax.', 'proposed'],
+    ['Introduced: An act to repeal the sales tax on groceries', 'proposed'],
   ])('%s → %s', (text, status) => {
     expect(L.statusFromAction(text)).toBe(status);
   });

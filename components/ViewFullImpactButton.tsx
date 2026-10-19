@@ -28,7 +28,7 @@ const TINT = 'bg-primary/20 hover:bg-primary/30 border-primary/20 text-primary-3
 const VARIANT_STYLES: Record<NonNullable<ViewFullImpactButtonProps['variant']>, string> = {
   chat: 'mt-3 w-fit px-4 py-2.5 text-xs font-semibold border-primary/25',
   compact: 'gap-1.5 px-3 py-1.5 text-meta bg-primary/15 hover:bg-primary/25',
-  card: 'w-full gap-1.5 px-3 py-2 text-xs',
+  card: 'w-full min-h-10 gap-1.5 whitespace-nowrap px-3 py-2 text-xs',
 };
 
 // Shared "View Full Impact" link used in advisor chat bubbles, dashboard
@@ -114,7 +114,7 @@ export default function ViewFullImpactButton({
         variant="ghost"
         size="sm"
         className={cn(TINT, VARIANT_STYLES[variant])}
-        icon={loading ? <Loader2 className={`${iconSize} animate-spin`} /> : <ExternalLink className={iconSize} />}
+        icon={loading ? <Loader2 className={`${iconSize} motion-safe:animate-spin`} /> : <ExternalLink className={iconSize} />}
       >
         {loading ? (variant === 'chat' ? 'Preparing analysis...' : 'Loading...') : label}
         <span className="sr-only">: {policyTitle}</span>

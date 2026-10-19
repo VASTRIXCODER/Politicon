@@ -1,0 +1,130 @@
+/*
+ * Onboarding motion and the state's plaque. Every animation here ends on
+ * its final frame (fill-mode both) and is cut to nothing under reduced
+ * motion and "Pause motion" (app/globals.css), so nothing is ever left
+ * hidden or half-drawn.
+ */
+
+/* A new question rises in (a short, soft entrance; there is no exit to wait for). */
+.enter {
+  animation: ob-enter 0.42s var(--ease-civic) both;
+}
+
+@keyframes ob-enter {
+  from {
+    opacity: 0;
+    transform: translateY(10px);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+
+/* The saved card, over the question. */
+.saved {
+  animation: ob-saved 0.5s var(--ease-civic) both;
+}
+
+@keyframes ob-saved {
+  from {
+    opacity: 0;
+    transform: translateY(8px) scale(0.98);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+
+/*
+ * The state's name on a small paper plate set into the plinth's drum. It
+ * sits where the scene (or, before it, the poster) says the drum faces the
+ * camera: --plaque-x/--plaque-y from the 3D view, else the poster's spot.
+ */
+.plaque {
+  position: absolute;
+  left: var(--plaque-x, var(--plaque-poster-x, 50%));
+  top: var(--plaque-y, var(--plaque-poster-y, 86%));
+  translate: -50% -50%;
+  max-width: 46%;
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+  border-radius: 4px;
+  padding: 3px 10px 2px;
+  letter-spacing: 0.2em;
+  background: linear-gradient(180deg, #f8f4ec, #ebe4d8);
+  color: #3a3448;
+  box-shadow:
+    inset 0 1px 0 rgb(255 255 255 / 0.8),
+    inset 0 -1px 0 rgb(21 18 31 / 0.08),
+    0 0 0 1px rgb(21 18 31 / 0.12),
+    0 2px 6px -2px rgb(21 18 31 / 0.35);
+  /* Letters pressed into the plate. */
+  text-shadow: 0 1px 0 rgb(255 255 255 / 0.85);
+  pointer-events: none;
+}
+
+/* The phone band: a label plate on the window's lower-left corner. */
+@media (max-width: 1023.98px) {
+  .plaque {
+    left: 0.375rem;
+    top: auto;
+    bottom: 0.375rem;
+    translate: none;
+    max-width: calc(100% - 0.75rem);
+    padding: 2px 7px 1px;
+    letter-spacing: 0.12em;
+  }
+}
+
+.plaqueIn {
+  animation: ob-plaque 0.6s var(--ease-civic) both;
+}
+
+@keyframes ob-plaque {
+  from {
+    opacity: 0;
+    transform: translateY(6px);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+
+/*
+ * The page's frame. Phones and tablets held upright dock the household band
+ * above the questions, which scroll beneath it in their own pane (.scroller,
+ * on <main>), so each piece lands in view as it's added and the reveal plays
+ * on screen. It also keeps the 3D scene visible: it draws on the stage
+ * canvas behind the page, so the form scrolling over the band would hide it.
+ * Short screens (a phone on its side) and lg up scroll as one page.
+ */
+.page {
+  min-height: 100vh;
+}
+
+@media (max-width: 1023.98px) and (min-height: 560px) {
+  .page {
+    height: 100vh;
+    height: 100dvh;
+    min-height: 0;
+    overflow: hidden;
+  }
+
+  .scroller {
+    min-height: 0;
+    overflow-y: auto;
+    overscroll-behavior: contain;
+    /* The questions fade out as they pass under the band, rather than meeting it at a hard line. */
+    -webkit-mask-image: linear-gradient(to bottom, transparent, #000 0.875rem);
+    mask-image: linear-gradient(to bottom, transparent, #000 0.875rem);
+  }
+
+  /* The question card scrolls; nothing in the pane shrinks to fit it (the card clips its overflow). */
+  .scroller > * {
+    flex-shrink: 0;
+  }
+}

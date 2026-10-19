@@ -1,25 +1,36 @@
 'use client';
 
-import { useId, useRef, useState, type RefObject } from 'react';
+import { useId, useMemo, useRef, useState, type RefObject } from 'react';
 import { TrendingUp, MessageSquare, Check, Loader2 } from 'lucide-react';
-import GlassCard from '@/components/ui/GlassCard';
 import Badge from '@/components/ui/Badge';
 import Button from '@/components/ui/Button';
+import Skeleton, { SkeletonText } from '@/components/ui/Skeleton';
+import Spotlight from '@/components/ui/Spotlight';
 import PolicyProvenance from '@/components/PolicyProvenance';
 import ViewFullImpactButton from '@/components/ViewFullImpactButton';
-import { formatUSD, impactTone } from '@/lib/format';
+import BillPath from '@/components/feed/BillPath';
+import { ImpactChip, ReasonChips, RecordHeader, RelevanceMeter } from '@/components/feed/parts';
+import { useSheetTilt } from '@/components/feed/useSheetTilt';
+import styles from '@/components/feed/docket.module.css';
+import { billPath } from '@/lib/billPath';
+import { cn } from '@/lib/utils';
 import type { DiscoveredPolicy } from '@/types';
 
 type FeedPolicy = DiscoveredPolicy;
 
-// Relevance is not money, so it never borrows the gain/loss colours (or the
-// archive gold kept for the official record): violet, orchid, then neutral.
-const RELEVANCE_COLORS: Record<string, string> = {
-  High: 'text-primary-300 bg-primary/10 border-primary/20',
-  Medium: 'text-accent bg-accent/10 border-accent/20',
-  Low: 'text-text-muted bg-fg/5 border-fg/10',
-};
+// Violet tint with primary-300 text (AA in both themes): the card's main action.
+const TINT = 'bg-primary/10 hover:bg-primary/20 border-primary/25 text-primary-300';
 
+/**
+ * A policy in the docket: a bill sheet with its official-record header (the
+ * source, the chamber it started in and a gold seal, or an "Unverified"
+ * chip), the bill number and title, the plain-English summary, why it's in
+ * the feed, where the bill stands (BillPath, from the record only), the
+ * user's own estimate once analysed, and its actions.
+ *
+ * Under a mouse the sheet tilts a little and a light follows the pointer;
+ * touch screens, reduced motion and "Pause motion" keep it still.
+ */
 export default function PolicyFeedCard({ policy, analyzed, impact, onAnalyze, onAskAdvisor, onDismiss, analyzingIds, focusWhenEmptyRef }: {
   policy: FeedPolicy;
   analyzed: boolean;
@@ -36,7 +47,14 @@ export default function PolicyFeedCard({ policy, analyzed, impact, onAnalyze, on
   const [dismissing, setDismissing] = useState(false);
   const [dismissError, setDismissError] = useState<string | null>(null);
   const titleId = useId();
+  const reasonsId = useId();
   const cardRef = useRef<HTMLDivElement>(null);
+  const sheetRef = useSheetTilt<HTMLDivElement>();
+  const path = useMemo(
+    () => billPath(policy.record, { billNumber: policy.billNumber, region: policy.region }),
+    [policy.record, policy.billNumber, policy.region]
+  );
+
   async function dismiss() {
     if (dismissing) return;
     // Captured while this card is still in the list: whether it holds focus,
@@ -58,105 +76,134 @@ export default function PolicyFeedCard({ policy, analyzed, impact, onAnalyze, on
     const next = neighbours.find((el): el is HTMLElement => el instanceof HTMLElement && el.isConnected && el.hasAttribute('data-feed-card'));
     (next?.querySelector<HTMLElement>('[data-feed-card-title]') ?? focusWhenEmptyRef?.current)?.focus();
   }
+
+  const estimate = policy.estimatedImpact?.trim();
+
   return (
-    // Repeated in long lists: no backdrop blur, which is costly to repaint over the animated background.
-    <GlassCard ref={cardRef} data-feed-card="" className="rounded-2xl p-5 backdrop-filter-none" role="article" aria-labelledby={titleId}>
-      <div className="flex items-start justify-between gap-3 mb-3">
-        <div className="flex items-center gap-2 flex-wrap">
-          <span className={`text-meta font-medium px-2 py-0.5 rounded-full border ${RELEVANCE_COLORS[policy.relevance] || RELEVANCE_COLORS.Low}`}>
-            {policy.relevanceScore ? `${policy.relevanceScore} · ` : ''}{policy.relevance} Relevance
-          </span>
-          <Badge variant="default">{policy.category}</Badge>
+    <div ref={cardRef} data-feed-card="" data-docket-key={policy.id} className={styles.card} role="article" aria-labelledby={titleId}>
+      <div ref={sheetRef} className={cn(styles.sheet, 'flex flex-col p-5 sm:p-6')}>
+        <Spotlight />
+
+        {/* The record header. */}
+        <div className="mb-4 flex flex-wrap items-center justify-between gap-x-4 gap-y-2 border-b border-dashed border-fg/12 pb-3">
+          <RecordHeader policy={policy} origin={path.origin} />
+          <RelevanceMeter score={policy.relevanceScore} relevance={policy.relevance} />
+        </div>
+
+        <h3 id={titleId} data-feed-card-title="" tabIndex={-1} className="font-display text-lg font-medium leading-snug text-ink outline-none sm:text-xl [text-wrap:balance]">
+          {policy.billNumber && (
+            <span className="mb-1 block font-mono-data text-meta font-medium tracking-wide text-primary-300">{policy.billNumber}</span>
+          )}
+          {policy.title}
+        </h3>
+
+        <div className="mt-2.5 flex flex-wrap items-center gap-1.5">
+          {policy.category && <Badge className="capitalize">{policy.category}</Badge>}
           {analyzed && (
-            <span className="text-meta font-medium px-2 py-0.5 rounded-full border text-gain bg-gain/10 border-gain/20 flex items-center gap-1">
-              <Check className="w-3 h-3" aria-hidden /> Analyzed
+            <span className="inline-flex items-center gap-1 rounded-full border border-primary/25 bg-primary/10 px-2 py-0.5 text-meta font-medium text-primary-300">
+              <Check className="h-3 w-3" aria-hidden /> Analyzed
             </span>
           )}
         </div>
-        <span className="text-meta text-text-muted flex-shrink-0">{policy.region}</span>
+
+        <p className="mt-3 text-sm leading-relaxed text-muted">{policy.description}</p>
+
+        <ReasonChips reasons={policy.reasons} id={reasonsId} className="mt-4" />
+
+        {/* Where it stands, and where that comes from. */}
+        <div className={cn(styles.record, 'mt-4 space-y-2.5 px-3.5 pb-3 pt-2.5')}>
+          <BillPath path={path} />
+          <PolicyProvenance record={policy.record} compact />
+        </div>
+
+        {analyzed && typeof impact === 'number' ? (
+          <div className="mt-4">
+            <ImpactChip impact={impact} />
+          </div>
+        ) : estimate && /\$\s?\d/.test(estimate) ? (
+          <p className="mt-4 text-xs font-mono-data text-primary-300">{estimate} est. impact</p>
+        ) : estimate ? (
+          // e.g. "Depends on final details": words, not a figure.
+          <p className="mt-4 text-xs text-muted">Estimated impact: {estimate}</p>
+        ) : null}
+
+        {/* The actions sit at the foot, so cards in a row line them up. */}
+        <div className="mt-auto pt-4">
+          {/* Side by side while both labels fit on one line (9.5rem each); stacked on a narrow card. */}
+          <div className="flex flex-wrap gap-2">
+            {analyzed ? (
+              <ViewFullImpactButton
+                className="basis-[9.5rem]"
+                policyId={policy.id}
+                policyTitle={policy.title}
+                category={policy.category}
+                description={policy.description}
+                region={policy.region}
+                variant="card"
+                analyzed
+              />
+            ) : (
+              <Button
+                onClick={() => onAnalyze(policy)}
+                disabled={isAnalyzing}
+                aria-busy={isAnalyzing || undefined}
+                aria-describedby={titleId}
+                variant="ghost"
+                size="sm"
+                className={cn('min-h-10 flex-1 basis-[9.5rem] gap-1.5 whitespace-nowrap px-3 py-2 text-xs', TINT)}
+                icon={isAnalyzing ? <Loader2 className="h-3 w-3 motion-safe:animate-spin" /> : <TrendingUp className="h-3 w-3" />}
+              >
+                {isAnalyzing ? 'Analyzing...' : 'Analyze Impact'}
+              </Button>
+            )}
+            <Button
+              onClick={() => onAskAdvisor(policy)}
+              aria-describedby={titleId}
+              variant="ghost"
+              size="sm"
+              className="min-h-10 flex-1 basis-[9.5rem] gap-1.5 whitespace-nowrap px-3 py-2 text-xs font-normal text-muted hover:text-ink"
+              icon={<MessageSquare className="h-3 w-3" />}
+            >
+              Ask the Guide
+            </Button>
+          </div>
+          <div className="mt-3 flex items-center justify-end gap-2 text-meta">
+            {dismissError && <span role="alert" className="text-danger">{dismissError}</span>}
+            <button
+              type="button"
+              onClick={dismiss}
+              // aria-disabled, not disabled: a disabled button drops keyboard focus mid-request.
+              aria-disabled={dismissing || undefined}
+              aria-describedby={titleId}
+              className="min-h-6 rounded-md px-1 text-muted underline-offset-2 hover:text-ink hover:underline aria-disabled:cursor-not-allowed aria-disabled:opacity-60"
+            >
+              {dismissing ? 'Hiding…' : 'Not relevant to me'}
+            </button>
+          </div>
+        </div>
       </div>
-      <h3 id={titleId} data-feed-card-title="" tabIndex={-1} className="font-medium text-text-primary text-sm leading-snug mb-1 outline-none">
-        {policy.billNumber && <span className="text-text-muted font-mono-data mr-1.5">{policy.billNumber}</span>}
-        {policy.title}
-      </h3>
-      <p className="text-xs text-text-muted mb-2 leading-relaxed">{policy.description}</p>
-      {analyzed && typeof impact === 'number' ? (
-        <p className={`text-xs font-mono-data mb-2 ${impactTone(impact)}`}>{formatUSD(impact, { signed: true, suffix: '/yr' })} for you</p>
-      ) : policy.estimatedImpact && /\$\s?\d/.test(policy.estimatedImpact) ? (
-        <p className="text-xs font-mono-data text-primary-300 mb-2">{policy.estimatedImpact} est. impact</p>
-      ) : policy.estimatedImpact ? (
-        // e.g. "Depends on final details": words, not a figure.
-        <p className="text-xs text-text-muted mb-2">Estimated impact: {policy.estimatedImpact}</p>
-      ) : null}
-      <div className="mb-4">
-        <PolicyProvenance record={policy.record} compact />
-      </div>
-      <div className="flex gap-2">
-        {analyzed ? (
-          <ViewFullImpactButton
-            policyId={policy.id}
-            policyTitle={policy.title}
-            category={policy.category}
-            description={policy.description}
-            region={policy.region}
-            variant="card"
-            analyzed
-          />
-        ) : (
-          <Button
-            onClick={() => onAnalyze(policy)}
-            disabled={isAnalyzing}
-            aria-busy={isAnalyzing || undefined}
-            aria-describedby={titleId}
-            variant="ghost"
-            size="sm"
-            className="flex-1 gap-1.5 px-3 py-2 text-xs bg-primary/20 hover:bg-primary/30 border-primary/20 text-primary-300"
-            icon={isAnalyzing ? <Loader2 className="w-3 h-3 animate-spin" /> : <TrendingUp className="w-3 h-3" />}
-          >
-            {isAnalyzing ? 'Analyzing...' : 'Analyze Impact'}
-          </Button>
-        )}
-        <Button
-          onClick={() => onAskAdvisor(policy)}
-          aria-describedby={titleId}
-          variant="ghost"
-          size="sm"
-          className="flex-1 gap-1.5 px-3 py-2 text-xs font-normal text-text-muted hover:text-text-primary hover:border-fg/16"
-          icon={<MessageSquare className="w-3 h-3" />}
-        >
-          Ask the Guide
-        </Button>
-      </div>
-      <div className="mt-3 flex items-center justify-end gap-2 text-meta">
-        {dismissError && <span role="alert" className="text-danger">{dismissError}</span>}
-        <button
-          type="button"
-          onClick={dismiss}
-          // aria-disabled, not disabled: a disabled button drops keyboard focus mid-request.
-          aria-disabled={dismissing || undefined}
-          aria-describedby={titleId}
-          className="text-text-muted hover:text-text-primary underline-offset-2 hover:underline aria-disabled:opacity-60 aria-disabled:cursor-not-allowed"
-        >
-          {dismissing ? 'Hiding…' : 'Not relevant to me'}
-        </button>
-      </div>
-    </GlassCard>
+    </div>
   );
 }
 
+/** A docket card while the feed loads: the same sheet, with placeholder lines. Hidden from assistive tech. */
 export function FeedSkeletonCard() {
   return (
-    <div className="glass rounded-2xl p-5 animate-pulse backdrop-filter-none" aria-hidden>
-      <div className="flex items-center gap-2 mb-3">
-        <div className="h-5 w-16 bg-fg/10 rounded-full" />
-        <div className="h-5 w-12 bg-fg/10 rounded-full" />
-      </div>
-      <div className="h-4 bg-fg/10 rounded w-3/4 mb-2" />
-      <div className="h-3 bg-fg/10 rounded w-full mb-1" />
-      <div className="h-3 bg-fg/10 rounded w-2/3 mb-4" />
-      <div className="flex gap-2">
-        <div className="h-9 bg-fg/10 rounded-xl flex-1" />
-        <div className="h-9 bg-fg/10 rounded-xl flex-1" />
+    <div className={styles.card} aria-hidden="true">
+      <div className={cn(styles.sheet, 'p-5 sm:p-6')}>
+        <div className="mb-4 flex items-center justify-between gap-3 border-b border-dashed border-fg/12 pb-3">
+          <Skeleton shape="line" className="w-40" />
+          <Skeleton shape="line" className="w-24" />
+        </div>
+        <Skeleton shape="line" className="mb-2 w-16" />
+        <Skeleton className="mb-1.5 h-5 w-4/5" />
+        <Skeleton className="mb-4 h-5 w-1/2" />
+        <SkeletonText lines={2} className="mb-5" />
+        <Skeleton className="mb-5 h-20 w-full" />
+        <div className="flex gap-2">
+          <Skeleton className="h-10 flex-1 rounded-full" />
+          <Skeleton className="h-10 flex-1 rounded-full" />
+        </div>
       </div>
     </div>
   );

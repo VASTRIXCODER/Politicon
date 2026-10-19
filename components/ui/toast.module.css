@@ -1,0 +1,28 @@
+/*
+ * The toast's entrance and exit (components/ui/Toast.tsx): a short rise and
+ * fade, in plain CSS so no animation library rides along in the pages'
+ * first load. Under reduced motion and "Pause motion" app/globals.css cuts
+ * every animation to its end state (fill-mode both: fully shown, or gone).
+ */
+.toast {
+  animation: toast-in 320ms var(--ease-civic) both;
+}
+
+.toast[data-leaving] {
+  animation: toast-out 240ms var(--ease-civic) both;
+  pointer-events: none;
+}
+
+@keyframes toast-in {
+  from {
+    opacity: 0;
+    transform: translateY(16px) scale(0.98);
+  }
+}
+
+@keyframes toast-out {
+  to {
+    opacity: 0;
+    transform: translateY(12px) scale(0.98);
+  }
+}

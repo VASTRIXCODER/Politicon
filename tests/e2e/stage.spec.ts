@@ -50,6 +50,8 @@ async function pastIdle(page: Page) {
 
 /** The /lab section with the landing film's own pieces (app/lab/FilmLab.tsx). */
 const FILM_LAB = 'section[aria-labelledby="lab-film"]';
+/** The /lab section with the signed-in app's scenes: household diorama, avatar, ledger (app/lab/AppLab.tsx). */
+const APP_LAB = 'section[aria-labelledby="lab-app"]';
 
 /**
  * The film's five still frames on /lab are the same LandingFilm scene as its
@@ -76,11 +78,16 @@ async function openLab(page: Page, fx: 1 | 2) {
  * Scrolls each chosen view into sight and waits for it to draw (its poster
  * steps aside: data-scene-view="live"). Returns the names it checked.
  */
-async function drawEach(page: Page, pick: (view: { name: string; inFilmLab: boolean }) => boolean): Promise<string[]> {
+async function drawEach(page: Page, pick: (view: { name: string; inFilmLab: boolean; inAppLab: boolean }) => boolean): Promise<string[]> {
   const views = page.locator('[data-scene-view]');
   const all = await views.evaluateAll(
-    (els, filmLab) => els.map((el, i) => ({ name: el.getAttribute('aria-label') ?? `view ${i + 1}`, inFilmLab: !!el.closest(filmLab) })),
-    FILM_LAB
+    (els, [filmLab, appLab]) =>
+      els.map((el, i) => ({
+        name: el.getAttribute('aria-label') ?? `view ${i + 1}`,
+        inFilmLab: !!el.closest(filmLab),
+        inAppLab: !!el.closest(appLab),
+      })),
+    [FILM_LAB, APP_LAB] as const
   );
   const checked: string[] = [];
   for (let i = 0; i < all.length; i++) {
@@ -106,12 +113,12 @@ test('/lab draws every kit view at tier 1', { tag: '@phone' }, async ({ page }) 
   test.setTimeout(180_000);
   const trouble = watchGl(page);
   await openLab(page, 1);
-  const checked = await drawEach(page, (v) => !v.inFilmLab);
+  const checked = await drawEach(page, (v) => !v.inFilmLab && !v.inAppLab);
   expect(checked.length).toBeGreaterThanOrEqual(8);
 
   // The night section: once the field paints the Chamber behind it, its own
   // background steps aside so the view inside shows through.
-  const night = page.locator('[data-scene-night]');
+  const night = page.locator('section[aria-labelledby="lab-night"][data-scene-night]');
   await night.scrollIntoViewIfNeeded();
   await expect(night).toHaveAttribute('data-scene-night-live', '', { timeout: 15_000 });
   await expect(night).toHaveCSS('background-color', 'rgba(0, 0, 0, 0)');
@@ -130,6 +137,21 @@ test("/lab draws the landing film's pieces at tier 1 @desktop-only", async ({ pa
   const checked = await drawEach(page, (v) => v.inFilmLab && !LAB_STILLS.test(v.name));
   expect(checked.length).toBeGreaterThanOrEqual(5);
   expect(checked.some((name) => /landing film/i.test(name)), 'the film view is checked').toBe(true);
+
+  await expect(page.locator('html')).toHaveAttribute('data-stage', 'ready');
+  expect(trouble, 'WebGL or three.js errors').toEqual([]);
+});
+
+test("/lab draws the signed-in app's scenes at tier 1", { tag: '@phone' }, async ({ page }) => {
+  // The onboarding diorama, three avatars and two ledgers (App I), each
+  // compiled and drawn in software.
+  test.setTimeout(150_000);
+  const trouble = watchGl(page);
+  await openLab(page, 1);
+  const checked = await drawEach(page, (v) => v.inAppLab);
+  expect(checked.length).toBeGreaterThanOrEqual(6);
+  expect(checked.some((name) => /^example: your ledger/i.test(name)), 'the example ledger is checked').toBe(true);
+  expect(checked.some((name) => /^your household: /i.test(name)), 'an avatar is checked').toBe(true);
 
   await expect(page.locator('html')).toHaveAttribute('data-stage', 'ready');
   expect(trouble, 'WebGL or three.js errors').toEqual([]);
