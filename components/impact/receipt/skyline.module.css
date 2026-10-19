@@ -1,0 +1,27 @@
+/*
+ * The Skyline's vitrine: a small Chamber (a night section on the day page,
+ * as the dashboard's ledger stands in), with aurora curtains from the top
+ * and a low violet glow where the plinth stands, until the stage's light
+ * field takes it over (data-scene-night-live, which also clears its canvas,
+ * so the model behind the page shows through). A hairline of light along
+ * its inner edge. Nothing here moves.
+ */
+
+.vitrine {
+  box-shadow:
+    inset 0 0 0 1px rgb(var(--c-fg) / 0.08),
+    inset 0 1px 0 rgb(var(--c-fg) / 0.1),
+    0 32px 64px -36px rgb(0 0 0 / 0.55);
+}
+
+.aurora {
+  background:
+    radial-gradient(ellipse 58% 42% at 24% -8%, rgb(var(--c-violet) / 0.3), rgb(var(--c-violet) / 0.08) 50%, transparent 78%),
+    radial-gradient(ellipse 42% 36% at 84% -6%, rgb(var(--c-glow) / 0.14), rgb(var(--c-glow) / 0.04) 52%, transparent 80%),
+    radial-gradient(ellipse 70% 26% at 50% 62%, rgb(var(--c-violet) / 0.18), rgb(var(--c-violet) / 0.04) 55%, transparent 82%);
+  transition: opacity 0.7s cubic-bezier(0.2, 0.7, 0.2, 1);
+}
+
+:global([data-scene-night-live]) .aurora {
+  opacity: 0;
+}
