@@ -96,7 +96,10 @@ export function useDashboardData(): DashboardData {
     const supabase = createClient();
     const { data } = await supabase.rpc('analysis_totals');
     const row = Array.isArray(data) ? data[0] : data;
-    if (row) setTotals({ count: Number(row.analysis_count) || 0, netAnnual: Number(row.net_annual) || 0 });
+    if (!row) return;
+    // pending_annual: the part of the net from policies not recorded as enacted (the ledger's "isn't law" note).
+    const pending = row.pending_annual == null ? NaN : Number(row.pending_annual);
+    setTotals({ count: Number(row.analysis_count) || 0, netAnnual: Number(row.net_annual) || 0, pendingAnnual: Number.isFinite(pending) ? pending : null });
   }
 
   async function refetchAnalyses() {

@@ -26,6 +26,13 @@ export interface BillPathProps {
  * Server-safe: no hooks, and its motion is CSS that stops under reduced
  * motion and "Pause motion".
  */
+/** The caption's separator, after the part it ends (read as the comma beside it). */
+const Dot = () => (
+  <span aria-hidden="true" className="font-normal text-muted">
+    {' '}·
+  </span>
+);
+
 export default function BillPath({ record, billNumber, region, path: given, className }: BillPathProps) {
   const path = given ?? billPath(record, { billNumber, region });
   const n = path.steps.length;
@@ -68,19 +75,21 @@ export default function BillPath({ record, billNumber, region, path: given, clas
         </ol>
       </div>
 
+      {/* Each part keeps its words together, and its separator trails it, so a wrapped line never starts with "·". */}
       <p className="mt-2 flex flex-wrap items-baseline gap-x-1.5 gap-y-0.5 text-meta text-muted">
         <span className="sr-only">Where it stands: </span>
-        <span className={cn('font-medium', path.known ? 'text-ink' : 'text-muted')}>{path.headline}</span>
+        <span className={cn('font-medium', path.known ? 'text-ink' : 'text-muted')}>
+          {path.headline}
+          {path.known && <Dot />}
+        </span>
         {path.known ? (
           <>
-            <span className="font-mono-data">
-              <span aria-hidden="true">· </span>
+            <span className="whitespace-nowrap font-mono-data">
               <span className="sr-only">, </span>stage {path.reached + 1} of {n}
+              {asOf && <Dot />}
             </span>
-            {path.outcome === 'repealed' && <span>· Official status: repealed</span>}
             {asOf && (
-              <span className="font-mono-data">
-                <span aria-hidden="true">· </span>
+              <span className="whitespace-nowrap font-mono-data">
                 <span className="sr-only">, </span>as of {asOf}
               </span>
             )}

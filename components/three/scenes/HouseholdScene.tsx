@@ -23,8 +23,9 @@ import { useAnimationFrames, usePrefersReducedMotion, useViewState } from '@/com
  *
  * Under reduced motion (or "Pause motion") it is a composed still: every
  * piece in place, the reveal already done, the avatar at rest. The camera
- * frames the plinth for any box (dioramaLayout.ts: householdShot, which the
- * CSS posters use too, so the two line up). In the build view it also keeps
+ * frames the plinth for any box, or with `close` the household itself (the
+ * phone's band) (dioramaLayout.ts: householdShot, which the CSS posters use
+ * too, so the two line up). In the build view it also keeps
  * `--plaque-x` / `--plaque-y` on the nearest [data-household-stage] element:
  * where the state's DOM plaque sits on the plinth's edge, as a share of the box.
  *
@@ -41,8 +42,8 @@ export interface HouseholdSceneProps {
   lastAdded?: string | null;
   /** Build view: the profile is complete, so the camera pulls back and the windows light up. */
   reveal?: boolean;
-  /** Build view: jump the reveal straight to its end (the person skipped it). */
-  skip?: boolean;
+  /** Build view: frame the household itself, the plinth running out of the box (the phone's small framed band). */
+  close?: boolean;
 }
 
 const REVEAL_SECONDS = 2.6;
@@ -54,7 +55,7 @@ const AVATAR_GLOW = 0.3;
 /** Smootherstep: the reveal eases in and out. */
 const ease = (k: number) => k * k * k * (k * (k * 6 - 15) + 10);
 
-function HouseholdCamera({ mode, reveal }: { mode: 'build' | 'avatar'; reveal: { current: number } }) {
+function HouseholdCamera({ mode, reveal, close }: { mode: 'build' | 'avatar'; reveal: { current: number }; close: boolean }) {
   const camera = useRef<PerspectiveCameraImpl>(null);
   const { element } = useViewState();
   const host = useMemo(() => (mode === 'build' ? element?.closest<HTMLElement>('[data-household-stage]') ?? null : null), [element, mode]);
@@ -74,7 +75,7 @@ function HouseholdCamera({ mode, reveal }: { mode: 'build' | 'avatar'; reveal: {
     const cam = camera.current;
     if (!cam) return;
     const aspect = size.width / Math.max(1, size.height);
-    const shot = householdShot(mode, aspect, ease(reveal.current));
+    const shot = householdShot(mode, aspect, ease(reveal.current), close);
     cam.position.set(...shot.position);
     cam.lookAt(shot.target[0], shot.target[1], shot.target[2]);
     cam.fov = shot.fov;
@@ -95,7 +96,7 @@ function HouseholdCamera({ mode, reveal }: { mode: 'build' | 'avatar'; reveal: {
   return <PerspectiveCamera ref={camera} makeDefault near={0.1} far={40} fov={HOUSEHOLD_CAMERA.fov} />;
 }
 
-export default function HouseholdScene({ model, mode, lastAdded = null, reveal = false, skip = false }: HouseholdSceneProps) {
+export default function HouseholdScene({ model, mode, lastAdded = null, reveal = false, close = false }: HouseholdSceneProps) {
   const still = usePrefersReducedMotion();
   const { visible } = useViewState();
   const invalidate = useThree((s) => s.invalidate);
@@ -104,7 +105,7 @@ export default function HouseholdScene({ model, mode, lastAdded = null, reveal =
 
   // The reveal's progress, 0..1. Already done if the view arrives after it began.
   const progress = useRef(wanted ? 1 : 0);
-  useEffect(() => invalidate(), [wanted, skip, still, invalidate]);
+  useEffect(() => invalidate(), [wanted, still, close, invalidate]);
 
   // The avatar turns while it is on screen and motion is allowed.
   const turning = !build && visible && !still;
@@ -117,7 +118,7 @@ export default function HouseholdScene({ model, mode, lastAdded = null, reveal =
     if (turning && turn.current) turn.current.rotation.y += dt * TURN_SPEED;
     const target = wanted ? 1 : 0;
     if (progress.current === target) return;
-    if (still || skip) progress.current = target;
+    if (still) progress.current = target;
     // Back from the last question, the light goes down twice as fast as it came up.
     else if (target > progress.current) progress.current = Math.min(1, progress.current + dt / REVEAL_SECONDS);
     else progress.current = Math.max(0, progress.current - (2 * dt) / REVEAL_SECONDS);
@@ -129,7 +130,7 @@ export default function HouseholdScene({ model, mode, lastAdded = null, reveal =
 
   return (
     <>
-      <HouseholdCamera mode={mode} reveal={progress} />
+      <HouseholdCamera mode={mode} reveal={progress} close={build && close} />
       <StudioLights />
       <group ref={turn}>
         <HouseholdDiorama household={model} lastAdded={build ? lastAdded : null} glow={glow} dusk={dusk} />

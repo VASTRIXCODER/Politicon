@@ -45,11 +45,20 @@ export function TileMark({ on, multiple = false }: { on: boolean; multiple?: boo
       aria-hidden="true"
       className={cn(
         'flex h-[1.125rem] w-[1.125rem] flex-shrink-0 items-center justify-center border transition-[background-color,border-color,box-shadow] duration-200 ease-civic',
+        // Forced colours (Windows contrast themes) drop backgrounds: the mark keeps system colours instead.
+        'forced-colors:[forced-color-adjust:none]',
         multiple ? 'rounded-[5px]' : 'rounded-full',
-        on ? 'border-primary-fill bg-primary-fill shadow-[0_0_10px_rgb(var(--c-glow)/0.75)]' : 'border-fg/45 bg-raised'
+        on
+          ? 'border-primary-fill bg-primary-fill shadow-[0_0_10px_rgb(var(--c-glow)/0.75)] forced-colors:border-[Highlight] forced-colors:bg-[Highlight]'
+          : 'border-fg/45 bg-raised forced-colors:border-[CanvasText] forced-colors:bg-[Canvas]'
       )}
     >
-      {on && (multiple ? <Check className="h-3 w-3 text-white" strokeWidth={3} /> : <span className="h-1.5 w-1.5 rounded-full bg-white" />)}
+      {on &&
+        (multiple ? (
+          <Check className="h-3 w-3 text-white forced-colors:text-[HighlightText]" strokeWidth={3} />
+        ) : (
+          <span className="h-1.5 w-1.5 rounded-full bg-white forced-colors:bg-[HighlightText]" />
+        ))}
     </span>
   );
 }

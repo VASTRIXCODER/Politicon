@@ -284,7 +284,7 @@ export function householdLayout(m: HouseholdModel): HouseholdLayout {
     }
     for (let i = 0; i < Math.min(m.figures, FIGURE_SLOTS.length - 2); i++) {
       const slot = FIGURE_SLOTS[i + 2];
-      // Ages unknown: a figure between a child and a grown-up, so the drawing claims neither.
+      // Ages unknown, or mixed (minors and grown-ups, split unknown): a figure between a child and a grown-up, so the drawing claims neither.
       const age = !m.agesKnown ? 'dependent' : m.youngDependents ? 'child' : 'adult';
       figures.push({
         id: `dependent-${i + 1}:${age}`,
@@ -363,6 +363,9 @@ const unit = (x: number, y: number, z: number): Vec3 => {
 export const HOUSEHOLD_CAMERA = {
   fov: 30,
   build: { direction: unit(-0.5, 0.4, 0.86), target: [-0.03, 0.1, 0.04] as Vec3, frame: [2.95, 2.3] as const },
+  // The phone's band (a small framed box): close on the household itself, from its tallest
+  // building to the debts at the front, so the plinth's rim runs out past the box's frame.
+  close: { direction: unit(-0.5, 0.4, 0.86), target: [0, 0.22, 0.06] as Vec3, frame: [2.2, 1.65] as const },
   // The avatar turns on its plinth, so it frames the whole drum from a little higher.
   avatar: { direction: unit(-0.5, 0.56, 0.86), target: [0, 0.16, 0] as Vec3, frame: [3.0, 2.6] as const },
 } as const;
@@ -374,15 +377,16 @@ const REVEAL_SWING = 0.22;
 /**
  * The camera for a box of `aspect` (width / height). `reveal` 0..1 is the
  * finished profile's moment in the build view: the camera pulls back and
- * swings a little toward the front.
+ * swings a little toward the front. `close` (build view) frames the
+ * household rather than the whole plinth, for the phone's small framed band.
  */
-export function householdShot(mode: 'build' | 'avatar', aspect: number, reveal = 0): HouseholdShot {
-  const c = HOUSEHOLD_CAMERA[mode];
+export function householdShot(mode: 'build' | 'avatar', aspect: number, reveal = 0, close = false): HouseholdShot {
+  const c = mode === 'build' && close ? HOUSEHOLD_CAMERA.close : HOUSEHOLD_CAMERA[mode];
   const k = Math.min(1, Math.max(0, reveal));
   const half = Math.tan((HOUSEHOLD_CAMERA.fov * Math.PI) / 360);
   const a = Number.isFinite(aspect) && aspect > 0 ? aspect : 1;
-  // A wide, short band (the diorama above a phone's form) frames the household a little closer, the whole drum still in view.
-  const band = mode === 'build' ? Math.min(1, Math.max(0, (a - 1.5) / 0.7)) : 0;
+  // A wide, short box (an unframed band) frames the household a little closer, the whole drum still in view.
+  const band = mode === 'build' && !close ? Math.min(1, Math.max(0, (a - 1.5) / 0.7)) : 0;
   const frameHeight = c.frame[1] - 0.15 * band;
   const distance = Math.max(frameHeight / (2 * half), c.frame[0] / (2 * half * a)) * (1 + REVEAL_PULL * k);
   const swing = REVEAL_SWING * k;

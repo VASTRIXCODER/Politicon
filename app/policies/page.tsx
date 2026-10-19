@@ -213,7 +213,8 @@ export default function PoliciesPage() {
                 ['Analyzed', analyzedCount],
                 ['Official records', officialCount],
               ].map(([label, value]) => (
-                <div key={label} className="flex flex-col-reverse">
+                // Number above its label (dd first on screen), the numbers in one row even when a label wraps on a phone.
+                <div key={label} className="flex flex-col-reverse justify-end">
                   <dt className="text-meta uppercase tracking-[0.12em] text-muted">{label}</dt>
                   <dd className="text-2xl font-semibold tabular-nums text-ink">{value}</dd>
                 </div>

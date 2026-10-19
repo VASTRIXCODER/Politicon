@@ -1,4 +1,3 @@
-import type { HouseholdModel } from '@/lib/household';
 import {
   LEDGER_VIEW,
   LEDGER_WORLD,
@@ -10,6 +9,7 @@ import {
   type Vec3,
 } from '@/lib/ledger';
 import { cn } from '@/lib/utils';
+import styles from './ledgerPoster.module.css';
 
 /*
  * "Your Ledger" as a server-rendered vector drawing: the poster its SceneView
@@ -18,8 +18,8 @@ import { cn } from '@/lib/utils';
  * (projectLedger: the scene's yaw and pitch, flattened), so the hand-off is a
  * cross-fade between two pictures of one model: the paper plinth, the
  * porcelain foot, amber costs hanging from the lit violet baseline, teal
- * gains stacked on it, clear glass above, the ring of light at the net, the
- * staff's marks, and the household at the foot when it's known.
+ * gains stacked on it, clear glass above, the ring of light at the net and
+ * the staff's marks.
  *
  * No hooks and no handlers, so it renders on the server; the page passes the
  * focused slab (the readout's or the scene's) and it lights that slab and
@@ -30,7 +30,6 @@ import { cn } from '@/lib/utils';
 export interface LedgerPosterProps {
   model: LedgerModel;
   focus?: string | null;
-  household?: HouseholdModel | null;
   className?: string;
   /** Prefix for the drawing's gradient ids (only needed with two posters on one page). */
   id?: string;
@@ -55,8 +54,8 @@ interface Box {
 const path = (pts: Pt[]) => `M${pts.map(([x, y]) => `${x.toFixed(1)} ${y.toFixed(1)}`).join('L')}Z`;
 const line = (pts: Pt[]) => `M${pts.map(([x, y]) => `${x.toFixed(1)} ${y.toFixed(1)}`).join('L')}`;
 
-function projection(withHousehold: boolean) {
-  const b = ledgerViewBounds(withHousehold);
+function projection() {
+  const b = ledgerViewBounds();
   // The same air the scene's camera leaves (its pad, and its pull-back for perspective).
   const air = 0.24;
   const halfW = ((b.maxX - b.minX) / 2) * 1.1 + air;
@@ -120,7 +119,8 @@ function loop(at: At, y: number, grow: number): { back: Pt[]; front: Pt[] } {
   };
 }
 
-const TONE_FILL = { gain: 'fill-gain-fill/60', loss: 'fill-loss-fill/60' } as const;
+// Lit glass in the legend's colours, as the scene draws its slabs at rest.
+const TONE_FILL = { gain: 'fill-gain-fill/85', loss: 'fill-loss-fill/85' } as const;
 const TONE_EDGE = { gain: 'stroke-gain-fill', loss: 'stroke-loss-fill' } as const;
 
 function Column({ at, geo, focus }: { at: At; geo: LedgerGeometry; focus: string | null }) {
@@ -132,7 +132,7 @@ function Column({ at, geo, focus }: { at: At; geo: LedgerGeometry; focus: string
     const on = s.id === active;
     return (
       <g key={s.id} opacity={active && !on ? 0.45 : 1}>
-        <Solid faces={boxFaces(at, column(s.y0, s.y1, 0, on ? W.slideOut : 0))} fill={on ? s.tone === 'gain' ? 'fill-gain-fill/80' : 'fill-loss-fill/80' : TONE_FILL[s.tone]} edge={on ? 'stroke-primary' : TONE_EDGE[s.tone]} />
+        <Solid faces={boxFaces(at, column(s.y0, s.y1, 0, on ? W.slideOut : 0))} fill={on ? s.tone === 'gain' ? 'fill-gain-fill' : 'fill-loss-fill' : TONE_FILL[s.tone]} edge={on ? 'stroke-primary' : TONE_EDGE[s.tone]} />
       </g>
     );
   };
@@ -147,23 +147,24 @@ function Column({ at, geo, focus }: { at: At; geo: LedgerGeometry; focus: string
       {ring && <path d={line(ring.back)} fill="none" className="stroke-violet-glow/25" strokeWidth={7} strokeLinecap="round" strokeLinejoin="round" />}
       {dashed && <path d={line(dashed.back)} fill="none" className="stroke-muted/50" strokeWidth={2} strokeDasharray="9 7" />}
 
-      <Solid faces={boxFaces(at, column(0, geo.footTop, 0.006))} fill="fill-raised" edge="stroke-fg/10" />
+      <Solid faces={boxFaces(at, column(0, geo.footTop, 0.006))} fill={styles.foot} edge="stroke-fg/10" />
       {below.map(slab)}
       {!geo.empty && (
-        // The baseline: porcelain lit violet from within, its front edge glowing.
+        // The baseline: a plate lit violet from within, its front edge a violet line.
         <>
-          <Solid faces={boxFaces(at, column(geo.baseline - plate, geo.baseline + plate, W.plate.overhang))} fill="fill-raised" tint="fill-primary/25" edge="stroke-primary/70" />
-          <path d={line(loop(at, geo.baseline - plate, W.plate.overhang).front)} fill="none" className="stroke-primary/60" strokeWidth={1.5} strokeLinecap="round" />
+          <Solid faces={boxFaces(at, column(geo.baseline - plate, geo.baseline + plate, W.plate.overhang))} fill="fill-primary/90" edge="stroke-primary" />
+          <path d={line(loop(at, geo.baseline, W.plate.overhang).front)} fill="none" className="stroke-primary" strokeWidth={2} strokeLinecap="round" />
         </>
       )}
       {above.map(slab)}
-      {/* The clear glass above. */}
-      <g>
+      {/* The clear glass above: a faint body, its lit top rim, faint verticals down the front, one sheen. */}
+      <g fill="none">
         <path d={path(glass.right)} className="fill-primary/[0.09]" />
-        <path d={path(glass.top)} className="fill-primary/[0.05] stroke-primary/25" strokeWidth={1} />
-        <path d={path(glass.front)} className="fill-primary/[0.05] stroke-primary/30" strokeWidth={1} />
-        {/* A sheen down the glass. */}
-        <path d={line([glass.front[0], glass.front[3]])} className="stroke-raised/70" strokeWidth={2} />
+        <path d={path(glass.top)} className="fill-primary/[0.05] stroke-violet-glow/70" strokeWidth={1} />
+        <path d={path(glass.front)} className="fill-primary/[0.04]" />
+        <path d={line([glass.front[0], glass.front[3]])} className="stroke-violet-glow/20" strokeWidth={1} />
+        <path d={line([glass.front[1], glass.front[2]])} className="stroke-violet-glow/20" strokeWidth={1} />
+        <path d={line([at([-W.width / 2 + 0.03, geo.glass.y0 + 0.04, W.depth / 2]), at([-W.width / 2 + 0.03, geo.glass.y1 - 0.04, W.depth / 2])])} className="stroke-white/20" strokeWidth={3} strokeLinecap="round" />
       </g>
 
       {ring && (
@@ -197,92 +198,8 @@ function Staff({ at, geo }: { at: At; geo: LedgerGeometry }) {
   );
 }
 
-/** Buildings in the diorama's own units (after DWELLINGS in components/three/kit/dioramaLayout.ts). */
-const BUILDINGS: Record<NonNullable<HouseholdModel['dwelling']>, { w: number; d: number; wall: number; gable: number }> = {
-  house: { w: 0.62, d: 0.5, wall: 0.34, gable: 0.24 },
-  cottage: { w: 0.46, d: 0.4, wall: 0.25, gable: 0.25 },
-  'family-home': { w: 0.72, d: 0.52, wall: 0.5, gable: 0.27 },
-  apartment: { w: 0.5, d: 0.44, wall: 0.84, gable: 0 },
-  campus: { w: 0.88, d: 0.4, wall: 0.4, gable: 0 },
-};
-
-/**
- * The household at the foot: the user's diorama in miniature on its paper
- * disc (the scene stands the kit's HouseholdDiorama there), drawn as its
- * building and its people.
- */
-function Household({ at, model }: { at: At; model: HouseholdModel }) {
-  const { position, rotationY: r, scale: k, plinth, house } = W.household;
-  const [hx, , hz] = position;
-  const lift = plinth.height * k;
-  // A point in the diorama's own units, on top of its disc.
-  const local: At = ([lx, ly, lz]) => {
-    const x = (house[0] + lx) * k;
-    const z = (house[2] + lz) * k;
-    return at([hx + x * Math.cos(r) + z * Math.sin(r), lift + ly * k, hz - x * Math.sin(r) + z * Math.cos(r)]);
-  };
-  const b = BUILDINGS[model.dwelling ?? 'house'];
-  const w = b.w / 2;
-  const d = b.d / 2;
-
-  const front: Pt[] = [local([-w, 0, d]), local([w, 0, d]), local([w, b.wall, d])];
-  if (b.gable) front.push(local([0, b.wall + b.gable, d]));
-  front.push(local([-w, b.wall, d]));
-  const right: Pt[] = [local([w, 0, d]), local([w, 0, -d]), local([w, b.wall, -d]), local([w, b.wall, d])];
-  const roofs: Pt[][] = b.gable
-    ? [
-        [local([-w, b.wall, d]), local([0, b.wall + b.gable, d]), local([0, b.wall + b.gable, -d]), local([-w, b.wall, -d])],
-        [local([0, b.wall + b.gable, d]), local([w, b.wall, d]), local([w, b.wall, -d]), local([0, b.wall + b.gable, -d])],
-      ]
-    : [[local([-w, b.wall, d]), local([w, b.wall, d]), local([w, b.wall, -d]), local([-w, b.wall, -d])]];
-  const door: Pt[] = [local([-0.055, 0, d]), local([0.055, 0, d]), local([0.055, 0.2, d]), local([-0.055, 0.2, d])];
-
-  // Grown-ups, then dependents (children shorter), in a row by the front path.
-  const heights: number[] = [];
-  for (let i = 0; i < model.adults; i++) heights.push(0.19);
-  for (let i = 0; i < model.figures; i++) heights.push(!model.agesKnown ? 0.16 : model.youngDependents ? 0.14 : 0.18);
-
-  const disc = at([hx, lift, hz]);
-  const foot = at([hx, 0, hz]);
-  const rx = plinth.radius * k * S;
-  const ry = rx * Math.sin(LEDGER_VIEW.pitch);
-  return (
-    <g>
-      <ellipse cx={foot[0]} cy={foot[1]} rx={rx} ry={ry} className="fill-surface" />
-      <ellipse cx={foot[0]} cy={foot[1]} rx={rx} ry={ry} fill="#000" fillOpacity={0.08} />
-      <rect x={disc[0] - rx} y={disc[1]} width={rx * 2} height={foot[1] - disc[1]} className="fill-surface" />
-      <rect x={disc[0] - rx} y={disc[1]} width={rx * 2} height={foot[1] - disc[1]} fill="#000" fillOpacity={0.08} />
-      <ellipse cx={disc[0]} cy={disc[1]} rx={rx} ry={ry} className="fill-surface stroke-fg/10" strokeWidth={1} />
-      <path d={path(right)} className="fill-raised" />
-      <path d={path(right)} fill="#000" fillOpacity={0.1} />
-      {roofs.map((roof, i) => (
-        <g key={i}>
-          <path d={path(roof)} className="fill-raised" />
-          <path d={path(roof)} fill="#000" fillOpacity={i ? 0.04 : 0.08} />
-        </g>
-      ))}
-      <path d={path(front)} className="fill-raised stroke-fg/25" strokeWidth={1} />
-      <path d={path(door)} className="fill-primary" />
-      {heights.map((h, i) => {
-        const x = (i - (heights.length - 1) / 2) * 0.13;
-        const rr = h * 0.15;
-        const [fx, fy] = local([x, 0, d + 0.26]);
-        const [, hy] = local([x, h - rr, d + 0.26]);
-        const body = h * 0.64 * k * S;
-        return (
-          <g key={i} className="fill-raised stroke-fg/30" strokeWidth={0.75}>
-            <rect x={fx - rr * k * S} y={fy - body} width={rr * 2 * k * S} height={body} rx={rr * 0.8 * k * S} />
-            <circle cx={fx} cy={hy} r={rr * k * S} />
-          </g>
-        );
-      })}
-    </g>
-  );
-}
-
-export default function LedgerPoster({ model, focus = null, household, className, id = 'ledger' }: LedgerPosterProps) {
-  const home = household?.dwelling ? household : null;
-  const { at, width, height } = projection(!!home);
+export default function LedgerPoster({ model, focus = null, className, id = 'ledger' }: LedgerPosterProps) {
+  const { at, width, height } = projection();
   const geo = ledgerGeometry(model);
   const R = W.plinth.radius;
   const top = at([0, 0, 0]);
@@ -295,7 +212,7 @@ export default function LedgerPoster({ model, focus = null, household, className
     <svg
       viewBox={`0 0 ${width.toFixed(0)} ${height.toFixed(0)}`}
       preserveAspectRatio="xMidYMid meet"
-      className={cn('absolute inset-0 h-full w-full', className)}
+      className={cn(styles.art, 'absolute inset-0 h-full w-full', className)}
       aria-hidden="true"
       focusable="false"
       data-decorative=""
@@ -305,18 +222,19 @@ export default function LedgerPoster({ model, focus = null, household, className
           <stop offset="0" stopColor="#000" stopOpacity="0.18" />
           <stop offset="1" stopColor="#000" stopOpacity="0" />
         </radialGradient>
+        <linearGradient id={`${id}-drum`} x1="0" y1="0" x2="0" y2="1">
+          <stop offset="0" className={styles.stopDrumTop} />
+          <stop offset="1" className={styles.stopDrumBottom} />
+        </linearGradient>
       </defs>
       {/* The paper plinth: its shadow, its side, its top and the violet inlay. */}
       <ellipse cx={foot[0]} cy={foot[1] + ry * 0.4} rx={rx * 1.45} ry={ry * 2.2} fill={`url(#${id}-shadow)`} />
-      <ellipse cx={foot[0]} cy={foot[1]} rx={rx} ry={ry} className="fill-surface" />
-      <ellipse cx={foot[0]} cy={foot[1]} rx={rx} ry={ry} fill="#000" fillOpacity={0.07} />
-      <rect x={top[0] - rx} y={top[1]} width={rx * 2} height={foot[1] - top[1]} className="fill-surface" />
-      <rect x={top[0] - rx} y={top[1]} width={rx * 2} height={foot[1] - top[1]} fill="#000" fillOpacity={0.07} />
-      <ellipse cx={top[0]} cy={top[1]} rx={rx} ry={ry} className="fill-surface stroke-fg/10" strokeWidth={1} />
+      <ellipse cx={foot[0]} cy={foot[1]} rx={rx} ry={ry} className={styles.drum} />
+      <rect x={top[0] - rx} y={top[1]} width={rx * 2} height={foot[1] - top[1]} fill={`url(#${id}-drum)`} />
+      <ellipse cx={top[0]} cy={top[1]} rx={rx} ry={ry} className={cn(styles.top, 'stroke-fg/10')} strokeWidth={1} />
       <ellipse cx={top[0]} cy={top[1]} rx={inlay * S} ry={inlay * Math.sin(LEDGER_VIEW.pitch) * S} fill="none" className="stroke-primary/35" strokeWidth={1} />
       <ellipse cx={top[0]} cy={top[1]} rx={W.width * 1.3 * S} ry={W.depth * 1.7 * Math.sin(LEDGER_VIEW.pitch) * S} className="fill-fg/[0.06]" />
 
-      {home && <Household at={at} model={home} />}
       <Column at={at} geo={geo} focus={focus} />
       <Staff at={at} geo={geo} />
     </svg>

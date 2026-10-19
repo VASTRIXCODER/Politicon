@@ -5,7 +5,9 @@
  * stacks up from it and one amber slab per category that costs them hangs
  * down from it, every slab as tall as its dollars on ONE linear scale; a
  * ring of light marks the net, and a staff beside it carries the scale's
- * marks. The numbers themselves are never 3D: the page states them.
+ * marks. The numbers themselves are never 3D: the page states them. The
+ * household isn't drawn here (a miniature beside a column this tall reads
+ * as a scale oddity); the greeting's avatar carries it.
  *
  * Pure and three-free. The scene (components/three/scenes/LedgerMonolith),
  * its server poster (components/dashboard/LedgerPoster) and the DOM twin
@@ -19,21 +21,25 @@
  *             policy's net yearly impact, signed from the user's side:
  *             + saves them money, − costs them).
  *   totals    analysis_totals(): `count` and `netAnnual` over EVERY
- *             analysis, or null while it loads (or if it failed).
+ *             analysis, and `pendingAnnual`, the part of that net from
+ *             policies not recorded as enacted (or null while it loads, or
+ *             if it failed).
  * The dashboard has no per-category breakdown of a single analysis (the
  * view exposes only the net), so a slab is one policy category, netted
  * over the analyses in it, exactly as the dashboard's "By Category" view
- * already groups them.
+ * already groups them. The netting is said, not hidden: each slab also
+ * keeps what its policies save and cost before netting (`gross`), and the
+ * words call a slab a net.
  *
  * Honest with partial data: when the totals cover more analyses than the
  * list (the list is capped), the difference is real arithmetic, not a
  * guess: one extra slab, "Other analyses", holds their combined net, so
  * every slab adds up to the headline net. Nothing is invented: no
  * analyses → an empty ledger (no numbers at all), a category that nets to
- * $0 → listed as "no change" with no slab, missing amounts → $0.
+ * $0 → listed as "no change" with no slab, missing amounts → $0. A policy
+ * with no recorded status is counted as "status unknown", never as law.
  */
 import { formatUSD, impactWords } from '@/lib/format';
-import { describeHousehold, type HouseholdModel } from '@/lib/household';
 
 export type LedgerTone = 'gain' | 'loss' | 'neutral';
 
@@ -48,6 +54,12 @@ export interface LedgerSlab {
   policies: number;
   /** The combined net of the analyses the dashboard didn't list (see the header). */
   combined?: boolean;
+  /**
+   * What the category's policies save and cost before they're netted (whole
+   * dollars a year, both ≥ 0), so offsetting amounts aren't hidden. Absent
+   * for the combined rest, whose analyses aren't listed.
+   */
+  gross?: { saves: number; costs: number };
 }
 
 export interface LedgerModel {
@@ -65,6 +77,14 @@ export interface LedgerModel {
   listed: number;
   /** How many of the listed analyses are of policies that aren't law (proposed, passed, rejected, repealed): their amounts are what they would mean. */
   notLaw: number;
+  /** How many of the listed analyses have no recorded status, so whether they're law isn't known. */
+  statusUnknown: number;
+  /**
+   * Of the analyses the list leaves out (the "Other analyses" slab), the net
+   * a year from policies not recorded as enacted, from the totals. Null when
+   * the list covers everything, or the totals don't say.
+   */
+  restNotLaw: number | null;
 }
 
 /** One row of the dashboard's analyses list (only the fields the ledger reads). */
@@ -72,14 +92,18 @@ export interface LedgerAnalysis {
   category?: string | null;
   /** The policy's net yearly impact (PostgREST may send a numeric as a string). */
   dollar_impact?: number | string | null;
-  /** The policy's recorded status (the view's `status`): 'enacted' is law; anything else known isn't. */
+  /** The policy's recorded status (the view's `status`): 'enacted' is law; anything else known isn't; none is unknown. */
   status?: string | null;
 }
 
 export interface LedgerInput {
   analyses: readonly (LedgerAnalysis | null | undefined)[] | null | undefined;
-  /** From analysis_totals(): every analysis, not just the listed ones. Null while it loads. */
-  totals?: { count: number; netAnnual: number } | null;
+  /**
+   * From analysis_totals(): every analysis, not just the listed ones. Null
+   * while it loads. `pendingAnnual` is the net of the analyses whose status
+   * isn't 'enacted' (none recorded included); absent from an older RPC.
+   */
+  totals?: { count: number; netAnnual: number; pendingAnnual?: number | null } | null;
 }
 
 export const OTHER_ANALYSES_ID = 'other-analyses';
@@ -92,6 +116,8 @@ export const EMPTY_LEDGER: LedgerModel = Object.freeze({
   analysed: 0,
   listed: 0,
   notLaw: 0,
+  statusUnknown: 0,
+  restNotLaw: null,
 }) as LedgerModel;
 
 const CATEGORY_LABELS: Record<string, string> = {
@@ -148,15 +174,23 @@ const TONE_ORDER: Record<LedgerTone, number> = { gain: 0, loss: 1, neutral: 2 };
 
 export function buildLedger(input: LedgerInput): LedgerModel {
   const rows = (input.analyses ?? []).filter((r): r is LedgerAnalysis => !!r);
-  const groups = new Map<string, { label: string; raw: number; policies: number }>();
+  const groups = new Map<string, { label: string; raw: number; up: number; down: number; policies: number }>();
   let listedRaw = 0;
+  // The listed part of what the totals' pendingAnnual sums (status not 'enacted', none included).
+  let listedPendingRaw = 0;
   let notLaw = 0;
+  let statusUnknown = 0;
   for (const row of rows) {
-    if (typeof row.status === 'string' && row.status.trim() && row.status.trim().toLowerCase() !== 'enacted') notLaw += 1;
     const v = dollars(row.dollar_impact);
+    const status = typeof row.status === 'string' ? row.status.trim().toLowerCase() : '';
+    if (!status) statusUnknown += 1;
+    else if (status !== 'enacted') notLaw += 1;
+    if (status !== 'enacted') listedPendingRaw += v;
     const key = categoryKey(row.category);
-    const g = groups.get(key) ?? { label: categoryLabel(row.category), raw: 0, policies: 0 };
+    const g = groups.get(key) ?? { label: categoryLabel(row.category), raw: 0, up: 0, down: 0, policies: 0 };
     g.raw += v;
+    if (v > 0) g.up += v;
+    else g.down -= v;
     g.policies += 1;
     groups.set(key, g);
     listedRaw += v;
@@ -170,10 +204,12 @@ export function buildLedger(input: LedgerInput): LedgerModel {
   // (otherwise the list itself is the whole story, and stays self-consistent).
   const rest = count !== null && totalNet !== null && count > listed ? count - listed : 0;
   const netRaw = rest ? (totalNet as number) : listedRaw;
+  const pending = t?.pendingAnnual == null ? NaN : Number(t.pendingAnnual);
+  const restNotLaw = rest && Number.isFinite(pending) ? whole(pending - listedPendingRaw) : null;
 
   const slabs: LedgerSlab[] = [...groups].map(([key, g]) => {
     const value = whole(g.raw);
-    return { id: `cat-${key}`, label: g.label, value, tone: toneOf(value), policies: g.policies };
+    return { id: `cat-${key}`, label: g.label, value, tone: toneOf(value), policies: g.policies, gross: { saves: whole(g.up), costs: whole(g.down) } };
   });
   if (rest) {
     const value = whole(netRaw - listedRaw);
@@ -190,7 +226,7 @@ export function buildLedger(input: LedgerInput): LedgerModel {
 
   const gains = slabs.reduce((s, x) => s + Math.max(0, x.value), 0);
   const costs = slabs.reduce((s, x) => s + Math.max(0, -x.value), 0);
-  return { net: whole(netRaw), gains, costs, slabs, analysed: listed + rest, listed, notLaw };
+  return { net: whole(netRaw), gains, costs, slabs, analysed: listed + rest, listed, notLaw, statusUnknown, restNotLaw };
 }
 
 // ---------------------------------------------------------------------------
@@ -246,19 +282,6 @@ export const LEDGER_WORLD = {
   plinth: { radius: 1.15, height: 0.2 },
   /** The scale staff, standing just clear of the column's right side. */
   staff: { x: 0.5, z: 0.02, radius: 0.007, tick: 0.055 },
-  /**
-   * The household at the column's foot, front left: the user's diorama (the
-   * kit's HouseholdDiorama, its avatar) in miniature, on its own plinth.
-   * `plinth` and `house` repeat the diorama's own units (DIORAMA in
-   * components/three/kit/dioramaLayout.ts; tests/ledger.test.ts keeps them equal).
-   */
-  household: {
-    position: [-0.62, 0, 0.48] as readonly [number, number, number],
-    rotationY: 0.5,
-    scale: 0.27,
-    plinth: { radius: 1.3, height: 0.2 },
-    house: [-0.24, 0, -0.1] as readonly [number, number, number],
-  },
 } as const;
 
 /** The composed view (the scene's camera and the poster's projection). Radians; fov in degrees. */
@@ -380,8 +403,8 @@ export function unprojectLedger([x1, y2, z2]: Vec3, yaw: number = LEDGER_VIEW.ya
   return [x1 * Math.cos(yaw) + z1 * Math.sin(yaw), y, -x1 * Math.sin(yaw) + z1 * Math.cos(yaw)];
 }
 
-/** The view-space box around the plinth, the column and the household: what the frame must hold. */
-export function ledgerViewBounds(withHousehold: boolean): { minX: number; maxX: number; minY: number; maxY: number } {
+/** The view-space box around the plinth and the column: what the frame must hold. */
+export function ledgerViewBounds(): { minX: number; maxX: number; minY: number; maxY: number } {
   const W = LEDGER_WORLD;
   const pts: Vec3[] = [];
   for (const x of [-W.width / 2, W.width / 2]) for (const z of [-W.depth / 2, W.depth / 2]) pts.push([x, W.height, z]);
@@ -389,17 +412,6 @@ export function ledgerViewBounds(withHousehold: boolean): { minX: number; maxX: 
   for (let i = 0; i < 24; i++) {
     const a = (i / 24) * Math.PI * 2;
     pts.push([Math.cos(a) * r, 0, Math.sin(a) * r], [Math.cos(a) * r, -W.plinth.height, Math.sin(a) * r]);
-  }
-  if (withHousehold) {
-    const { position, scale, plinth } = W.household;
-    const [hx, , hz] = position;
-    const lift = plinth.height * scale;
-    for (let i = 0; i < 12; i++) {
-      const a = (i / 12) * Math.PI * 2;
-      pts.push([hx + Math.cos(a) * plinth.radius * scale, 0, hz + Math.sin(a) * plinth.radius * scale]);
-    }
-    // Its tallest building (the apartment block) with room to spare.
-    pts.push([hx, lift + 0.32, hz]);
   }
   const p = pts.map((v) => projectLedger(v));
   const xs = p.map((v) => v[0]);
@@ -413,37 +425,65 @@ export function ledgerViewBounds(withHousehold: boolean): { minX: number; maxX: 
 const plural = (n: number, one: string, many: string) => `${n} ${n === 1 ? one : many}`;
 const yearly = (n: number) => `${formatUSD(n, { signed: true })} a year`;
 
+/** Every category nets to $0 (its policies may still save and cost you: they cancel out), so there's nothing to stack. */
+const netsToZero = (m: LedgerModel) =>
+  m.analysed === 1
+    ? 'your analyzed policy comes to $0 a year, so there is no slab, and the ring of light rests on the baseline'
+    : 'your analyzed policies net to $0 a year within each category, so there are no slabs, and the ring of light rests on the baseline';
+
 /** What the picture shows, in one or two sentences (the SceneView's label). */
-export function describeLedger(model: LedgerModel, household?: HouseholdModel | null): string {
-  const home = household?.dwelling ? ` Beside it stands your household: ${describeHousehold(household).replace(/^./, (c) => c.toLowerCase())}` : '';
-  if (model.analysed === 0) return `An empty glass ledger on a porcelain plinth, its baseline dashed: no policies analyzed yet.${home}`;
+export function describeLedger(model: LedgerModel): string {
+  if (model.analysed === 0) return 'An empty glass ledger on a porcelain plinth, its baseline dashed: no policies analyzed yet.';
   const up = model.slabs.filter((s) => s.tone === 'gain').length;
   const down = model.slabs.filter((s) => s.tone === 'loss').length;
-  if (!up && !down) return `A clear glass ledger with no slabs: every analyzed policy nets to $0 a year, so its ring of light rests on the baseline.${home}`;
+  if (!up && !down) return `A clear glass ledger: ${netsToZero(model)}.`;
   const parts: string[] = [];
-  if (up) parts.push(`${plural(up, 'teal slab', 'teal slabs')} for what saves you money ${up === 1 ? 'rises' : 'rise'} above a violet baseline`);
-  if (down) parts.push(`${plural(down, 'amber slab', 'amber slabs')} for what costs you ${down === 1 ? 'hangs' : 'hang'} below ${up ? 'it' : 'a violet baseline'}`);
-  return `Your ledger as a glass column: ${parts.join(', and ')}. A ring of light marks the net, ${yearly(model.net)} (${impactWords(model.net)}).${home}`;
+  if (up) parts.push(`${plural(up, 'teal slab', 'teal slabs')} for categories that save you money ${up === 1 ? 'rises' : 'rise'} above a violet baseline`);
+  if (down) parts.push(`${plural(down, 'amber slab', 'amber slabs')} for categories that cost you ${down === 1 ? 'hangs' : 'hang'} below ${up ? 'it' : 'a violet baseline'}`);
+  return `Your ledger as a glass column: ${parts.join(', and ')}. A ring of light marks the net, ${yearly(model.net)} (${impactWords(model.net)}).`;
 }
 
 /** The scale in words, for the figure's caption. */
 export function ledgerScaleNote(model: LedgerModel): string {
   if (model.analysed === 0) return 'Each policy you analyze adds to its category’s slab: savings rise above the baseline in teal, costs hang below it in amber.';
   const scale = ledgerScale(model);
-  if (!scale) return 'Every analyzed policy nets to $0 a year, so there are no slabs yet; the ring of light rests on the baseline.';
-  return `Each slab is as tall as its yearly amount, on one linear scale for savings and costs; each mark on the staff is ${formatUSD(scale.step)} a year. The ring of light marks the net.`;
+  if (!scale) return `${netsToZero(model).replace(/^./, (c) => c.toUpperCase())}.`;
+  return `Each slab is the net of its category’s policies, as tall as that net on one linear scale for savings and costs; each mark on the staff is ${formatUSD(scale.step)} a year. The ring of light marks your overall net.`;
 }
 
-/** Which of the analyses aren't law (so their amounts are hypothetical), or null when all known ones are. */
+/**
+ * Which analyses aren't law, so their amounts are what they would mean if
+ * enacted, or whose status isn't recorded (never taken for law); for the
+ * analyses the list leaves out, the part of their net that isn't law (from
+ * the totals). Null when every analysis is recorded as law.
+ */
 export function ledgerStatusNote(model: LedgerModel): string | null {
-  const n = model.notLaw;
-  if (!n) return null;
-  // Statuses are known only for the listed analyses.
-  const of = model.listed < model.analysed ? 'of your latest analyses' : 'of these policies';
-  if (model.analysed === 1) return 'This policy isn’t law, so its amount is what it would mean if enacted.';
-  return n === 1
-    ? `1 ${of} isn’t law, so its amount is what it would mean if enacted.`
-    : `${n} ${of} aren’t law, so their amounts are what they would mean if enacted.`;
+  const { notLaw, statusUnknown: unknown, listed, analysed } = model;
+  const rest = analysed - listed;
+  if (analysed === 1 && listed === 1) {
+    if (notLaw) return 'This policy isn’t law, so its amount is what it would mean if enacted.';
+    if (unknown) return 'This policy has no recorded status, so it may not be law.';
+    return null;
+  }
+  const parts: string[] = [];
+  const of = rest > 0 ? 'of your latest analyses' : 'of these policies';
+  if (notLaw) {
+    parts.push(
+      notLaw === 1
+        ? `1 ${of} isn’t law, so its amount is what it would mean if enacted.`
+        : `${notLaw} ${of} aren’t law, so their amounts are what they would mean if enacted.`
+    );
+  }
+  if (unknown) {
+    const who = notLaw ? (unknown === 1 ? 'Another' : `${unknown} others`) : `${unknown} ${of}`;
+    parts.push(unknown === 1 ? `${who} has no recorded status, so it may not be law.` : `${who} have no recorded status, so they may not be law.`);
+  }
+  if (rest > 0) {
+    const others = `your ${listed ? 'other ' : ''}${rest === 1 ? 'analysis' : `${rest} analyses`}`;
+    if (model.restNotLaw === null) parts.push(`Whether ${others} ${rest === 1 ? 'is' : 'are'} law isn’t shown here.`);
+    else if (model.restNotLaw !== 0) parts.push(`Of ${others}, ${yearly(model.restNotLaw)} is from policies that aren’t law or have no recorded status.`);
+  }
+  return parts.length ? parts.join(' ') : null;
 }
 
 /** Why there's an "Other analyses" slab, or null when there isn't one. */

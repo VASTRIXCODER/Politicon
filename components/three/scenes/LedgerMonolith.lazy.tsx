@@ -7,9 +7,9 @@ import type { LedgerMonolithProps } from '@/components/three/scenes/LedgerMonoli
  * The dashboard's "Your Ledger" monolith as pages use it, inside a SceneView:
  *
  *   const ledger = useMemo(() => buildLedger({ analyses, totals }), [analyses, totals]);
- *   <SceneView interactive className="aspect-[4/5]" label={describeLedger(ledger, household)}
- *     poster={<LedgerPoster model={ledger} focus={focus} household={household} />}>
- *     <LedgerMonolith model={ledger} focus={focus} onFocus={setFocus} household={household} />
+ *   <SceneView interactive className="aspect-[4/5]" label={describeLedger(ledger)}
+ *     poster={<LedgerPoster model={ledger} focus={focus} />}>
+ *     <LedgerMonolith model={ledger} focus={focus} onFocus={setFocus} />
  *   </SceneView>
  *   <LedgerReadout model={ledger} focus={focus} onFocus={setFocus} />
  *

@@ -38,7 +38,8 @@ const config: Config = {
         },
         secondary: token('accent'),
         accent: token('accent'),
-        gold: token('gold'),
+        // Text and icons (AA); `gold-fill` for the record's seals and marks.
+        gold: { DEFAULT: token('gold'), fill: token('gold-fill') },
         gain: { DEFAULT: token('gain'), fill: token('gain-fill') },
         loss: { DEFAULT: token('loss'), fill: token('loss-fill') },
         // Kept as aliases of gain/loss so older call sites keep their meaning.

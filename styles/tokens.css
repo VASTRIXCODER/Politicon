@@ -29,6 +29,7 @@
   --c-danger: 180 35 68;
   --c-caution: 126 95 7;
   --c-gold: 122 92 10;
+  --c-gold-fill: 214 165 46;
   --c-focus: 84 52 224;
   --c-cat-taxes: 109 74 255;
   --c-cat-housing: 122 108 97;
@@ -61,6 +62,7 @@
   --c-danger: 255 143 163;
   --c-caution: 232 195 90;
   --c-gold: 227 179 65;
+  --c-gold-fill: 227 179 65;
   --c-focus: 185 168 255;
   --c-cat-taxes: 156 134 255;
   --c-cat-housing: 188 174 162;
@@ -93,6 +95,7 @@
   --c-danger: 180 35 68;
   --c-caution: 126 95 7;
   --c-gold: 122 92 10;
+  --c-gold-fill: 214 165 46;
   --c-focus: 84 52 224;
   --c-cat-taxes: 109 74 255;
   --c-cat-housing: 122 108 97;

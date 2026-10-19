@@ -4,7 +4,8 @@ import type { PolicyRecord } from '@/types';
  * Where a bill stands on its way to becoming law, read from its official
  * record: the record's status and the wording of its latest action. It is
  * the furthest stage the record shows the bill has reached, never a
- * prediction of what happens next, and it stays empty for anything that
+ * prediction of what happens next (a repealed law walked the whole path),
+ * and it stays empty for anything that
  * wasn't verified against an official source (an AI's word is never a status).
  *
  *   Introduced → Committee → Floor → Other chamber → Signed
@@ -39,7 +40,7 @@ export interface BillStep {
   state: StepState;
 }
 
-/** in-progress: still moving (as far as the record shows). */
+/** in-progress: still moving (as far as the record shows). repealed: it became law, and the record shows it was repealed. */
 export type BillOutcome = 'in-progress' | 'enacted' | 'failed' | 'repealed';
 
 export interface BillPathModel {
@@ -117,7 +118,8 @@ function stageFromAction(text: string, origin: Chamber | null, unicameral: boole
   }
   // Enrolled: the final text both chambers (or the one) passed, before it goes for signature.
   const both: BillStage = unicameral ? 'floor' : 'other-chamber';
-  if (/\benrolled\b|cleared for (the )?white house|passed both/.test(t)) return { stage: both, done: true, note: 'both' };
+  // The presiding officers sign it too ("Signed by President of the Senate"): not the chief executive's signature.
+  if (/\benrolled\b|cleared for (the )?white house|passed both|signed by (the )?(speaker|president (of|pro))/.test(t)) return { stage: both, done: true, note: 'both' };
   if (!unicameral) {
     if (/conference|resolving differences/.test(t)) return { stage: 'other-chamber', done: false, note: 'conference' };
     if (/\bconcurred\b|concurrence/.test(t)) return { stage: 'other-chamber', done: true, note: 'both' };
@@ -144,9 +146,9 @@ function stageFromAction(text: string, origin: Chamber | null, unicameral: boole
 /** An older record's status from its wording, where none was stored (a subset of statusFromAction). */
 function fallbackStatus(text: string): PolicyRecord['status'] {
   const t = text.toLowerCase();
-  if (/became (public |private )?law|signed by (the )?(president|governor)|approved by (the )?governor|chaptered|enacted/.test(t)) return 'enacted';
+  if (/became (public |private )?law|signed by (the )?(president|governor)\b(?!\s+(of|pro)\b)|approved by (the )?governor|chaptered|enacted/.test(t)) return 'enacted';
   if (/not agreed to|\bfailed\b|not passed|veto(ed)? (message|by)|vetoed|indefinitely postponed|\bdied (in|on|at)\b/.test(t)) return 'rejected';
-  if (PASSED.test(t) || /presented to|enrolled/.test(t)) return 'passed';
+  if (PASSED.test(t) || /presented to|enrolled|signed by (the )?(speaker|president (of|pro))/.test(t)) return 'passed';
   return 'proposed';
 }
 
@@ -186,6 +188,10 @@ export function billPath(record: PolicyRecord | null | undefined, fallback: { bi
   if (status === 'enacted') {
     return { known: true, steps: steps(() => 'done'), reached: last, outcome: 'enacted', headline: 'Became law', origin, ...base };
   }
+  // Only a law is repealed: it walked the whole path, and the record shows it was later undone.
+  if (status === 'repealed') {
+    return { known: true, steps: steps(() => 'done'), reached: last, outcome: 'repealed', headline: 'Became law, later repealed', origin, ...base };
+  }
 
   let found: Found = latestAction ? stageFromAction(latestAction, originSide, !!unicameralName) : { stage: 'introduced', done: false };
   // The record says it passed a chamber even where the wording above doesn't show it.
@@ -223,7 +229,7 @@ export function billPath(record: PolicyRecord | null | undefined, fallback: { bi
     known: true,
     steps: steps((i) => (i < reached ? 'done' : i === reached ? atStage : 'upcoming')),
     reached,
-    outcome: failed ? 'failed' : status === 'repealed' ? 'repealed' : 'in-progress',
+    outcome: failed ? 'failed' : 'in-progress',
     headline,
     origin,
     ...base,

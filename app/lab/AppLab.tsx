@@ -1,6 +1,6 @@
 'use client';
 
-import { useId, useMemo, useState } from 'react';
+import { useId, useState } from 'react';
 import Surface from '@/components/ui/Surface';
 import SceneView from '@/components/three/SceneView';
 import HouseholdScene from '@/components/three/scenes/HouseholdScene.lazy';
@@ -120,17 +120,16 @@ function AvatarSpecimen() {
 
 function LedgerSpecimen() {
   const [focus, setFocus] = useState<string | null>(null);
-  const household = useMemo(() => BUILD[BUILD.length - 1], []);
   return (
     <Surface as="article" variant="outline" pad="sm" className="grid gap-6 lg:col-span-2 lg:grid-cols-[minmax(0,5fr)_minmax(0,7fr)]">
       <div data-night="" data-scene-night="" className="relative rounded-pane bg-canvas p-3 text-ink">
         <SceneView
           interactive
           className="aspect-[4/5] w-full"
-          label={`Example: ${describeLedger(LAB_LEDGER, household)}`}
-          poster={<LedgerPoster model={LAB_LEDGER} focus={focus} household={household} id="lab-ledger" />}
+          label={`Example: ${describeLedger(LAB_LEDGER)}`}
+          poster={<LedgerPoster model={LAB_LEDGER} focus={focus} id="lab-ledger" />}
         >
-          <LedgerMonolith model={LAB_LEDGER} focus={focus} onFocus={setFocus} household={household} />
+          <LedgerMonolith model={LAB_LEDGER} focus={focus} onFocus={setFocus} />
         </SceneView>
       </div>
       <div className="min-w-0">

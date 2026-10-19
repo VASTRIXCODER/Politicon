@@ -19,8 +19,6 @@ import {
   projectLedger,
   unprojectLedger,
 } from '@/lib/ledger';
-import { householdFromProfile } from '@/lib/household';
-import { DIORAMA } from '@/components/three/kit/dioramaLayout';
 import LedgerPoster from '@/components/dashboard/LedgerPoster';
 import LedgerReadout from '@/components/dashboard/LedgerReadout';
 
@@ -48,7 +46,7 @@ describe('buildLedger', () => {
   it('is empty, with no numbers, before anything is analysed', () => {
     for (const input of [{ analyses: [] }, { analyses: null }, { analyses: [], totals: { count: 0, netAnnual: 0 } }]) {
       const m = buildLedger(input);
-      expect(m).toEqual({ net: 0, gains: 0, costs: 0, slabs: [], analysed: 0, listed: 0, notLaw: 0 });
+      expect(m).toEqual({ net: 0, gains: 0, costs: 0, slabs: [], analysed: 0, listed: 0, notLaw: 0, statusUnknown: 0, restNotLaw: null });
     }
     expect(EMPTY_LEDGER.analysed).toBe(0);
   });
@@ -99,16 +97,45 @@ describe('buildLedger', () => {
     expect(m.net).toBe(250);
   });
 
-  it('counts the listed analyses of policies that aren’t law, and says so', () => {
+  it('counts the listed analyses of policies that aren’t law, and those with no recorded status (never taken for law)', () => {
     const statuses = ['enacted', 'proposed', 'passed', null, 'Enacted'];
     const m = buildLedger({ analyses: rows.map((r, i) => ({ ...r, status: statuses[i] })) });
-    expect(m.notLaw).toBe(2);
-    expect(ledgerStatusNote(m)).toBe('2 of these policies aren’t law, so their amounts are what they would mean if enacted.');
+    expect(m).toMatchObject({ notLaw: 2, statusUnknown: 1, restNotLaw: null });
+    expect(ledgerStatusNote(m)).toBe(
+      '2 of these policies aren’t law, so their amounts are what they would mean if enacted. Another has no recorded status, so it may not be law.'
+    );
     const one = buildLedger({ analyses: [{ category: 'taxes', dollar_impact: 5, status: 'proposed' }] });
     expect(ledgerStatusNote(one)).toBe('This policy isn’t law, so its amount is what it would mean if enacted.');
-    const partial = buildLedger({ analyses: [rows[0], { ...rows[1], status: 'proposed' }], totals: { count: 5, netAnnual: 0 } });
+    const unknown = buildLedger({ analyses: [{ category: 'taxes', dollar_impact: 5, status: null }] });
+    expect(ledgerStatusNote(unknown)).toBe('This policy has no recorded status, so it may not be law.');
+    expect(ledgerStatusNote(buildLedger({ analyses: rows }))).toBe('5 of these policies have no recorded status, so they may not be law.');
+    const law = buildLedger({ analyses: rows.map((r) => ({ ...r, status: 'enacted' })) });
+    expect(ledgerStatusNote(law)).toBeNull();
+  });
+
+  it('says what of the analyses the list leaves out isn’t law, from the totals', () => {
+    const enacted = (r: (typeof rows)[number]) => ({ ...r, status: 'enacted' });
+    // The 5 listed are law; the other 4 net -340, of which the not-law part is +200 (the totals' pending 200, none listed).
+    const m = buildLedger({ analyses: rows.map(enacted), totals: { count: 9, netAnnual: 1000, pendingAnnual: 200 } });
+    expect(m).toMatchObject({ notLaw: 0, statusUnknown: 0, restNotLaw: 200 });
+    expect(ledgerStatusNote(m)).toBe('Of your other 4 analyses, +$200 a year is from policies that aren’t law or have no recorded status.');
+    // The listed part of pending is taken out first: here it all comes from a listed proposal.
+    const partial = buildLedger({ analyses: [enacted(rows[0]), { ...rows[1], status: 'proposed' }], totals: { count: 5, netAnnual: 0, pendingAnnual: 100 } });
+    expect(partial.restNotLaw).toBe(0);
     expect(ledgerStatusNote(partial)).toBe('1 of your latest analyses isn’t law, so its amount is what it would mean if enacted.');
-    expect(ledgerStatusNote(buildLedger({ analyses: rows }))).toBeNull();
+    // An older RPC without the split: say it isn't known.
+    const older = buildLedger({ analyses: rows.map(enacted), totals: { count: 6, netAnnual: 1340 } });
+    expect(ledgerStatusNote(older)).toBe('Whether your other analysis is law isn’t shown here.');
+    // Every analysis is law: nothing to say.
+    expect(ledgerStatusNote(buildLedger({ analyses: rows.map(enacted), totals: { count: 9, netAnnual: 1000, pendingAnnual: 0 } }))).toBeNull();
+  });
+
+  it('keeps what each category’s policies save and cost before netting, so offsets aren’t hidden', () => {
+    const m = buildLedger({ analyses: [{ category: 'taxes', dollar_impact: 2000 }, { category: 'taxes', dollar_impact: -1900 }, { category: 'energy', dollar_impact: -50 }] });
+    expect(m.slabs.find((s) => s.id === 'cat-taxes')).toMatchObject({ value: 100, tone: 'gain', policies: 2, gross: { saves: 2000, costs: 1900 } });
+    expect(m.slabs.find((s) => s.id === 'cat-energy')).toMatchObject({ gross: { saves: 0, costs: 50 } });
+    const rest = buildLedger({ analyses: rows, totals: { count: 9, netAnnual: 1000 } }).slabs.find((s) => s.combined);
+    expect(rest?.gross).toBeUndefined();
   });
 
   it('names categories the way the app does', () => {
@@ -213,22 +240,12 @@ describe('the view', () => {
     expect(projectLedger([0, 0, 1])[1]).toBeLessThan(projectLedger([0, 0, -1])[1]);
   });
 
-  it('stands the household diorama on the plinth, clear of the column, in the diorama’s own units', () => {
-    const h = LEDGER_WORLD.household;
-    expect(h.plinth).toEqual(DIORAMA.plinth);
-    expect(h.house).toEqual(DIORAMA.house.center);
-    const [x, , z] = h.position;
-    const r = h.plinth.radius * h.scale;
-    expect(Math.hypot(x, z) + r).toBeLessThanOrEqual(LEDGER_WORLD.plinth.radius);
-    const corner = Math.hypot(x + LEDGER_WORLD.width / 2, z - LEDGER_WORLD.depth / 2);
-    expect(corner).toBeGreaterThan(r);
-  });
-
-  it('frames the household too when there is one', () => {
-    const without = ledgerViewBounds(false);
-    const withHome = ledgerViewBounds(true);
-    expect(withHome.minX).toBeLessThanOrEqual(without.minX);
-    expect(withHome.maxY).toBeGreaterThan(withHome.minY);
+  it('frames the plinth and the column whole', () => {
+    const b = ledgerViewBounds();
+    const [, top] = projectLedger([0, LEDGER_WORLD.height, 0]);
+    expect(b.maxY).toBeGreaterThanOrEqual(top);
+    expect(b.minX).toBeLessThan(-LEDGER_WORLD.plinth.radius * 0.9);
+    expect(b.maxX).toBeGreaterThan(LEDGER_WORLD.plinth.radius * 0.9);
   });
 });
 
@@ -236,18 +253,24 @@ describe('words', () => {
   it('describes the picture with sign and words, and says when it is empty', () => {
     const m = buildLedger({ analyses: rows });
     expect(describeLedger(m)).toBe(
-      'Your ledger as a glass column: 2 teal slabs for what saves you money rise above a violet baseline, and 1 amber slab for what costs you hangs below it. A ring of light marks the net, +$1,340 a year (saves you).'
+      'Your ledger as a glass column: 2 teal slabs for categories that save you money rise above a violet baseline, and 1 amber slab for categories that cost you hangs below it. A ring of light marks the net, +$1,340 a year (saves you).'
     );
     expect(describeLedger(EMPTY_LEDGER)).toMatch(/^An empty glass ledger .*no policies analyzed yet\.$/);
     const costs = buildLedger({ analyses: [{ category: 'energy', dollar_impact: -50 }] });
-    expect(describeLedger(costs)).toContain('1 amber slab for what costs you hangs below a violet baseline');
+    expect(describeLedger(costs)).toContain('1 amber slab for categories that cost you hangs below a violet baseline');
     expect(describeLedger(costs)).toContain('−$50 a year (costs you)');
   });
 
-  it('adds the household when it is known', () => {
-    const home = householdFromProfile({ housingSituation: 'rent', filingStatus: 'single', state: 'Ohio' });
-    expect(describeLedger(EMPTY_LEDGER, home)).toContain('Beside it stands your household: a rented apartment with one adult, in Ohio.');
-    expect(describeLedger(EMPTY_LEDGER, householdFromProfile({}))).not.toContain('household');
+  it('says the policies net to $0 within each category, not that each one is $0, when there is nothing to stack', () => {
+    const offset = buildLedger({ analyses: [{ category: 'taxes', dollar_impact: 100, status: 'enacted' }, { category: 'taxes', dollar_impact: -100, status: 'proposed' }] });
+    expect(offset.slabs).toEqual([expect.objectContaining({ id: 'cat-taxes', value: 0, tone: 'neutral', policies: 2, gross: { saves: 100, costs: 100 } })]);
+    expect(describeLedger(offset)).toBe(
+      'A clear glass ledger: your analyzed policies net to $0 a year within each category, so there are no slabs, and the ring of light rests on the baseline.'
+    );
+    expect(ledgerScaleNote(offset)).toBe('Your analyzed policies net to $0 a year within each category, so there are no slabs, and the ring of light rests on the baseline.');
+    expect(describeLedger(offset)).not.toMatch(/every analyzed policy/i);
+    const single = buildLedger({ analyses: [{ category: 'housing', dollar_impact: 0 }] });
+    expect(ledgerScaleNote(single)).toMatch(/^Your analyzed policy comes to \$0 a year, so there is no slab/);
   });
 
   it('states the scale step in the caption', () => {
@@ -273,8 +296,16 @@ describe('LedgerReadout', () => {
     expect(html).toContain('Saves you $1,340 a year');
     for (const id of ['cat-healthcare', 'cat-taxes', 'cat-energy', 'cat-housing']) expect(html).toContain(`data-ledger-slab="${id}"`);
     expect(html).toContain('costs you $180 a year');
+    // A category of two policies is said to be a net.
+    expect(html).toContain(': net, saves you $920 a year, from 2 policies');
     expect(html).toContain('View as table');
     expect(html).toMatch(/<h2[^>]*>Your <em>Ledger<\/em><\/h2>/);
+  });
+
+  it('shows what a category’s policies save and cost when they pull both ways', () => {
+    const html = render({ model: buildLedger({ analyses: [{ category: 'taxes', dollar_impact: 2000 }, { category: 'taxes', dollar_impact: -1900 }] }) });
+    expect(html).toContain('which save you $2,000 and cost you $1,900 a year before netting');
+    expect(html.replace(/<!-- -->/g, '')).toMatch(/Net of <span[^>]*>\+\$2,000<\/span> and <span[^>]*>−\$1,900<\/span> a year/);
   });
 
   it('announces loading', () => {
@@ -292,9 +323,8 @@ describe('LedgerPoster', () => {
     expect(html).not.toMatch(/NaN|Infinity/);
   });
 
-  it('draws the empty ledger and the household without numbers', () => {
-    const home = householdFromProfile({ housingSituation: 'own_mortgage', filingStatus: 'married_joint', hasDependents: true, dependentsCount: 2, dependentAgeBands: ['6_12'] });
-    const html = renderToString(h(LedgerPoster, { model: EMPTY_LEDGER, household: home }));
+  it('draws the empty ledger without numbers', () => {
+    const html = renderToString(h(LedgerPoster, { model: EMPTY_LEDGER }));
     expect(html).toContain('stroke-dasharray');
     expect(html).not.toMatch(/NaN|Infinity|\$/);
   });
