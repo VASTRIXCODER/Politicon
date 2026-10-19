@@ -27,6 +27,8 @@ export interface PolicyAnalysisRow {
 export interface AnalysisTotals {
   count: number;
   netAnnual: number;
+  /** The part of netAnnual from policies not recorded as enacted (no status included); null if the RPC didn't say. */
+  pendingAnnual?: number | null;
 }
 
 /**

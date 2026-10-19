@@ -53,6 +53,7 @@
   text-overflow: ellipsis;
   border-radius: 4px;
   padding: 3px 10px 2px;
+  letter-spacing: 0.2em;
   background: linear-gradient(180deg, #f8f4ec, #ebe4d8);
   color: #3a3448;
   box-shadow:
@@ -63,6 +64,19 @@
   /* Letters pressed into the plate. */
   text-shadow: 0 1px 0 rgb(255 255 255 / 0.85);
   pointer-events: none;
+}
+
+/* The phone band: a label plate on the window's lower-left corner. */
+@media (max-width: 1023.98px) {
+  .plaque {
+    left: 0.375rem;
+    top: auto;
+    bottom: 0.375rem;
+    translate: none;
+    max-width: calc(100% - 0.75rem);
+    padding: 2px 7px 1px;
+    letter-spacing: 0.12em;
+  }
 }
 
 .plaqueIn {
@@ -77,5 +91,40 @@
   to {
     opacity: 1;
     transform: none;
+  }
+}
+
+/*
+ * The page's frame. Phones and tablets held upright dock the household band
+ * above the questions, which scroll beneath it in their own pane (.scroller,
+ * on <main>), so each piece lands in view as it's added and the reveal plays
+ * on screen. It also keeps the 3D scene visible: it draws on the stage
+ * canvas behind the page, so the form scrolling over the band would hide it.
+ * Short screens (a phone on its side) and lg up scroll as one page.
+ */
+.page {
+  min-height: 100vh;
+}
+
+@media (max-width: 1023.98px) and (min-height: 560px) {
+  .page {
+    height: 100vh;
+    height: 100dvh;
+    min-height: 0;
+    overflow: hidden;
+  }
+
+  .scroller {
+    min-height: 0;
+    overflow-y: auto;
+    overscroll-behavior: contain;
+    /* The questions fade out as they pass under the band, rather than meeting it at a hard line. */
+    -webkit-mask-image: linear-gradient(to bottom, transparent, #000 0.875rem);
+    mask-image: linear-gradient(to bottom, transparent, #000 0.875rem);
+  }
+
+  /* The question card scrolls; nothing in the pane shrinks to fit it (the card clips its overflow). */
+  .scroller > * {
+    flex-shrink: 0;
   }
 }

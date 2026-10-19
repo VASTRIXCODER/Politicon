@@ -1,0 +1,26 @@
+/*
+ * The ledger poster's porcelain: the tones the 3D monolith renders (the kit's
+ * Plinth and the porcelain foot under StudioLights, lib/three/palette.ts),
+ * by day and in the night vitrine the dashboard sets it in. Theme surfaces (fill-surface, fill-raised) turn navy by night, where
+ * the 3D plinth is a pale lilac object, so the poster names its own.
+ */
+.art {
+  --lp-top: #fbfafd;
+  --lp-drum-top: #e6e1ee;
+  --lp-drum-bottom: #c8c2d1;
+  --lp-foot: #ece8f2;
+}
+
+:global([data-theme='dark']) .art,
+:global([data-night]) .art {
+  --lp-top: #dccff8;
+  --lp-drum-top: #8c81b0;
+  --lp-drum-bottom: #6c6296;
+  --lp-foot: #a79bcb;
+}
+
+.top { fill: var(--lp-top); }
+.drum { fill: var(--lp-drum-bottom); }
+.foot { fill: var(--lp-foot); }
+.stopDrumTop { stop-color: var(--lp-drum-top); }
+.stopDrumBottom { stop-color: var(--lp-drum-bottom); }

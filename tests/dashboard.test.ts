@@ -198,8 +198,8 @@ describe('LedgerSection on the server', () => {
 
   it('labels the model with the ledger in words, shows its poster and its legend, and the stats', () => {
     const ledger = buildLedger({ analyses: ROWS, totals });
-    const html = renderToString(h(LedgerSection, { loading: false, analyses: ROWS, totals, profile: null, onGoToFeed: noop }));
-    const label = esc(describeLedger(ledger, null));
+    const html = renderToString(h(LedgerSection, { loading: false, analyses: ROWS, totals, onGoToFeed: noop }));
+    const label = esc(describeLedger(ledger));
     expect(html).toContain(`role="img" aria-label="${label}"`);
     expect(html).toContain('data-scene-view="poster"');
     expect(html).toContain('Teal slabs save you money');
@@ -209,24 +209,25 @@ describe('LedgerSection on the server', () => {
     expect(html).toContain('Grid Fee Act');
   });
 
-  it('stands the household from the profile at the column’s foot, and says so', () => {
-    const profile = { housing_situation: 'rent', filing_status: 'single', dependents_count: 0, state: 'Ohio' };
-    const html = renderToString(h(LedgerSection, { loading: false, analyses: ROWS, totals, profile, onGoToFeed: noop }));
-    const household = householdFromRow(profile);
-    expect(household?.dwelling).toBe('apartment');
-    expect(html).toContain(`aria-label="${esc(describeLedger(buildLedger({ analyses: ROWS, totals }), household))}"`);
-    expect(html).toContain('Beside it stands your household');
+  it('says which policies aren’t law, over every analysis, from the totals’ split', () => {
+    // The three listed: one proposal (−$300). Two more analyses, not listed, net +$500, of which +$500 isn't law.
+    const all = { count: 5, netAnnual: 1440, pendingAnnual: 200 };
+    const html = renderToString(h(LedgerSection, { loading: false, analyses: ROWS, totals: all, onGoToFeed: noop }));
+    expect(html).toContain('1 of your latest analyses isn’t law, so its amount is what it would mean if enacted.');
+    expect(html).toContain('Of your other 2 analyses, +$500 a year is from policies that aren’t law or have no recorded status.');
+    // The household isn't drawn beside the column (the greeting's avatar carries it), so the label doesn't name it.
+    expect(html).not.toContain('household');
   });
 
   it('while loading, holds a placeholder instead of an empty ledger', () => {
-    const html = renderToString(h(LedgerSection, { loading: true, analyses: [], totals: null, profile: null, onGoToFeed: noop }));
+    const html = renderToString(h(LedgerSection, { loading: true, analyses: [], totals: null, onGoToFeed: noop }));
     expect(html).not.toContain('role="img"');
     expect(html).toContain('Loading your ledger');
     expect(html).not.toContain('Biggest gain');
   });
 
   it('empty, it says so and offers the feed, with no figures', () => {
-    const html = renderToString(h(LedgerSection, { loading: false, analyses: [], totals: { count: 0, netAnnual: 0 }, profile: null, onGoToFeed: noop }));
+    const html = renderToString(h(LedgerSection, { loading: false, analyses: [], totals: { count: 0, netAnnual: 0 }, onGoToFeed: noop }));
     expect(html).toContain('Pick a policy from your feed');
     expect(html).not.toContain('Biggest gain');
     expect(html).not.toContain('Teal slabs save you money');

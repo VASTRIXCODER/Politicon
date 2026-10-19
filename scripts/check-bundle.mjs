@@ -52,9 +52,9 @@ const LAZY_STAGE_BUDGET_KB = 302;
 // dynamic import the page can reach (the dashboard's ledger section loads
 // its LedgerMonolith, for example), minus what its first load already holds.
 // This is what a visitor pays on a 3D device, so it is the budget that
-// matters. Measured on 2026-10-18 (App I): the landing page 427.2 kB (hero +
-// film), the dashboard 399.2 kB (household avatar + ledger), onboarding
-// 386.7 kB; a page with no scene still counts the stage (StageLoader is in
+// matters. Measured on 2026-10-19 (App I): the landing page 425.3 kB (hero +
+// film), the dashboard 396.2 kB (household avatar + ledger), onboarding
+// 388.1 kB; a page with no scene still counts the stage (StageLoader is in
 // the root layout), 354.3 kB, though it never loads it.
 //
 // History: R0 held all lazy 3D together to 473 kB. That number grows with
@@ -64,17 +64,19 @@ const LAZY_STAGE_BUDGET_KB = 302;
 const LAZY_3D_PER_ROUTE_BUDGET_KB = 430;
 // /lab is internal visual QA (404 on the production deployment) and mounts
 // every kit piece and scene by design, so it is reported but not held to the
-// per-page budget (433 kB for the kit alone); the total cap still covers it.
+// per-page budget (455.6 kB on 2026-10-19); the total cap still covers it.
 const LAZY_3D_UNBUDGETED_ROUTES = new Set(['/lab']);
 // Every lazy chunk that is part of the 3D kit, whichever page loads it: the
-// stage, the bloom pass, the kit pieces and every scene. 484.8 kB on
-// 2026-10-18 (App I); the cap leaves room for the scenes still planned
+// stage, the bloom pass, the kit pieces and every scene. 484.3 kB on
+// 2026-10-19 (App I); the cap leaves room for the scenes still planned
 // (R4: the impact page's transmission, the receipt's skyline; R5: the
 // guide's orb), each held to the per-page budget above.
 //
 // NOTE: the redesign plan set "about 300 kB gzip for the stage and the shared
-// kit". The stage alone is close to that; these budgets are this file's
-// numbers, not the plan's, and were signed off with the PRs that set them.
+// kit". The stage alone is close to that, and these budgets are this file's
+// numbers, not the plan's: the 430 kB per-page budget and the 620 kB cap (up
+// from R0's 473 kB total) need the owner's sign-off, listed under Known
+// issues in the App I PR, as R0's were in its PR.
 const LAZY_3D_TOTAL_BUDGET_KB = 620;
 
 // Strings that survive minification and only three.js / R3F contain.

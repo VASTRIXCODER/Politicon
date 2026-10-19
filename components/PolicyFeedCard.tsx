@@ -129,9 +129,11 @@ export default function PolicyFeedCard({ policy, analyzed, impact, onAnalyze, on
 
         {/* The actions sit at the foot, so cards in a row line them up. */}
         <div className="mt-auto pt-4">
-          <div className="flex gap-2">
+          {/* Side by side while both labels fit on one line (9.5rem each); stacked on a narrow card. */}
+          <div className="flex flex-wrap gap-2">
             {analyzed ? (
               <ViewFullImpactButton
+                className="basis-[9.5rem]"
                 policyId={policy.id}
                 policyTitle={policy.title}
                 category={policy.category}
@@ -148,7 +150,7 @@ export default function PolicyFeedCard({ policy, analyzed, impact, onAnalyze, on
                 aria-describedby={titleId}
                 variant="ghost"
                 size="sm"
-                className={cn('min-h-10 flex-1 gap-1.5 px-3 py-2 text-xs', TINT)}
+                className={cn('min-h-10 flex-1 basis-[9.5rem] gap-1.5 whitespace-nowrap px-3 py-2 text-xs', TINT)}
                 icon={isAnalyzing ? <Loader2 className="h-3 w-3 motion-safe:animate-spin" /> : <TrendingUp className="h-3 w-3" />}
               >
                 {isAnalyzing ? 'Analyzing...' : 'Analyze Impact'}
@@ -159,7 +161,7 @@ export default function PolicyFeedCard({ policy, analyzed, impact, onAnalyze, on
               aria-describedby={titleId}
               variant="ghost"
               size="sm"
-              className="min-h-10 flex-1 gap-1.5 px-3 py-2 text-xs font-normal text-muted hover:text-ink"
+              className="min-h-10 flex-1 basis-[9.5rem] gap-1.5 whitespace-nowrap px-3 py-2 text-xs font-normal text-muted hover:text-ink"
               icon={<MessageSquare className="h-3 w-3" />}
             >
               Ask the Guide

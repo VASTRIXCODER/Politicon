@@ -12,7 +12,7 @@ import styles from './householdPoster.module.css';
  * or the box's label says what it shows.
  *
  *   <HouseholdPoster model={model} />                 the onboarding diorama (5:4)
- *   <HouseholdPoster model={model} aspect={2} />      …in a wide band
+ *   <HouseholdPoster model={model} aspect={4 / 3} close />  …close on the household (the phone's band)
  *   <HouseholdPoster model={model} compact />         the avatar (square)
  *
  * `lastAdded` lifts the newest piece in with a ring of light under it (CSS,
@@ -26,20 +26,22 @@ export interface HouseholdPosterProps {
   compact?: boolean;
   /** Width / height of the box it fills (default 5:4, or 1 when compact). */
   aspect?: number;
+  /** Frame the household itself, the plinth running out of the box (the phone's band; the 3D scene's `close`). */
+  close?: boolean;
   /** The newest piece (dioramaLayout.ts newestPiece): it rises in. */
   lastAdded?: string | null;
   /** Lamplight in the windows (the finished household). */
   lit?: boolean;
-  /** Changes land at once, without their transitions (the reveal was skipped). */
+  /** Changes land at once, without their transitions (reduced or paused motion). */
   instant?: boolean;
   className?: string;
 }
 
 export const POSTER_ASPECT = 5 / 4;
 
-export default function HouseholdPoster({ model, compact = false, aspect, lastAdded = null, lit = false, instant = false, className }: HouseholdPosterProps) {
+export default function HouseholdPoster({ model, compact = false, aspect, close = false, lastAdded = null, lit = false, instant = false, className }: HouseholdPosterProps) {
   const uid = useId().replace(/[^a-zA-Z0-9_-]/g, '');
-  const art = householdArt(model, compact ? 'avatar' : 'build', aspect ?? (compact ? 1 : POSTER_ASPECT), lastAdded);
+  const art = householdArt(model, compact ? 'avatar' : 'build', aspect ?? (compact ? 1 : POSTER_ASPECT), lastAdded, close && !compact);
   const url = (name: string) => `url(#${uid}-${name})`;
 
   return (

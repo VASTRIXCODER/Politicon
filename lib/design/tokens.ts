@@ -49,8 +49,15 @@ export interface ThemeTokens {
   danger: string;
   /** Warnings and low-confidence notes. */
   caution: string;
-  /** Archive gold: official-record accents only (seals, record stamps). */
+  /** Archive gold: official-record accents only, for text and icons (AA). */
   gold: string;
+  /**
+   * Archive gold as a fill: the record's decorative marks (seals, the enacted
+   * stage on a bill's path), always beside words that say the same. The
+   * plan's #E3B341 by night; a slightly deeper gold on paper, still gold
+   * rather than the text token's olive.
+   */
+  goldFill: string;
   /** Focus ring. */
   focus: string;
 }
@@ -76,6 +83,7 @@ export const THEMES: Record<ThemeName, ThemeTokens> = {
     danger: '#B42344',
     caution: '#7E5F07',
     gold: '#7A5C0A',
+    goldFill: '#D6A52E',
     focus: '#5434E0',
   },
   dark: {
@@ -97,6 +105,7 @@ export const THEMES: Record<ThemeName, ThemeTokens> = {
     danger: '#FF8FA3',
     caution: '#E8C35A',
     gold: '#E3B341',
+    goldFill: '#E3B341',
     focus: '#B9A8FF',
   },
 };

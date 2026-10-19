@@ -108,16 +108,17 @@
     var(--shadow-pane);
 }
 
-/* The record header's seal: a point of archive gold, for official records only. */
+/* The record header's seal: a point of archive gold, for official records only
+   (the fill token: --c-gold is the text and icon gold, olive on paper). */
 .seal {
   width: 0.5rem;
   height: 0.5rem;
   flex-shrink: 0;
   border-radius: 9999px;
-  background: rgb(var(--c-gold));
+  background: rgb(var(--c-gold-fill));
   box-shadow:
-    0 0 0 3px rgb(var(--c-gold) / 0.16),
-    0 0 10px rgb(var(--c-gold) / 0.55);
+    0 0 0 3px rgb(var(--c-gold-fill) / 0.18),
+    0 0 10px rgb(var(--c-gold-fill) / 0.5);
 }
 
 /* The record pane inside a card: where the bill stands and where that comes from. */

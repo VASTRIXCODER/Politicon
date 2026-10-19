@@ -212,7 +212,7 @@ describe('category colours', () => {
       });
 
       it(`${theme}: ${category} is not archive gold`, () => {
-        expect([THEMES.light.gold, THEMES.dark.gold, '#E3B341'].map((c) => c.toLowerCase())).not.toContain(hex.toLowerCase());
+        expect([THEMES.light.gold, THEMES.dark.gold, THEMES.light.goldFill, THEMES.dark.goldFill, '#E3B341'].map((c) => c.toLowerCase())).not.toContain(hex.toLowerCase());
         expect(gold(hex), hex).toBe(false);
       });
     }
@@ -221,5 +221,11 @@ describe('category colours', () => {
   it('flags the old gold housing tones', () => {
     expect(gold('#E3B341')).toBe(true);
     expect(gold('#B8860B')).toBe(true);
+  });
+
+  // The seal's fill must read as gold on paper too, not as the text token's olive.
+  it('keeps the gold fill a gold in both themes', () => {
+    expect(gold(THEMES.light.goldFill)).toBe(true);
+    expect(gold(THEMES.dark.goldFill)).toBe(true);
   });
 });

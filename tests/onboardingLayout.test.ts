@@ -321,6 +321,32 @@ describe('the household camera', () => {
     expect(distance(band)).toBeLessThan(distance(panel));
   });
 
+  it('frames the phone band close on the household: every piece in view, the plinth running out of the frame', () => {
+    const aspect = 4 / 3;
+    const project = householdProjector(householdShot('build', aspect, 0, true), aspect);
+    const [cx, , cz] = DIORAMA.house.center;
+    const inside: Vec3[] = [];
+    for (const d of ['apartment', 'family-home', 'campus', 'house', 'cottage'] as const) {
+      const s = DWELLINGS[d];
+      for (const sx of [-1, 1]) for (const sz of [-1, 1]) inside.push([cx + (sx * s.width) / 2, dwellingTop(d), cz + (sz * s.depth) / 2], [cx + (sx * s.width) / 2, 0, cz + (sz * s.depth) / 2]);
+    }
+    for (const spot of Object.values(PROP_SPOTS)) inside.push(spot.position, [spot.position[0], 0.12, spot.position[2]]);
+    for (const p of inside) {
+      const q = project(...p);
+      expect(q.x).toBeGreaterThan(0.02);
+      expect(q.x).toBeLessThan(0.98);
+      expect(q.y).toBeGreaterThan(0.01);
+      expect(q.y).toBeLessThan(0.95);
+    }
+    // Closer than the panel: the drum's rim leaves the box.
+    expect(extremes.some((p) => { const q = project(...p); return q.x < 0 || q.x > 1 || q.y > 1; })).toBe(true);
+    // The reveal still pulls back from it.
+    const d = (s: ReturnType<typeof householdShot>) => Math.hypot(...s.position.map((v, i) => v - s.target[i]));
+    expect(d(householdShot('build', aspect, 1, true))).toBeGreaterThan(d(householdShot('build', aspect, 0, true)) * 1.15);
+    // Only the build view has a close framing; the avatar always shows its whole plinth.
+    expect(householdShot('avatar', 1, 0, true)).toEqual(householdShot('avatar', 1));
+  });
+
   it('pulls back for the reveal', () => {
     for (const aspect of [1, 1.25, 2.4]) {
       const a = householdShot('build', aspect, 0);

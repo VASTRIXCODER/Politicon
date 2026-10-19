@@ -37,6 +37,15 @@
     padding: 0;
   }
 
+  /* The floating navigation bar is fixed over the page (components/layout/Navbar,
+     its bottom edge at most 4.5rem down): whatever keyboard focus, an anchor or
+     scrollIntoView brings into view stops clear of it, never underneath
+     (WCAG 2.4.11). Only on pages that have the bar (onboarding hides it). */
+  html:has(nav[aria-label='Main']) {
+    scroll-padding-top: 6rem;
+    scroll-padding-bottom: 1rem;
+  }
+
   body {
     background-color: rgb(var(--c-canvas));
     color: rgb(var(--c-ink));

@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useState, type CSSProperties } from 'react';
+import { useEffect, useState, useSyncExternalStore, type CSSProperties } from 'react';
 import SceneView from '@/components/three/SceneView';
 import HouseholdScene from '@/components/three/scenes/HouseholdScene.lazy';
 import { newestPiece } from '@/components/three/kit/dioramaLayout';
@@ -15,23 +15,27 @@ import styles from './onboarding.module.css';
  * "Build your household": the diorama beside the onboarding questions. Each
  * answer the plinth can show adds its piece as the person goes (the building
  * for their housing, the grown-ups and dependents, an object per kind of
- * debt, their state on a plate set into the plinth), and a caption under it
+ * debt, their state on a plate set into the plinth), and a caption beside it
  * says the same in words, announced politely once the answers settle.
  *
- * One box for every screen: a wide band above the form on a phone, a large
- * 5:4 view in its own column from lg up. The 3D scene (HouseholdScene)
- * renders into it on devices that run 3D; the poster (the same drawing,
- * server-renderable) stands in everywhere else, and both follow the same
- * model. With `reveal` (the last question) the camera pulls back and the
- * windows light up; it never holds anything up, and can be skipped.
+ * Two shapes. Below lg, a compact band the page docks above the questions
+ * (app/onboarding/page.tsx), so every piece lands in view: a small framed
+ * 4:3 window close on the household, the caption beside it. From lg up, a
+ * large 5:4 view of the whole plinth in its own column. The 3D scene
+ * (HouseholdScene) renders into it on devices that run 3D; the poster (the
+ * same drawing, server-renderable) stands in everywhere else, and both
+ * follow the same model and framing. With `reveal` (the last question) the
+ * camera pulls back and the windows light up. It lasts under three seconds,
+ * never holds anything up, and is a still frame under reduced motion and
+ * "Pause motion" (the toggle in the page's header).
  */
 
-/** The phone band's shape (the panel is POSTER_ASPECT, 5:4). */
-const BAND_ASPECT = 2.4;
+/** The phone band's window (the lg panel is POSTER_ASPECT, 5:4). */
+const BAND_ASPECT = 4 / 3;
+/** Below Tailwind's lg: the band, framed close on the household. */
+const BAND_QUERY = '(max-width: 1023.98px)';
 /** How long the caption waits for answers to settle before it speaks. */
 const CAPTION_SETTLE_MS = 700;
-/** How long the reveal plays (the scene's REVEAL_SECONDS, with a margin). */
-const REVEAL_MS = 2800;
 
 const PLAQUE_SPOT = plaqueSpot(POSTER_ASPECT);
 
@@ -53,6 +57,17 @@ function useSettled<T>(value: T, ms: number): T {
   return settled;
 }
 
+const subscribeBand = (onChange: () => void) => {
+  const mql = window.matchMedia(BAND_QUERY);
+  mql.addEventListener('change', onChange);
+  return () => mql.removeEventListener('change', onChange);
+};
+
+/** The page shows the phone band (the scene only renders in the browser, so the server's answer never reaches it). */
+function useBand(): boolean {
+  return useSyncExternalStore(subscribeBand, () => window.matchMedia(BAND_QUERY).matches, () => false);
+}
+
 export default function HouseholdStage({ model, reveal, className }: HouseholdStageProps) {
   // The newest piece, from the model before this one (derived during render, as React recommends for previous values).
   const [seen, setSeen] = useState<{ model: HouseholdModel; last: string | null }>({ model, last: null });
@@ -60,73 +75,57 @@ export default function HouseholdStage({ model, reveal, className }: HouseholdSt
   const lastAdded = seen.last;
 
   const still = useLessMotion();
-  const [skipped, setSkipped] = useState(false);
-  const [playing, setPlaying] = useState(false);
-  useEffect(() => {
-    if (!reveal) {
-      setSkipped(false);
-      setPlaying(false);
-      return;
-    }
-    if (still) return;
-    setPlaying(true);
-    const id = window.setTimeout(() => setPlaying(false), REVEAL_MS);
-    return () => window.clearTimeout(id);
-  }, [reveal, still]);
-
+  const band = useBand();
   const caption = useSettled(describeHousehold(model), CAPTION_SETTLE_MS);
-  const instant = skipped || still;
 
   const poster = (
     <>
-      <HouseholdPoster model={model} aspect={BAND_ASPECT} lastAdded={lastAdded} lit={reveal} instant={instant} className="lg:hidden" />
-      <HouseholdPoster model={model} aspect={POSTER_ASPECT} lastAdded={lastAdded} lit={reveal} instant={instant} className="hidden lg:block" />
+      <HouseholdPoster model={model} aspect={BAND_ASPECT} close lastAdded={lastAdded} lit={reveal} instant={still} className="lg:hidden" />
+      <HouseholdPoster model={model} aspect={POSTER_ASPECT} lastAdded={lastAdded} lit={reveal} instant={still} className="hidden lg:block" />
     </>
   );
 
   return (
-    <div className={cn('relative rounded-pane border border-fg/8 p-3 sm:p-4 lg:rounded-[1.75rem] lg:p-6', className)}>
-      <div className="flex min-h-6 items-center justify-between gap-3 px-1">
-        <p aria-hidden="true" className="font-mono-data text-meta font-medium uppercase tracking-[0.16em] text-muted">
-          Your household
-        </p>
-        {playing && !skipped && (
-          <button
-            type="button"
-            onClick={() => setSkipped(true)}
-            className="-my-1 -mr-2 min-h-6 rounded-md px-2 py-1 text-meta font-medium text-primary-300 underline-offset-4 hover:text-ink hover:underline"
-          >
-            Skip animation
-          </button>
-        )}
-      </div>
+    <div
+      className={cn(
+        // Phone band: the window on the left, the words beside it. lg: one column.
+        'relative grid grid-cols-[minmax(0,48%)_minmax(0,1fr)] items-center gap-x-3 rounded-pane border border-fg/8 p-2 sm:grid-cols-[minmax(0,42%)_minmax(0,1fr)] sm:gap-x-5 sm:p-3',
+        'lg:block lg:rounded-[1.75rem] lg:p-6',
+        className
+      )}
+    >
+      <p
+        aria-hidden="true"
+        className="col-start-2 row-start-1 self-end font-mono-data text-meta font-medium uppercase tracking-[0.16em] text-muted lg:flex lg:min-h-6 lg:items-center lg:px-1"
+      >
+        Your household
+      </p>
 
       <div
         data-household-stage=""
-        className="relative mt-2 lg:mt-3"
+        className="relative col-start-1 row-span-2 row-start-1 lg:mt-3"
         style={{ '--plaque-poster-x': `${PLAQUE_SPOT.x}%`, '--plaque-poster-y': `${PLAQUE_SPOT.y}%` } as CSSProperties}
       >
-        <SceneView className="aspect-[12/5] w-full lg:aspect-[5/4]" poster={poster}>
-          <HouseholdScene model={model} mode="build" lastAdded={lastAdded} reveal={reveal} skip={skipped} />
+        {/* The band's window clips the poster to its corners; the 3D scene is scissored to the same box. */}
+        <SceneView className="aspect-[4/3] w-full overflow-hidden rounded-md lg:aspect-[5/4] lg:overflow-visible lg:rounded-none" poster={poster}>
+          <HouseholdScene model={model} mode="build" lastAdded={lastAdded} reveal={reveal} close={band} />
         </SceneView>
+        {/* The window's frame, so the plinth running out of it reads as a close-up, not a cut. */}
+        <span aria-hidden="true" className="pointer-events-none absolute inset-0 rounded-md ring-1 ring-inset ring-fg/12 lg:hidden" />
         {model.state && (
-          // A plate set into the plinth's drum; the caption carries the words for screen readers.
+          // A plate set into the plinth's drum (in the band, on the window's corner); the caption carries the words for screen readers.
           <span
             aria-hidden="true"
             data-decorative=""
-            className={cn(
-              styles.plaque,
-              lastAdded === 'state' && styles.plaqueIn,
-              'hidden font-mono-data text-meta font-medium uppercase tracking-[0.2em] lg:block'
-            )}
+            className={cn(styles.plaque, lastAdded === 'state' && styles.plaqueIn, 'font-mono-data text-meta font-medium uppercase')}
           >
             {model.state}
           </span>
         )}
       </div>
 
-      <div className="mt-3 px-1 lg:mt-5">
-        <p aria-live="polite" className="text-sm leading-relaxed text-ink [text-wrap:pretty] lg:text-base">
+      <div className="col-start-2 row-start-2 self-start pt-1 lg:mt-5 lg:px-1 lg:pt-0">
+        <p aria-live="polite" className="text-[0.8125rem] leading-[1.15rem] text-ink [text-wrap:pretty] sm:text-sm sm:leading-relaxed lg:text-base">
           {caption}
         </p>
         <p className="mt-1 hidden text-meta text-muted sm:block">Drawn only from your answers, never your exact figures.</p>

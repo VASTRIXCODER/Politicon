@@ -26,14 +26,18 @@ export interface HouseholdModel {
   /** Dependents drawn as figures (capped at MAX_FIGURES; the real count is in `dependentsCount`). */
   figures: number;
   dependentsCount: number;
-  /** Any dependent under 18 (drawn as children; otherwise as grown-ups, when their ages are known). */
+  /** Every dependent is under 18, by the age bands given (drawn and described as children). */
   youngDependents: boolean;
   /**
-   * Whether any age band was given for the dependents. Without one, nothing
-   * is said or drawn about their ages ("dependents", figures of a middle
-   * height), rather than guessing children or grown-ups.
+   * Whether the age bands say one thing for every dependent: all under 18,
+   * or all 18 and over. Without that (no band given, or a mix of the two,
+   * whose split the bands can't tell) nothing is said or drawn about any one
+   * dependent's age ("dependents", figures of a middle height), rather than
+   * calling a grown-up a child or a child a grown-up.
    */
   agesKnown: boolean;
+  /** The bands name both minors and grown-ups (said as "of mixed ages"; drawn like unknown ages). */
+  mixedAges: boolean;
   props: HouseholdProp[];
   /** Full state name from the profile, or null. */
   state: string | null;
@@ -82,6 +86,7 @@ export const EMPTY_HOUSEHOLD: HouseholdModel = Object.freeze({
   dependentsCount: 0,
   youngDependents: false,
   agesKnown: false,
+  mixedAges: false,
   props: [],
   state: null,
 }) as HouseholdModel;
@@ -96,7 +101,9 @@ export function householdFromProfile(p: HouseholdInput | null | undefined): Hous
   const owns = housing === 'own_mortgage' || housing === 'own_outright';
   const married = p.filingStatus === 'married_joint' || p.filingStatus === 'married_separate';
   const count = p.hasDependents === false ? 0 : Math.max(0, Math.floor(Number(p.dependentsCount) || 0));
-  const bands = (p.dependentAgeBands ?? []).filter((b): b is string => typeof b === 'string' && b.length > 0);
+  const bands = count > 0 ? (p.dependentAgeBands ?? []).filter((b): b is string => typeof b === 'string' && b.length > 0) : [];
+  const minors = bands.some((b) => b !== '18_plus');
+  const grown = bands.includes('18_plus');
   const props = new Set<HouseholdProp>();
   if (housing === 'own_mortgage') props.add('mortgage-key');
   for (const d of p.debtTypes ?? []) {
@@ -109,8 +116,9 @@ export function householdFromProfile(p: HouseholdInput | null | undefined): Hous
     adults: married ? 2 : 1,
     figures: Math.min(MAX_FIGURES, count),
     dependentsCount: count,
-    youngDependents: count > 0 && bands.some((b) => b !== '18_plus'),
-    agesKnown: count > 0 && bands.length > 0,
+    youngDependents: minors && !grown,
+    agesKnown: minors !== grown,
+    mixedAges: minors && grown,
     props: PROP_ORDER.filter((x) => props.has(x)),
     state: p.state?.trim() || null,
   };
@@ -163,9 +171,9 @@ export function describeHousehold(m: HouseholdModel): string {
   const people = [m.adults === 2 ? 'two adults' : 'one adult'];
   if (m.dependentsCount > 0) {
     const one = m.dependentsCount === 1;
-    // Only what was said: children or grown-up dependents when an age was given, else just "dependents".
+    // Only what was said: children or grown-up dependents when the ages say so for all of them, else just "dependents".
     const noun = !m.agesKnown
-      ? one ? 'dependent' : 'dependents'
+      ? one ? 'dependent' : m.mixedAges ? 'dependents of mixed ages' : 'dependents'
       : m.youngDependents
         ? one ? 'child' : 'children'
         : one ? 'adult dependent' : 'adult dependents';

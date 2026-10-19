@@ -11,8 +11,7 @@ import Button from '@/components/ui/Button';
 import { formatUSD, impactWords } from '@/lib/format';
 import { buildLedger, describeLedger } from '@/lib/ledger';
 import { cn } from '@/lib/utils';
-import { extremes, type AnalysisTotals, type DashboardProfileRow, type PolicyAnalysisRow } from './dashboardModel';
-import { householdFromRow } from './profileHousehold';
+import { extremes, type AnalysisTotals, type PolicyAnalysisRow } from './dashboardModel';
 import LedgerSkeleton, { LEDGER_BOX, LEDGER_FIGURE, LEDGER_FRAME, LEDGER_GRID, LEDGER_PANE, LedgerAurora } from './LedgerSkeleton';
 import styles from './dashboard.module.css';
 
@@ -39,8 +38,6 @@ export interface LedgerSectionProps {
   /** The dashboard's latest analyses and the totals over all of them (lib/ledger.ts buildLedger). */
   analyses: PolicyAnalysisRow[];
   totals: AnalysisTotals | null;
-  /** The saved profile, for the household at the column's foot. */
-  profile: DashboardProfileRow | null;
   /** Takes the visitor to the policy feed (the empty ledger's next step). */
   onGoToFeed: () => void;
 }
@@ -60,21 +57,20 @@ function Legend() {
         Amber slabs cost you
       </li>
       <li className={key}>
-        <span aria-hidden="true" className="h-0.5 w-3.5 rounded-full bg-primary shadow-[0_0_6px_rgb(var(--c-glow)/0.8)]" />
+        <span aria-hidden="true" className="h-1 w-3.5 rounded-[2px] bg-primary" />
         Violet line: the $0 baseline
       </li>
       <li className={key}>
-        <span aria-hidden="true" className="h-2.5 w-2.5 rounded-full border-2 border-primary" />
-        Ring: your net
+        <span aria-hidden="true" className="h-2.5 w-2.5 rounded-full border-2 border-violet-glow shadow-[0_0_6px_rgb(var(--c-glow)/0.9)]" />
+        Ring of light: your net
       </li>
     </ul>
   );
 }
 
-export default function LedgerSection({ loading, analyses, totals, profile, onGoToFeed }: LedgerSectionProps) {
+export default function LedgerSection({ loading, analyses, totals, onGoToFeed }: LedgerSectionProps) {
   const [focus, setFocus] = useState<string | null>(null);
   const ledger = useMemo(() => buildLedger({ analyses, totals }), [analyses, totals]);
-  const household = useMemo(() => householdFromRow(profile), [profile]);
   if (loading) return <LedgerSkeleton />;
 
   const { gain, cost } = extremes(analyses);
@@ -90,10 +86,10 @@ export default function LedgerSection({ loading, analyses, totals, profile, onGo
             <SceneView
               interactive
               className="absolute inset-0"
-              label={describeLedger(ledger, household)}
-              poster={<LedgerPoster model={ledger} focus={focus} household={household} />}
+              label={describeLedger(ledger)}
+              poster={<LedgerPoster model={ledger} focus={focus} />}
             >
-              <LedgerMonolith model={ledger} focus={focus} onFocus={setFocus} household={household} />
+              <LedgerMonolith model={ledger} focus={focus} onFocus={setFocus} />
             </SceneView>
           </div>
           <figcaption className="mt-2 px-2">

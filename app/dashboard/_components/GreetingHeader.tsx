@@ -19,8 +19,8 @@ import styles from './dashboard.module.css';
  * reads the visitor's clock), so the server sends the skeleton.
  */
 
-/** The avatar's width: 96px on phones, 160px (its md size) from sm up. */
-const AVATAR_BOX = 'w-24 flex-shrink-0 sm:w-40';
+/** The avatar's width: 120px on phones (its sm size, the smallest a household still reads at), 160px (md) from sm up. */
+const AVATAR_BOX = 'w-[7.5rem] flex-shrink-0 sm:w-40';
 
 export interface GreetingHeaderProps {
   loading: boolean;
@@ -58,7 +58,7 @@ export default function GreetingHeader({ loading, firstName, profile, headline }
       {/* On a phone the household stands above the greeting, so the h1 keeps the full width. */}
       <div className="flex min-w-0 flex-col items-start gap-3 sm:flex-row sm:items-center sm:gap-6">
         {/* Only a profile with its housing answered can be drawn (DashboardAvatar checks the rest). */}
-        {profile?.housing_situation && <DashboardAvatar profile={profile} className="max-sm:-ml-2 max-sm:w-24" />}
+        {profile?.housing_situation && <DashboardAvatar profile={profile} className="max-sm:-ml-3 max-sm:w-[7.5rem]" />}
         <div className="min-w-0">
           <p className="mb-3 inline-flex items-center gap-2.5 font-mono-data text-meta font-medium uppercase tracking-[0.16em] text-primary-300">
             {/* A point of violet light, like a status lamp (as on PageHeader). */}
