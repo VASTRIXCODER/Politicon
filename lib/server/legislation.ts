@@ -100,13 +100,14 @@ export function statusFromAction(text: string | null | undefined): RecordStatus 
     // A failed motion or amendment doesn't decide the bill ("Motion to discharge ... not agreed to").
     .replace(/(motion to (discharge|reconsider|table|recommit|proceed)|amendment)[^.;]*?(not agreed to|failed(?! (of )?passage| to pass)|not passed)/g, ' ');
   if (
-    /became (public |private )?law|signed by (the )?(president|governor)|approved by (the )?governor|chaptered|chapter (no\.|number)?\s*\d|signed chap|public act|\bact no\.|enacted|public law no/.test(t)
+    /became (public |private )?law|signed by (the )?(president|governor)\b(?!\s+(of|pro)\b)|approved by (the )?governor|chaptered|chapter (no\.|number)?\s*\d|signed chap|public act|\bact no\.|enacted|public law no/.test(t)
   ) return 'enacted';
   // Negative outcomes before "passed", so "not agreed to" never reads as agreed to.
   // ("Withdrawn from <committee>" is a re-referral, not a withdrawal of the bill.)
   if (/not agreed to|\bfailed\b|not passed|veto(ed)? (message|by)|vetoed|withdrawn from further consideration|\bdied (in|on|at|pursuant)\b|indefinitely postponed/.test(t)) return 'rejected';
   if (/repeal/.test(t)) return 'repealed';
-  if (/passed|agreed to|presented to (the )?(president|governor)|enrolled|concurred/.test(t)) return 'passed';
+  // The presiding officers sign the enrolled bill after both chambers pass it ("Signed by President of the Senate"): passed, not yet law.
+  if (/passed|agreed to|presented to (the )?(president|governor)|enrolled|concurred|signed by (the )?(speaker|president (of|pro))/.test(t)) return 'passed';
   return 'proposed';
 }
 

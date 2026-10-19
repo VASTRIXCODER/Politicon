@@ -219,7 +219,7 @@ export default function LedgerReadout({ model, focus = null, onFocus, loading = 
       <p className={cn('mt-2 font-mono-data text-4xl font-semibold leading-none tracking-tight sm:text-5xl', tone)}>
         <CountUp value={model.net} duration={1600} format={(n) => formatUSD(n, { signed: true })} suffix="/yr" srLabel={`${formatUSD(model.net, { signed: true })} a year`} />
       </p>
-      <p className={cn('mt-2 text-sm font-medium', tone)}>{netWords(model.net)}</p>
+      <p className={cn('mt-2 text-sm font-medium [text-wrap:balance]', tone)}>{netWords(model.net)}</p>
       <p className="mt-1 text-meta text-muted">
         Across {policies(model.analysed)} you analyzed · educational estimates
         {status && <span className="block">{status}</span>}

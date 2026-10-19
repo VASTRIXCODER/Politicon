@@ -9,6 +9,8 @@ import {
   CustomBlending,
   CylinderGeometry,
   DoubleSide,
+  EdgesGeometry,
+  LineBasicMaterial,
   MeshBasicMaterial,
   MeshPhysicalMaterial,
   MeshStandardMaterial,
@@ -340,6 +342,11 @@ function Column({ geo, animated }: { geo: LedgerGeometry; animated: boolean }) {
     const h = geo.glass.y1 - geo.glass.y0;
     const glass = new RoundedBoxGeometry(W.width, h, W.depth, 3, Math.min(0.02, h * 0.3));
     glass.translate(0, (geo.glass.y0 + geo.glass.y1) / 2, 0);
+    // The empty glass's edges, drawn as fine light (as the poster draws them), so it reads as a clear case, not a slab.
+    const box = new BoxGeometry(W.width + 0.002, h, W.depth + 0.002);
+    const edges = new EdgesGeometry(box);
+    box.dispose();
+    edges.translate(0, (geo.glass.y0 + geo.glass.y1) / 2, 0);
     const o = W.plate.overhang * 2;
     const plate = new RoundedBoxGeometry(W.width + o, W.plate.thickness, W.depth + o, 2, 0.008);
     const belt = new BoxGeometry(W.width + 0.016, 0.012, W.depth + 0.016);
@@ -350,7 +357,7 @@ function Column({ geo, animated }: { geo: LedgerGeometry; animated: boolean }) {
     const staff = new CylinderGeometry(W.staff.radius, W.staff.radius, staffTop, 10);
     staff.translate(0, staffTop / 2, 0);
     const bar = new BoxGeometry(1, 1, 1);
-    return { foot, glass, plate, belt, ring, staff, bar };
+    return { foot, glass, edges, plate, belt, ring, staff, bar };
   }, [geo]);
   useEffect(() => () => Object.values(shapes).forEach((g) => g.dispose()), [shapes]);
 
@@ -361,6 +368,7 @@ function Column({ geo, animated }: { geo: LedgerGeometry; animated: boolean }) {
       dash: new MeshStandardMaterial({ roughness: 0.6, metalness: 0 }),
       tick: new MeshStandardMaterial({ roughness: 0.6, metalness: 0 }),
       belt: new MeshBasicMaterial({ transparent: true, toneMapped: false, depthWrite: false }),
+      edge: new LineBasicMaterial({ transparent: true, toneMapped: false, depthWrite: false }),
       ring: new ShaderMaterial({
         uniforms: {
           uColor: { value: new Color() },
@@ -397,6 +405,8 @@ function Column({ geo, animated }: { geo: LedgerGeometry; animated: boolean }) {
     mats.dash.color.set(mixHex(base, p.ink, p.night ? 0.45 : 0.4));
     mats.tick.color.set(mixHex(base, p.ink, p.night ? 0.35 : 0.45));
     mats.belt.color.set(p.night ? p.violetLight : p.violet);
+    mats.edge.color.set(p.night ? p.violetLight : p.violet);
+    mats.edge.opacity = p.night ? 0.55 : 0.45;
     const ring = mats.ring.uniforms;
     ring.uColor.value.set(p.night ? p.violetLight : p.glow);
     ring.uAdd.value = p.night ? 1 : 0.35;
@@ -456,8 +466,10 @@ function Column({ geo, animated }: { geo: LedgerGeometry; animated: boolean }) {
       <ContactBlob width={W.width * 2.6} depth={W.depth * 3.4} strength={1.25} />
       <mesh geometry={shapes.foot} material={mats.porcelain} />
       <mesh geometry={shapes.glass} renderOrder={3}>
-        <GlassMaterial />
+        {/* Thin and clear: the room up to the scale's top holds no money, so it mustn't read as a slab. */}
+        <GlassMaterial thickness={0.08} opacity={p.night ? 0.2 : 0.24} />
       </mesh>
+      <lineSegments geometry={shapes.edges} material={mats.edge} renderOrder={4} />
       {geo.empty ? (
         <instancedMesh ref={dashes} args={[shapes.bar, mats.dash, DASHES]} />
       ) : (

@@ -21,6 +21,7 @@ import {
   Shape,
   SphereGeometry,
   type BufferGeometry,
+  type Material,
   type Group,
   type InstancedMesh,
 } from 'three';
@@ -160,6 +161,8 @@ function useDioramaMaterials() {
       lamp: new MeshStandardMaterial({ roughness: 0.4, metalness: 0, emissive: new Color() }),
       // The household's heavier objects (book covers, the cap, the case): ink, warmed with violet.
       ink: new MeshStandardMaterial({ roughness: 0.6, metalness: 0.05 }),
+      // A person's own household: its people in a soft violet slate, so they read on the porcelain plinth.
+      person: new MeshStandardMaterial({ roughness: 0.75, metalness: 0 }),
     }),
     []
   );
@@ -193,6 +196,7 @@ function useDioramaMaterials() {
     mats.lamp.emissive.copy(tones.lamp);
     // Ink is the light colour at night; the objects stay dark there too.
     mats.ink.color.set(palette.night ? mixHex(palette.surface, palette.violet, 0.45) : mixHex(palette.ink, palette.violet, 0.22));
+    mats.person.color.set(palette.night ? mixHex(palette.paper, palette.violet, 0.5) : mixHex(mixHex(palette.ink, palette.violet, 0.4), base, 0.3));
   }, [mats, palette, tones]);
 
   return { mats, tones, palette };
@@ -448,14 +452,14 @@ function Tree({ geo, mats }: { geo: Geo; mats: Mats }) {
 }
 
 /** A figure: a body and a head, no face (an architect's people). */
-function Figure({ height, geo, mats }: { height: number; geo: Geo; mats: Mats }) {
+function Figure({ height, geo, material }: { height: number; geo: Geo; material: Material }) {
   // The capsule is 3 units tall (a unit long between unit caps); squeezed to the body's height.
   const r = height * 0.15;
   const body = height * 0.64;
   return (
     <>
-      <mesh geometry={geo.torso} material={mats.plain} position={[0, body / 2, 0]} scale={[r, body / 3, r * 0.82]} />
-      <mesh geometry={geo.head} material={mats.plain} position={[0, height - r, 0]} scale={r} />
+      <mesh geometry={geo.torso} material={material} position={[0, body / 2, 0]} scale={[r, body / 3, r * 0.82]} />
+      <mesh geometry={geo.head} material={material} position={[0, height - r, 0]} scale={r} />
     </>
   );
 }
@@ -680,7 +684,7 @@ function HouseholdPieces({ household, lastAdded, mats, geo }: { household: House
       {layout.figures.map((f) => (
         <Rise key={f.id} position={f.position} rotationY={f.rotationY}>
           <ContactBlob width={f.adult ? 0.1 : 0.08} depth={f.adult ? 0.1 : 0.08} position={[0, 0.002, 0]} strength={1.1} />
-          <Figure height={f.height} geo={geo} mats={mats} />
+          <Figure height={f.height} geo={geo} material={mats.person} />
         </Rise>
       ))}
 
@@ -731,7 +735,7 @@ export default function HouseholdDiorama({
   return (
     <group position={position} rotation={[0, rotationY, 0]} scale={scale}>
       {/* A person's household is framed tight on its plinth (onboarding, the avatar): a pool that stays inside the box. */}
-      {plinth && <Plinth radius={DIORAMA.plinth.radius} height={DIORAMA.plinth.height} shadowSpread={own ? 2.4 : undefined} />}
+      {plinth && <Plinth radius={DIORAMA.plinth.radius} height={DIORAMA.plinth.height} shadowSpread={own ? 2.15 : undefined} />}
 
       {own && household ? (
         <HouseholdPieces household={household} lastAdded={lastAdded} mats={mats} geo={geo} />
@@ -764,7 +768,7 @@ export default function HouseholdDiorama({
           {/* Two figures: a body and a head each, no faces (an architect's people). */}
           {FIGURES.map((f, i) => (
             <group key={i} position={f.position} rotation={[0, f.rotationY, 0]}>
-              <Figure height={f.height} geo={geo} mats={mats} />
+              <Figure height={f.height} geo={geo} material={mats.plain} />
             </group>
           ))}
         </>

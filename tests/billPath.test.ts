@@ -70,6 +70,17 @@ describe('billPath: federal stages from the latest action', () => {
     expect(states(path).slice(reached + 1).every((s) => s === 'upcoming')).toBe(true);
   });
 
+  it("reads the presiding officers' signatures on the enrolled bill as passed, not as law", () => {
+    for (const action of ['Signed by President of the Senate.', 'Signed by the Speaker of the House and the President Pro Tempore.']) {
+      // A record with no stored status falls back to the wording, which must not say "enacted".
+      const path = billPath(record(action, { status: undefined as unknown as PolicyRecord['status'] }));
+      expect(path.known).toBe(true);
+      expect(path.outcome).toBe('in-progress');
+      expect(path.reached).toBe(3);
+      expect(path.headline).toBe('Passed both chambers');
+    }
+  });
+
   it('reads the chamber against the one the bill started in', () => {
     // A Senate bill's own committee is its first chamber…
     expect(billPath(senateBill('Read twice and referred to the Committee on Banking.')).headline).toBe('In committee');

@@ -26,10 +26,10 @@ import {
 import type { Dwelling, HouseholdModel, HouseholdProp } from '@/lib/household';
 
 /** What a face is made of; its tone also depends on how it faces the light. */
-type Material = 'porcelain' | 'roof' | 'ink' | 'violet' | 'pane' | 'crown';
+type Material = 'porcelain' | 'roof' | 'ink' | 'violet' | 'pane' | 'crown' | 'person';
 
 /** The tones a poster paints with (classes in householdPoster.module.css). */
-export type Tone = 'p0' | 'p1' | 'p2' | 'p3' | 'r0' | 'r1' | 'ink0' | 'ink1' | 'violet' | 'pane' | 'crown0' | 'crown1' | 'shadow';
+export type Tone = 'p0' | 'p1' | 'p2' | 'p3' | 'r0' | 'r1' | 'ink0' | 'ink1' | 'violet' | 'pane' | 'crown0' | 'crown1' | 'person' | 'shadow';
 
 interface Face {
   pts: Vec3[];
@@ -320,7 +320,8 @@ function treeSolid(): Solid {
 
 function figureSolid(height: number): Solid {
   const r = height * 0.15;
-  return { faces: [], discs: [{ at: [0, height - r, 0], r, mat: 'porcelain', layer: 1 }], pills: [{ at: [0, 0, 0], r, h: height * 0.64, layer: 0 }], shadow: [0.05, 0.05] };
+  // The people in the 3D scene's soft violet slate (HouseholdDiorama's person material).
+  return { faces: [], discs: [{ at: [0, height - r, 0], r, mat: 'person', layer: 1 }], pills: [{ at: [0, 0, 0], r, h: height * 0.64, layer: 0 }], shadow: [0.05, 0.05] };
 }
 
 /** The stepping stones from a gabled home's door (in diorama coordinates). */
@@ -398,7 +399,7 @@ export function householdArt(model: HouseholdModel, mode: 'build' | 'avatar', as
       items.push({
         layer: pill.layer,
         depth: foot.depth,
-        shape: { d: `M${x0} ${y1}V${y0}A${f1(r)} ${f1(r)} 0 0 1 ${x1} ${y0}V${y1}A${f1(r)} ${f1(r * 0.4)} 0 0 1 ${x0} ${y1}Z`, tone: 'p1' },
+        shape: { d: `M${x0} ${y1}V${y0}A${f1(r)} ${f1(r)} 0 0 1 ${x1} ${y0}V${y1}A${f1(r)} ${f1(r * 0.4)} 0 0 1 ${x0} ${y1}Z`, tone: 'person' },
       });
     }
     items.sort((a, b) => a.layer - b.layer || b.depth - a.depth);

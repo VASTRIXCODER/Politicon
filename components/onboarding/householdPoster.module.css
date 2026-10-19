@@ -22,6 +22,7 @@
   --hp-lamp: #ffe1a0;
   --hp-crown0: #ebe6f4;
   --hp-crown1: #dad2ea;
+  --hp-person: #72679f;
   --hp-line: rgb(21 18 31 / 0.13);
   --hp-shadow: 64 56 92;
   --hp-shadow-strength: 0.26;
@@ -48,6 +49,7 @@
   --hp-lamp: #ffd98a;
   --hp-crown0: #d0c7e6;
   --hp-crown1: #b3a8d2;
+  --hp-person: #a99ae4;
   --hp-line: rgb(14 10 28 / 0.32);
   --hp-shadow: 0 0 0;
   --hp-shadow-strength: 0.5;
@@ -76,6 +78,7 @@
 .violet { fill: var(--hp-violet); }
 .crown0 { fill: var(--hp-crown0); }
 .crown1 { fill: var(--hp-crown1); }
+.person { fill: var(--hp-person); }
 .plinthTop { fill: var(--hp-plinth); }
 .art .inlay {
   fill: none;

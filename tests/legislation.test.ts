@@ -51,6 +51,9 @@ describe('statusFromAction', () => {
     ['Signed by President.', 'enacted'],
     ['Chaptered by Secretary of State - Chapter 512, Statutes of 2025', 'enacted'],
     ['Signed by Governor', 'enacted'],
+    // The presiding officers' signatures on the enrolled bill come before the chief executive's.
+    ['Signed by President of the Senate', 'passed'],
+    ['Signed by the Speaker of the House and the President Pro Tempore', 'passed'],
     ['Passed/agreed to in House: On passage Passed by the Yeas and Nays: 218 - 214.', 'passed'],
     ['Presented to President.', 'passed'],
     ['Vetoed by Governor', 'rejected'],
