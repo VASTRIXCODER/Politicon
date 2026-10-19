@@ -81,18 +81,24 @@ export { expect };
 export async function settle(page: Page) {
   await page.waitForLoadState('load');
   await page.evaluate(async () => {
-    await document.fonts?.ready;
     const deadline = Date.now() + 5_000;
+    // Every wait is cut off at the deadline. Checking it only between waits
+    // let one promise that never settles (a font request that never answers,
+    // an animation's `finished`, a frame a busy runner never paints) hold the
+    // test until its own timeout.
+    const within = (p: Promise<unknown>) =>
+      Promise.race([p, new Promise((r) => setTimeout(r, Math.max(0, deadline - Date.now())))]);
+    await within(document.fonts?.ready ?? Promise.resolve());
     for (;;) {
       const running = document.getAnimations().filter((a) => {
         const iterations = a.effect?.getComputedTiming().iterations;
         return a.playState === 'running' && iterations !== Infinity;
       });
       if (!running.length || Date.now() > deadline) break;
-      await Promise.all(running.map((a) => a.finished.catch(() => undefined)));
+      await within(Promise.all(running.map((a) => a.finished.catch(() => undefined))));
     }
     // Two frames, so JS-driven (requestAnimationFrame) animations land too.
-    await new Promise((r) => requestAnimationFrame(() => requestAnimationFrame(r)));
+    await within(new Promise((r) => requestAnimationFrame(() => requestAnimationFrame(r))));
   });
 }
 

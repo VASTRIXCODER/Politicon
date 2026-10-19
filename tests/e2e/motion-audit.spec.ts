@@ -56,7 +56,10 @@ async function useMode(page: Page, mode: Mode) {
 /** Waits a second, then lists what still moves and what text is left transparent. */
 async function expectStill(page: Page, mode: Mode, where: string) {
   if (mode === 'pause') await expect(page.locator('html'), `${where}: "Pause motion" applied`).toHaveAttribute('data-motion', 'paused');
-  await page.evaluate(() => document.fonts?.ready);
+  // Bounded like settle(): a font request that never answers must not hold the test.
+  await page.evaluate(() =>
+    Promise.race([document.fonts?.ready ?? Promise.resolve(), new Promise((r) => setTimeout(r, 5_000))]),
+  );
   await page.waitForTimeout(1_000);
   const { running, faded } = await page.evaluate(() => {
     const label = (el: Element) => {
