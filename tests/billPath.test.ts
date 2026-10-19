@@ -151,10 +151,22 @@ describe('billPath: federal stages from the latest action', () => {
     expect(billPath(record('Referred to the House Committee on Rules.', { status: undefined })).headline).toBe('In committee');
   });
 
-  it('labels a repealed record as such without inventing its stage', () => {
-    const path = billPath(record('Referred to the Committee on Ways and Means. (Repeal of section 5)', { status: 'repealed' }));
+  it('walks a repealed law through every stage (only a law is repealed), and says it was repealed', () => {
+    const path = billPath(record('Repealed by H.R. 22.', { status: 'repealed' }));
     expect(path.outcome).toBe('repealed');
-    expect(path.headline).toBe('In committee');
+    expect(path.reached).toBe(BILL_STAGES.length - 1);
+    expect(states(path).every((s) => s === 'done')).toBe(true);
+    expect(path.headline).toBe('Became law, later repealed');
+    // A state law, repealed in a later session: the same.
+    const ohio = billPath({ verified: true, source: 'openstates', latestAction: 'Repealed', latestActionDate: '2026-04-02', asOf: AS_OF, status: 'repealed', billNumber: 'HB 55', region: 'Ohio' });
+    expect(ohio).toMatchObject({ outcome: 'repealed', headline: 'Became law, later repealed', reached: 4 });
+  });
+
+  it('reads a bill that is about repealing something by its own stage (statusFromAction gives these passed and proposed)', () => {
+    const passed = billPath(record('Passed House. (A bill to repeal section 5 of the Act)', { status: 'passed' }));
+    expect(passed).toMatchObject({ outcome: 'in-progress', headline: 'Passed the House' });
+    const referred = billPath(record('Referred to the Committee on Ways and Means. To repeal the estate tax.', { status: 'proposed' }));
+    expect(referred).toMatchObject({ outcome: 'in-progress', headline: 'In committee' });
   });
 });
 
@@ -208,5 +220,13 @@ describe('formatRecordDate', () => {
     expect(formatRecordDate('')).toBeNull();
     expect(formatRecordDate('not a date')).toBeNull();
     expect(formatRecordDate(null)).toBeNull();
+  });
+
+  it('dates a timestamp by Washington’s day, so a US evening read is never "as of" tomorrow', () => {
+    // 03:10 UTC on the 19th is the evening of the 18th in Washington.
+    expect(formatRecordDate('2026-10-19T03:10:00.000Z')).toBe('Oct 18, 2026');
+    expect(formatRecordDate('2026-10-19T15:00:00Z')).toBe('Oct 19, 2026');
+    // A plain date is the record's own day, whatever the clock.
+    expect(formatRecordDate('2026-10-19')).toBe('Oct 19, 2026');
   });
 });

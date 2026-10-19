@@ -152,7 +152,7 @@ describe('HouseholdStage (the onboarding diorama)', () => {
   it('keeps the 3D box decorative, with both posters for its two shapes', () => {
     const html = renderToString(h(HouseholdStage, { model: FULL, reveal: false }));
     expect(html).toMatch(/data-scene-view="poster"[^>]*>|aria-hidden="true"[^>]*data-scene-view/);
-    expect(html).toContain('viewBox="0 0 1000 416.7"');
+    expect(html).toContain('viewBox="0 0 1000 750"');
     expect(html).toContain('viewBox="0 0 1000 800"');
   });
 
@@ -168,8 +168,8 @@ describe('HouseholdStage (the onboarding diorama)', () => {
     for (const reveal of [false, true]) {
       const html = renderToString(h(HouseholdStage, { model: FULL, reveal }));
       expect(html).not.toMatch(/<h[1-6]|<select|<input|role="(radio|radiogroup|group|status)"/);
-      // The skip control only appears once the reveal is playing in the browser.
-      expect(html).not.toContain('<button');
+      // No controls at all: the reveal is short and stops with "Pause motion", so nothing here can take or drop focus.
+      expect(html).not.toMatch(/<button|<a |tabindex/);
     }
   });
 });

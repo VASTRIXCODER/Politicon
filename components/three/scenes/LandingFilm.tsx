@@ -38,7 +38,7 @@ import { mixHex } from '@/lib/three/palette';
 import { useAnimationFrames, usePrefersReducedMotion, useViewState } from '@/components/three/runtime';
 import BillSheet from '@/components/three/kit/BillSheet';
 import CapitolDome from '@/components/three/kit/CapitolDome';
-import HouseholdDiorama from '@/components/three/kit/HouseholdDiorama';
+import SampleDiorama from '@/components/three/kit/SampleDiorama';
 import LightParticles from '@/components/three/kit/LightParticles';
 import LedgerColumn from '@/components/three/kit/LedgerColumn';
 import Plinth from '@/components/three/kit/Plinth';
@@ -864,7 +864,7 @@ export default function LandingFilm({ quality = 'full', stillShot = 0, record }:
 
       {/* The household, and its ledger. */}
       <group position={[...HOME.position]} rotation={[0, HOME.rotationY, 0]}>
-        <HouseholdDiorama glow={cue.windows} dusk={cue.dusk} />
+        <SampleDiorama glow={cue.windows} dusk={cue.dusk} />
         <LedgerColumn
           amounts={FILM_LEDGER_AMOUNTS}
           unitsPerDollar={FILM_LEDGER_SCALE}

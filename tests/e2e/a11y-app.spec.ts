@@ -1,8 +1,8 @@
 import AxeBuilder from '@axe-core/playwright';
-import type { APIRequestContext, Page, Route, TestInfo } from '@playwright/test';
-import { ANALYSIS, FAKE_HOST, FEED, INSIGHT, db, mockRealtime, type Db } from './hermetic-journey';
-import { cspAllowsFakeSupabase, FAKE_SUPABASE_URL } from './hermetic';
-import { completeOnboarding, signUp, waitForFeed } from './journey-steps';
+import type { Page, TestInfo } from '@playwright/test';
+import { FAKE_HOST, FEED, INSIGHT, db } from './hermetic-journey';
+import { completeOnboarding, waitForFeed } from './journey-steps';
+import { mockAi, newAccount, requireHermeticBuild, seedProfileAndAnalyses } from './signed-in';
 import { expect, horizontalOverflow, settle, test } from './support';
 
 /**
@@ -26,37 +26,6 @@ type Theme = (typeof THEMES)[number];
 
 test.use({ allowedHosts: [FAKE_HOST], contextOptions: { reducedMotion: 'reduce' } });
 
-/** Skips (locally) or fails (in CI) when the app isn't built against the fake Supabase. */
-async function requireHermeticBuild(request: APIRequestContext) {
-  const csp = (await request.get('/robots.txt')).headers()['content-security-policy'];
-  if (!cspAllowsFakeSupabase(csp)) {
-    const how = `build with NEXT_PUBLIC_SUPABASE_URL=${FAKE_SUPABASE_URL} (see tests/e2e/hermetic.ts)`;
-    if (process.env.CI) throw new Error(`The app under test isn't built against the fake Supabase: ${how}.`);
-    test.skip(true, `Not built against the fake Supabase: ${how}`);
-  }
-  expect((await request.get(`${FAKE_SUPABASE_URL}/__e2e/health`)).ok(), 'the fake Supabase is up').toBe(true);
-}
-
-/** The AI routes these pages call, answered at once (the feed is ready); any other /api call is recorded. */
-async function mockAi(page: Page): Promise<string[]> {
-  const unexpected: string[] = [];
-  const json = (route: Route, body: unknown, status = 200) => route.fulfill({ status, contentType: 'application/json', body: JSON.stringify(body) });
-  await page.route(
-    (url) => url.pathname.startsWith('/api/'),
-    async (route) => {
-      const url = new URL(route.request().url());
-      const key = `${route.request().method()} ${url.pathname}`;
-      if (url.pathname === '/api/profile' || url.pathname === '/api/feedback') return route.fallback();
-      if (key === 'GET /api/policies/feed') return json(route, { policies: FEED, updatedAt: new Date().toISOString(), cached: true, failed: false });
-      if (key === 'POST /api/insight') return json(route, { insight: INSIGHT, cached: false });
-      unexpected.push(key);
-      return json(route, { error: { code: 'e2e_unmocked', message: `${key} is not mocked in a11y-app.spec.ts` } }, 501);
-    }
-  );
-  await mockRealtime(page);
-  return unexpected;
-}
-
 async function useTheme(page: Page, theme: Theme) {
   if (theme === 'light') return;
   await page.addInitScript(() => {
@@ -65,44 +34,6 @@ async function useTheme(page: Page, theme: Theme) {
     } catch {
       // Storage blocked: the page stays light and the theme check fails.
     }
-  });
-}
-
-/** A fresh account, signed in (ends on /onboarding). Returns its user id. */
-async function newAccount(page: Page, database: Db): Promise<string> {
-  const email = `e2e-a11y-${Date.now()}-${Math.random().toString(36).slice(2, 8)}@example.test`;
-  await signUp(page, { email, password: 'correct-horse-battery-staple', firstName: 'Avery' });
-  const [profile] = await database.select<{ id: string }>('user_profiles', `select=id&email=eq.${encodeURIComponent(email)}`);
-  expect(profile, 'a profile row was created for the new account').toBeTruthy();
-  return profile.id;
-}
-
-/** A finished profile (a household the avatar can draw) and two analyses (one gain, one cost) for the ledger. */
-async function seedProfileAndAnalyses(database: Db, userId: string) {
-  const now = new Date().toISOString();
-  await database.update('user_profiles', `id=eq.${userId}`, {
-    has_completed_onboarding: true,
-    onboarding_completed_at: now,
-    financial_updated_at: now,
-    state: 'Ohio',
-    age_range: '35_44',
-    income_range: '50k_75k',
-    filing_status: 'married_joint',
-    housing_situation: 'own_mortgage',
-    has_dependents: true,
-    dependents_count: 2,
-    dependent_age_bands: ['5_12'],
-    debt_types: ['mortgage', 'student_loans'],
-    top_financial_concerns: ['cost_of_living'],
-  });
-  const [gain, cost] = FEED;
-  await database.insert('analyzed_policies', {
-    user_id: userId, policy_id: gain.id, policy_title: gain.title, category: gain.category, status: gain.status,
-    net_annual_impact: 1200, net_monthly_impact: 100, direction: 'positive', analysis: ANALYSIS, generation_status: 'ready',
-  });
-  await database.insert('analyzed_policies', {
-    user_id: userId, policy_id: cost.id, policy_title: cost.title, category: cost.category, status: cost.status,
-    net_annual_impact: -340, net_monthly_impact: -28, direction: 'negative', analysis: { ...ANALYSIS, netAnnualImpact: -340 }, generation_status: 'ready',
   });
 }
 
@@ -137,6 +68,64 @@ async function expectNoOverflowAt375(page: Page, ready: () => Promise<void>) {
   const { overflow, culprits } = await horizontalOverflow(page);
   expect(overflow, `scrolls sideways at 375px: ${culprits.join(', ')}`).toBe(0);
 }
+
+/**
+ * Tabs through the whole page, forward and then back (backward is where a
+ * control lands at the top of the viewport), and lists every focused control
+ * the floating bar covers (WCAG 2.4.11, Focus Not Obscured). A control taller
+ * than the room under the bar only needs to show below it.
+ */
+async function focusUnderTheBar(page: Page): Promise<string[]> {
+  const hidden: string[] = [];
+  const check = async (key: 'Tab' | 'Shift+Tab', step: number) => {
+    await page.keyboard.press(key);
+    const r = await page.evaluate(() => {
+      const el = document.activeElement as HTMLElement | null;
+      const bar = document.querySelector('nav[aria-label="Main"] > div');
+      if (!el || el === document.body || !bar || el.closest('nav')) return null;
+      const box = el.getBoundingClientRect();
+      const under = bar.getBoundingClientRect();
+      if (box.width === 0 && box.height === 0) return null;
+      const name = (el.getAttribute('aria-label') || el.textContent || el.tagName).trim().replace(/\s+/g, ' ').slice(0, 60);
+      const tall = box.height > window.innerHeight - under.bottom - 16;
+      const clear = tall ? box.bottom > under.bottom + 8 : box.top >= under.bottom - 0.5 || box.bottom <= under.top;
+      return clear ? null : `${name} [${Math.round(box.top)}–${Math.round(box.bottom)} under a bar ending at ${Math.round(under.bottom)}]`;
+    });
+    if (r) hidden.push(`${key} #${step}: ${r}`);
+  };
+  await page.evaluate(() => window.scrollTo({ top: 0, behavior: 'instant' as ScrollBehavior }));
+  await page.locator('body').focus();
+  let steps = 0;
+  for (; steps < 160; steps++) {
+    await check('Tab', steps);
+    if (await page.evaluate(() => document.activeElement === document.body)) break;
+  }
+  for (let i = 0; i < steps; i++) await check('Shift+Tab', i);
+  return hidden;
+}
+
+test.describe('keyboard focus and the floating bar', () => {
+  test.beforeEach(async ({ request }) => {
+    await requireHermeticBuild(request);
+  });
+
+  for (const path of ['/dashboard', '/policies']) {
+    test(`focus on ${path} never lands under the floating bar`, { tag: '@desktop-only' }, async ({ page, request }) => {
+      test.setTimeout(150_000);
+      const unexpected = await mockAi(page);
+      const database = db(request);
+      const userId = await newAccount(page, database);
+      await seedProfileAndAnalyses(database, userId);
+      await page.goto(`${path}?fx=0`);
+      await expect(page.locator('[data-feed-card]')).toHaveCount(FEED.length, { timeout: 30_000 });
+      await settle(page);
+      // Short pages fit one screen: make room to scroll, so the walk has to.
+      await page.setViewportSize({ width: 1280, height: 560 });
+      expect(await focusUnderTheBar(page)).toEqual([]);
+      expect(unexpected, 'API calls nothing answered').toEqual([]);
+    });
+  }
+});
 
 for (const theme of THEMES) {
   const suffix = theme === 'dark' ? ' (dark theme)' : '';

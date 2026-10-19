@@ -169,6 +169,7 @@ export default function OnboardingPage() {
   // Drafts are only written once the user has actually changed an answer.
   const dirty = useRef(false);
   const [navigated, setNavigated] = useState(false);
+  const mainRef = useRef<HTMLElement>(null);
   const fid = useId();
   const ids = {
     state: `${fid}-state`, city: `${fid}-city`, homeValue: `${fid}-home-value`, homeValueHint: `${fid}-home-value-hint`,
@@ -249,6 +250,14 @@ export default function OnboardingPage() {
     }),
     [housingSituation, filingStatus, hasDependents, dependentsCount, dependentAgeBands, debtTypes, state],
   );
+
+  // Each new question starts at its top (its title has focus): the docked pane's own scroll on a phone, else the page's.
+  useEffect(() => {
+    const main = mainRef.current;
+    if (!navigated || !main) return;
+    if (main.scrollTop > 0) main.scrollTo({ top: 0 });
+    else if (main.getBoundingClientRect().top < 0) window.scrollTo({ top: 0 });
+  }, [step, navigated]);
 
   const set = <K extends keyof Draft>(key: K, value: Draft[K]) => {
     dirty.current = true;
@@ -446,17 +455,17 @@ export default function OnboardingPage() {
   const isLast = step === TOTAL_STEPS - 1;
 
   return (
-    <div className="relative min-h-screen" onKeyDown={onKeyDown}>
+    <div className={cn('relative', styles.page)} onKeyDown={onKeyDown}>
       <AmbientBackground />
-      <div className="relative z-content mx-auto flex min-h-screen w-full max-w-[88rem] flex-col lg:grid lg:grid-cols-[minmax(0,1fr)_minmax(0,1.08fr)] lg:grid-rows-[auto_1fr] lg:gap-x-10 lg:px-8 xl:gap-x-16 xl:px-12">
+      <div className={cn(styles.page, 'relative z-content mx-auto flex w-full max-w-[88rem] flex-col lg:grid lg:grid-cols-[minmax(0,1fr)_minmax(0,1.08fr)] lg:grid-rows-[auto_1fr] lg:gap-x-10 lg:px-8 xl:gap-x-16 xl:px-12')}>
         <header className="flex items-center justify-between gap-4 px-4 pb-1 pt-4 sm:px-6 lg:col-start-1 lg:row-start-1 lg:mx-auto lg:w-full lg:max-w-[38rem] lg:px-0 lg:pt-8">
           <Logo href={null} />
           {/* The diorama's pieces rise in as you answer: this stops that (and every other motion on the site). */}
           <MotionToggle className="-mr-2" />
         </header>
 
-        <main id="main" tabIndex={-1}
-          className="order-2 flex flex-1 flex-col px-4 pb-12 pt-5 sm:px-6 lg:order-none lg:col-start-1 lg:row-start-2 lg:mx-auto lg:w-full lg:max-w-[38rem] lg:px-0 lg:pb-16 lg:pt-6">
+        <main id="main" tabIndex={-1} ref={mainRef}
+          className={cn(styles.scroller, 'order-2 flex flex-1 flex-col px-4 pb-12 pt-5 sm:px-6 lg:order-none lg:col-start-1 lg:row-start-2 lg:mx-auto lg:w-full lg:max-w-[38rem] lg:px-0 lg:pb-16 lg:pt-6')}>
           <StageRail stages={STAGES} step={step} total={TOTAL_STEPS} />
 
           <Surface pad="none" className="mt-5 overflow-hidden p-5 sm:p-8 lg:mt-6">
@@ -497,7 +506,7 @@ export default function OnboardingPage() {
           {saveError && <p id={ids.saveError} role="alert" className="mt-4 text-center text-sm text-danger">{saveError}</p>}
         </main>
 
-        <aside aria-label="Your household" className="order-1 px-4 pt-2 sm:px-6 lg:order-none lg:col-start-2 lg:row-span-2 lg:row-start-1 lg:px-0">
+        <aside aria-label="Your household" className="order-1 shrink-0 px-4 pt-1 sm:px-6 lg:order-none lg:col-start-2 lg:row-span-2 lg:row-start-1 lg:px-0">
           {/* Top-aligned with the progress rail, so nothing shifts as the questions change length. */}
           <div className="lg:sticky lg:top-0 lg:flex lg:h-screen lg:flex-col lg:pb-8 lg:pt-24">
             <HouseholdStage model={household} reveal={isLast || showDone} />

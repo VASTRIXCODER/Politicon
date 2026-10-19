@@ -1,13 +1,15 @@
 /*
- * The household poster's palette: a porcelain model on a paper plinth, in
- * tones of the same violet-white the 3D materials use. By night the model
- * stays a pale object in a dim room (as the 3D one does), so the poster and
- * the scene cross-fade without a jump.
+ * The household poster's palette: a porcelain model on its plinth, in the
+ * tones the 3D scene renders (the kit's Plinth and StudioLights with the
+ * scene palette, lib/three/palette.ts): by day a white top over a lilac-grey
+ * drum, by night a pale lilac plinth in a dim violet room. So the poster and
+ * the scene cross-fade without a jump, and a device without 3D sees the same
+ * object.
  */
 .art {
-  --hp-plinth: #ece7df;
-  --hp-drum-top: #e3ddd2;
-  --hp-drum-bottom: #cdc4b7;
+  --hp-plinth: #fbfafd;
+  --hp-drum-top: #ebe7f1;
+  --hp-drum-bottom: #c6bddf;
   --hp-inlay: rgb(109 74 255 / 0.32);
   --hp-p0: #ffffff;
   --hp-p1: #f6f3fa;
@@ -15,8 +17,9 @@
   --hp-p3: #d2cae4;
   --hp-r0: #eee8f8;
   --hp-r1: #d8cfec;
-  --hp-ink0: #4a4268;
-  --hp-ink1: #342d50;
+  --hp-ink0: #7a6fa3;
+  --hp-ink1: #5c5285;
+  --hp-wheel: #2c2450;
   --hp-violet: #6d4aff;
   --hp-pane: #d6cdf6;
   --hp-lamp: #ffe1a0;
@@ -32,9 +35,9 @@
 
 :global([data-theme='dark']) .art,
 :global([data-night]) .art {
-  --hp-plinth: #a49cbd;
-  --hp-drum-top: #8c84a8;
-  --hp-drum-bottom: #5d5579;
+  --hp-plinth: #ded1fa;
+  --hp-drum-top: #9b90c1;
+  --hp-drum-bottom: #6a6094;
   --hp-inlay: rgb(185 168 255 / 0.55);
   --hp-p0: #ebe6f6;
   --hp-p1: #d5cde8;
@@ -42,8 +45,9 @@
   --hp-p3: #9286b9;
   --hp-r0: #c7bde1;
   --hp-r1: #a699c8;
-  --hp-ink0: #3a3156;
-  --hp-ink1: #2a2342;
+  --hp-ink0: #6a5ab5;
+  --hp-ink1: #4f4290;
+  --hp-wheel: #d9d1f5;
   --hp-violet: #8f75ff;
   --hp-pane: #7b6ac4;
   --hp-lamp: #ffd98a;
@@ -75,6 +79,7 @@
 .r1 { fill: var(--hp-r1); }
 .ink0 { fill: var(--hp-ink0); }
 .ink1 { fill: var(--hp-ink1); }
+.wheel { fill: var(--hp-wheel); }
 .violet { fill: var(--hp-violet); }
 .crown0 { fill: var(--hp-crown0); }
 .crown1 { fill: var(--hp-crown1); }

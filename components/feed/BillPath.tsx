@@ -86,14 +86,8 @@ export default function BillPath({ record, billNumber, region, path: given, clas
           <>
             <span className="whitespace-nowrap font-mono-data">
               <span className="sr-only">, </span>stage {path.reached + 1} of {n}
-              {(path.outcome === 'repealed' || asOf) && <Dot />}
+              {asOf && <Dot />}
             </span>
-            {path.outcome === 'repealed' && (
-              <span>
-                <span className="sr-only">, </span>Official status: repealed
-                {asOf && <Dot />}
-              </span>
-            )}
             {asOf && (
               <span className="whitespace-nowrap font-mono-data">
                 <span className="sr-only">, </span>as of {asOf}

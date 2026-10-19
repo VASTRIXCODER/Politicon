@@ -82,6 +82,14 @@ describe('statusFromAction', () => {
     ['Public Act . . . . . . . . . 104-0012', 'enacted'],
     ['Act No. 2025-45', 'enacted'],
     ['Chapter 12, Laws of 2025', 'enacted'],
+    // Repealed only when the action is the repeal itself, never a bill about repealing something.
+    ['Repealed', 'repealed'],
+    ['Repealed by HB 22', 'repealed'],
+    ['Repealed by Public Act 104-12', 'repealed'],
+    ['Act repealed by Chapter 9, Laws of 2026', 'repealed'],
+    ['Passed House. (A bill to repeal section 5 of the Act)', 'passed'],
+    ['Referred to the Committee on Ways and Means. To repeal the estate tax.', 'proposed'],
+    ['Introduced: An act to repeal the sales tax on groceries', 'proposed'],
   ])('%s → %s', (text, status) => {
     expect(L.statusFromAction(text)).toBe(status);
   });

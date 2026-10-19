@@ -4,7 +4,8 @@ import type { PolicyRecord } from '@/types';
  * Where a bill stands on its way to becoming law, read from its official
  * record: the record's status and the wording of its latest action. It is
  * the furthest stage the record shows the bill has reached, never a
- * prediction of what happens next, and it stays empty for anything that
+ * prediction of what happens next (a repealed law walked the whole path),
+ * and it stays empty for anything that
  * wasn't verified against an official source (an AI's word is never a status).
  *
  *   Introduced → Committee → Floor → Other chamber → Signed
@@ -39,7 +40,7 @@ export interface BillStep {
   state: StepState;
 }
 
-/** in-progress: still moving (as far as the record shows). */
+/** in-progress: still moving (as far as the record shows). repealed: it became law, and the record shows it was repealed. */
 export type BillOutcome = 'in-progress' | 'enacted' | 'failed' | 'repealed';
 
 export interface BillPathModel {
@@ -187,6 +188,10 @@ export function billPath(record: PolicyRecord | null | undefined, fallback: { bi
   if (status === 'enacted') {
     return { known: true, steps: steps(() => 'done'), reached: last, outcome: 'enacted', headline: 'Became law', origin, ...base };
   }
+  // Only a law is repealed: it walked the whole path, and the record shows it was later undone.
+  if (status === 'repealed') {
+    return { known: true, steps: steps(() => 'done'), reached: last, outcome: 'repealed', headline: 'Became law, later repealed', origin, ...base };
+  }
 
   let found: Found = latestAction ? stageFromAction(latestAction, originSide, !!unicameralName) : { stage: 'introduced', done: false };
   // The record says it passed a chamber even where the wording above doesn't show it.
@@ -224,7 +229,7 @@ export function billPath(record: PolicyRecord | null | undefined, fallback: { bi
     known: true,
     steps: steps((i) => (i < reached ? 'done' : i === reached ? atStage : 'upcoming')),
     reached,
-    outcome: failed ? 'failed' : status === 'repealed' ? 'repealed' : 'in-progress',
+    outcome: failed ? 'failed' : 'in-progress',
     headline,
     origin,
     ...base,

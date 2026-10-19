@@ -73,7 +73,7 @@ export default function DashboardPage() {
 
       <GreetingHeader loading={loading} firstName={data.firstName} profile={profile} headline={headline} />
 
-      <LedgerSection loading={loading} analyses={analyses} totals={totals} profile={profile} onGoToFeed={goToFeed} />
+      <LedgerSection loading={loading} analyses={analyses} totals={totals} onGoToFeed={goToFeed} />
 
       <Tabs value={activeTab} onValueChange={setActiveTab}>
         <TabList label="Dashboard views" className="glass mb-6 w-fit max-w-full rounded-2xl p-1">

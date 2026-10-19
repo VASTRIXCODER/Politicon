@@ -122,8 +122,6 @@ describe('the household scene', () => {
     expect(s.count()).toBeGreaterThan(empty + 30);
     await s.update(h(HouseholdScene, { model, mode: 'build', lastAdded: 'prop:card', reveal: true }));
     await s.frames(30);
-    await s.update(h(HouseholdScene, { model, mode: 'build', reveal: true, skip: true }));
-    await s.frames(3);
     // Back from the last question, and a piece taken away.
     await s.update(h(HouseholdScene, { model: householdFromProfile({ state: 'Ohio', housingSituation: housing as never }), mode: 'build' }));
     await s.frames(10);

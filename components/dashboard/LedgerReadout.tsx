@@ -12,8 +12,9 @@ import { cn } from '@/lib/utils';
  * "Your Ledger" in words: the DOM twin of the glass monolith
  * (components/three/scenes/LedgerMonolith) and of its poster. It states the
  * net yearly impact (sign, colour and words), then every category as a row
- * with its signed amount, its policy count and a bar on the same linear
- * scale as the slabs. Pointing at a row or focusing it with the keyboard
+ * with its signed amount (the net of its policies, and, where they pull
+ * both ways, what they save and cost before netting), its policy count and
+ * a bar on the same linear scale as the slabs. Pointing at a row or focusing it with the keyboard
  * lights the same slab in the model (`onFocus`); a slab pointed at in the
  * model lights its row (`focus`), so the readout is the keyboard and
  * screen-reader equivalent of hovering the 3D. "View as table" swaps the
@@ -49,13 +50,16 @@ const GROUPS: { tone: LedgerTone; title: string; note: string }[] = [
 const yearly = (n: number) => formatUSD(n, { signed: true, suffix: '/yr' });
 const policies = (n: number) => `${n} ${n === 1 ? 'policy' : 'policies'}`;
 const countLabel = (s: LedgerSlab) => (s.combined ? `${s.policies} ${s.policies === 1 ? 'analysis' : 'analyses'}, combined` : policies(s.policies));
+/** The category's policies pull both ways: what they save and cost before netting, or null. */
+const offsets = (s: LedgerSlab) => (s.gross && s.gross.saves > 0 && s.gross.costs > 0 ? s.gross : null);
 
 /** "Saves you $1,240 a year · about $103 a month" (the month only where it isn't a rounding of nothing). */
 function netWords(net: number): string {
   const words = impactWords(net);
   if (words === 'no change') return 'No net change a year';
   const abs = Math.abs(net);
-  const month = abs >= 120 ? ` · about ${formatUSD(abs / 12)} a month` : '';
+  // Non-breaking inside each part, so a narrow line breaks after the "·", never before it.
+  const month = abs >= 120 ? `\u00a0· ${`about ${formatUSD(abs / 12)} a month`.replace(/ /g, '\u00a0')}` : '';
   return `${words.charAt(0).toUpperCase()}${words.slice(1)} ${formatUSD(abs)} a year${month}`;
 }
 
@@ -70,11 +74,16 @@ function Title({ as: Tag, id }: { as: 'h2' | 'h3'; id: string }) {
 function Row({ slab, max, on, hint, onFocus }: { slab: LedgerSlab; max: number; on: boolean; hint: string; onFocus?: (id: string | null) => void }) {
   const share = max > 0 ? Math.abs(slab.value) / max : 0;
   const words = impactWords(slab.value);
+  const both = offsets(slab);
+  const net = slab.policies > 1 || slab.combined ? 'net, ' : '';
+  const amount = words === 'no change' ? `${net}no change` : `${net}${words} ${formatUSD(Math.abs(slab.value))} a year`;
   return (
     <li>
       <button
         type="button"
         data-ledger-slab={slab.id}
+        // Lit with its slab in the model (the 3D, the poster): what the e2e checks.
+        data-lit={on ? '' : undefined}
         aria-describedby={hint}
         onClick={() => onFocus?.(slab.id)}
         onFocus={() => onFocus?.(slab.id)}
@@ -89,7 +98,7 @@ function Row({ slab, max, on, hint, onFocus }: { slab: LedgerSlab; max: number; 
         <span className="flex items-baseline justify-between gap-3">
           <span className="min-w-0 truncate text-sm font-medium text-ink">{slab.label}</span>
           <span className="sr-only">
-            {`: ${words === 'no change' ? 'no change' : `${words} ${formatUSD(Math.abs(slab.value))} a year`}, from ${countLabel(slab)}`}
+            {`: ${amount}, from ${countLabel(slab)}${both ? `, which save you ${formatUSD(both.saves)} and cost you ${formatUSD(both.costs)} a year before netting` : ''}`}
           </span>
           <span aria-hidden="true" className={cn('whitespace-nowrap font-mono-data text-sm font-semibold', TONE_TEXT[slab.tone])}>
             {yearly(slab.value)}
@@ -105,6 +114,13 @@ function Row({ slab, max, on, hint, onFocus }: { slab: LedgerSlab; max: number; 
           </span>
           <span className="whitespace-nowrap text-meta text-muted">{countLabel(slab)}</span>
         </span>
+        {both && (
+          // Offsetting amounts, so a small net isn't mistaken for small policies.
+          <span aria-hidden="true" className="mt-1 block text-meta text-muted">
+            Net of <span className="font-mono-data text-gain">{formatUSD(both.saves, { signed: true })}</span> and{' '}
+            <span className="font-mono-data text-loss">{formatUSD(-both.costs, { signed: true })}</span> a year
+          </span>
+        )}
       </button>
     </li>
   );

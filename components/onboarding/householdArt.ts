@@ -26,10 +26,10 @@ import {
 import type { Dwelling, HouseholdModel, HouseholdProp } from '@/lib/household';
 
 /** What a face is made of; its tone also depends on how it faces the light. */
-type Material = 'porcelain' | 'roof' | 'ink' | 'violet' | 'pane' | 'crown' | 'person';
+type Material = 'porcelain' | 'roof' | 'ink' | 'wheel' | 'violet' | 'pane' | 'crown' | 'person';
 
 /** The tones a poster paints with (classes in householdPoster.module.css). */
-export type Tone = 'p0' | 'p1' | 'p2' | 'p3' | 'r0' | 'r1' | 'ink0' | 'ink1' | 'violet' | 'pane' | 'crown0' | 'crown1' | 'person' | 'shadow';
+export type Tone = 'p0' | 'p1' | 'p2' | 'p3' | 'r0' | 'r1' | 'ink0' | 'ink1' | 'wheel' | 'violet' | 'pane' | 'crown0' | 'crown1' | 'person' | 'shadow';
 
 interface Face {
   pts: Vec3[];
@@ -257,13 +257,24 @@ function propSolid(kind: HouseholdProp): Solid {
       return solid(
         [...box([0, 0.062, 0], [0.28, 0.07, 0.14], 'porcelain', 1), ...box([-0.02, 0.118, 0], [0.15, 0.065, 0.12], 'roof', 2)],
         [0.2, 0.12],
-        [-0.085, 0.085].map((x): Disc => ({ at: [x, 0.032, 0.07], r: 0.032, mat: 'ink', layer: 0 }))
+        [-0.085, 0.085].map((x): Disc => ({ at: [x, 0.032, 0.07], r: 0.032, mat: 'wheel', layer: 0 }))
       );
-    case 'mortgage-key':
+    case 'mortgage-key': {
+      // Lying flat, as the 3D one does (HouseholdProps: a torus bow, a shaft, two teeth, at its 1.25 scale):
+      // a round bow with the plinth showing through its hole.
+      const ring = (r: number, y: number): Vec3[] =>
+        Array.from({ length: 16 }, (_, i): Vec3 => [-0.0625 + Math.cos((i / 16) * Math.PI * 2) * r, y, Math.sin((i / 16) * Math.PI * 2) * r]);
       return solid(
-        [...box([-0.062, 0.008, 0], [0.07, 0.012, 0.07], 'violet', 0), ...box([0.025, 0.008, 0], [0.11, 0.012, 0.018], 'violet', 0), ...box([0.07, 0.008, 0.02], [0.018, 0.012, 0.032], 'violet', 0)],
+        [
+          { n: [0, 1, 0], pts: ring(0.046, 0.022), mat: 'violet', layer: 0 },
+          { n: [0, 1, 0], pts: ring(0.024, 0.0221), mat: 'porcelain', layer: 1 },
+          ...box([0.025, 0.0075, 0], [0.1125, 0.015, 0.0175], 'violet', 0),
+          ...box([0.07, 0.0075, 0.02], [0.0175, 0.015, 0.0325], 'violet', 0),
+          ...box([0.045, 0.0075, 0.015], [0.0125, 0.015, 0.0225], 'violet', 0),
+        ],
         [0.11, 0.05]
       );
+    }
     case 'grad-cap':
       return solid(
         [
@@ -339,11 +350,12 @@ const f1 = (v: number) => Math.round(v * 10) / 10;
 /**
  * The poster's drawing of `model` for a box of `aspect`, from the build
  * camera (or, for `mode: 'avatar'`, the avatar's, at its resting turn).
+ * `close` is the build camera's close framing (the phone's band).
  */
-export function householdArt(model: HouseholdModel, mode: 'build' | 'avatar', aspect: number, lastAdded: string | null = null): HouseholdArt {
+export function householdArt(model: HouseholdModel, mode: 'build' | 'avatar', aspect: number, lastAdded: string | null = null, close = false): HouseholdArt {
   const width = VIEW_WIDTH;
   const height = VIEW_WIDTH / aspect;
-  const shot = householdShot(mode, aspect);
+  const shot = householdShot(mode, aspect, 0, close);
   const project = householdProjector(shot, aspect);
   const half = Math.tan((shot.fov * Math.PI) / 360);
   const cam = shot.position;

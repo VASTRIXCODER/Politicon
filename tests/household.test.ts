@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { EMPTY_HOUSEHOLD, MAX_FIGURES, TOP_DEPENDENTS_COUNT, describeHousehold, householdFromProfile, type HouseholdModel } from '@/lib/household';
+import { householdLayout } from '@/components/three/kit/dioramaLayout';
 import { DEBT_TYPES, DEPENDENT_AGE_BANDS, FILING_STATUSES, HOUSING_SITUATIONS, MAX_DEPENDENTS } from '@/lib/profileOptions';
 
 // lib/household.ts: the profile → household model mapping the onboarding
@@ -22,7 +23,7 @@ describe('householdFromProfile: nothing answered', () => {
 
   it('keeps the empty household frozen, so nobody can change it by accident', () => {
     expect(Object.isFrozen(EMPTY_HOUSEHOLD)).toBe(true);
-    expect(EMPTY_HOUSEHOLD).toEqual({ dwelling: null, owns: false, adults: 1, figures: 0, dependentsCount: 0, youngDependents: false, agesKnown: false, props: [], state: null });
+    expect(EMPTY_HOUSEHOLD).toEqual({ dwelling: null, owns: false, adults: 1, figures: 0, dependentsCount: 0, youngDependents: false, agesKnown: false, mixedAges: false, props: [], state: null });
   });
 });
 
@@ -108,9 +109,21 @@ describe('householdFromProfile: dependents', () => {
     expect(model({ hasDependents: true, dependentsCount: 1, dependentAgeBands: [band] }).youngDependents).toBe(band !== '18_plus');
   });
 
-  it('draws children when any dependent is under 18', () => {
-    expect(model({ hasDependents: true, dependentsCount: 2, dependentAgeBands: ['18_plus', 'under_5'] }).youngDependents).toBe(true);
-    expect(model({ hasDependents: true, dependentsCount: 2, dependentAgeBands: ['18_plus'] }).youngDependents).toBe(false);
+  it('draws children only when every dependent is under 18', () => {
+    expect(model({ hasDependents: true, dependentsCount: 2, dependentAgeBands: ['under_5', '13_17'] })).toMatchObject({ youngDependents: true, agesKnown: true, mixedAges: false });
+    expect(model({ hasDependents: true, dependentsCount: 2, dependentAgeBands: ['18_plus'] })).toMatchObject({ youngDependents: false, agesKnown: true, mixedAges: false });
+  });
+
+  it('claims no one age for dependents of mixed ages (minors and grown-ups)', () => {
+    const m = model({ housingSituation: 'rent', filingStatus: 'single', hasDependents: true, dependentsCount: 2, dependentAgeBands: ['under_5', '18_plus'], state: 'Ohio' });
+    expect(m).toMatchObject({ youngDependents: false, agesKnown: false, mixedAges: true });
+    expect(describeHousehold(m)).toBe('A rented apartment with one adult and two dependents of mixed ages, in Ohio.');
+    // Every dependent is drawn at the neutral height: neither a child nor a grown-up is claimed.
+    expect(householdLayout(m).figures.filter((f) => !f.adult).map((f) => f.id)).toEqual(['dependent-1:dependent', 'dependent-2:dependent']);
+    // One dependent with bands that disagree: just "a dependent".
+    expect(describeHousehold(model({ housingSituation: 'rent', hasDependents: true, dependentsCount: 1, dependentAgeBands: ['5_12', '18_plus'] }))).toBe(
+      'A rented apartment with one adult and one dependent.',
+    );
   });
 
   it('has no young dependents without any dependents', () => {

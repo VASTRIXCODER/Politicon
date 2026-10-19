@@ -93,19 +93,24 @@ export function displayBillNumber(type: string, number: string): string {
   return `${t ? t.display : type.toUpperCase()} ${number}`;
 }
 
+/** The action opens with the repeal of the act itself (after any leading punctuation). */
+const REPEALED = /^[\s"'(\[]*(?:(?:this |the )?(?:act|law|bill|statute|measure|chapter) (?:was |is |has been )?)?repealed\b/;
+
 /** Status from the text of a bill's latest action (federal or state wording). */
 export function statusFromAction(text: string | null | undefined): RecordStatus {
   const t = (text || '')
     .toLowerCase()
     // A failed motion or amendment doesn't decide the bill ("Motion to discharge ... not agreed to").
     .replace(/(motion to (discharge|reconsider|table|recommit|proceed)|amendment)[^.;]*?(not agreed to|failed(?! (of )?passage| to pass)|not passed)/g, ' ');
+  // Repealed only when the action itself is the repeal ("Repealed", "Repealed by HB 22", "Act repealed"),
+  // never a bill whose title or text is about repealing something ("A bill to repeal section 5").
+  if (REPEALED.test(t)) return 'repealed';
   if (
     /became (public |private )?law|signed by (the )?(president|governor)\b(?!\s+(of|pro)\b)|approved by (the )?governor|chaptered|chapter (no\.|number)?\s*\d|signed chap|public act|\bact no\.|enacted|public law no/.test(t)
   ) return 'enacted';
   // Negative outcomes before "passed", so "not agreed to" never reads as agreed to.
   // ("Withdrawn from <committee>" is a re-referral, not a withdrawal of the bill.)
   if (/not agreed to|\bfailed\b|not passed|veto(ed)? (message|by)|vetoed|withdrawn from further consideration|\bdied (in|on|at|pursuant)\b|indefinitely postponed/.test(t)) return 'rejected';
-  if (/repeal/.test(t)) return 'repealed';
   // The presiding officers sign the enrolled bill after both chambers pass it ("Signed by President of the Senate"): passed, not yet law.
   if (/passed|agreed to|presented to (the )?(president|governor)|enrolled|concurred|signed by (the )?(speaker|president (of|pro))/.test(t)) return 'passed';
   return 'proposed';
